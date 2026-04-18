@@ -27,7 +27,7 @@ const Garage = () => {
               <Button variant="outline" size="sm" className="border-border bg-surface-1">
                 <Filter className="mr-2 h-3.5 w-3.5" /> Filter
               </Button>
-              <Button size="sm" className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90">
+              <Button size="sm" variant="hero">
                 <Plus className="mr-2 h-3.5 w-3.5" /> Request a car
               </Button>
             </>

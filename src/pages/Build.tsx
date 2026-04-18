@@ -17,7 +17,7 @@ const Build = () => {
           actions={
             <>
               <Button variant="outline" size="sm" className="border-border bg-surface-1">Switch variant</Button>
-              <Button size="sm" className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90" asChild>
+              <Button size="sm" variant="hero" asChild>
                 <Link to="/simulation"><PlayCircle className="mr-2 h-3.5 w-3.5" /> Run simulation</Link>
               </Button>
             </>

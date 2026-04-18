@@ -17,7 +17,7 @@ const Geometry = () => {
               <Button variant="outline" size="sm" className="border-border bg-surface-1">
                 <Upload className="mr-2 h-3.5 w-3.5" /> Upload custom STL
               </Button>
-              <Button size="sm" className="bg-gradient-primary text-primary-foreground shadow-glow">
+              <Button size="sm" variant="hero">
                 Continue to parts
               </Button>
             </>

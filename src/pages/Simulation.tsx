@@ -25,7 +25,7 @@ const Simulation = () => {
               <Button
                 size="sm"
                 onClick={() => setRunning(true)}
-                className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+                variant="hero"
               >
                 <PlayCircle className="mr-2 h-3.5 w-3.5" /> Queue run
               </Button>

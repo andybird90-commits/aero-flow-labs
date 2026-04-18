@@ -20,7 +20,7 @@ const Results = () => {
               <Button variant="outline" size="sm" className="border-border bg-surface-1" asChild>
                 <Link to="/compare"><GitCompareArrows className="mr-2 h-3.5 w-3.5" /> Compare</Link>
               </Button>
-              <Button size="sm" className="bg-gradient-primary text-primary-foreground shadow-glow" asChild>
+              <Button size="sm" variant="hero" asChild>
                 <Link to="/exports"><FileDown className="mr-2 h-3.5 w-3.5" /> Export report</Link>
               </Button>
             </>

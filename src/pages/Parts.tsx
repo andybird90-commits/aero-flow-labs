@@ -35,7 +35,7 @@ const Parts = () => {
               <Button variant="outline" size="sm" className="border-border bg-surface-1">
                 <Plus className="mr-2 h-3.5 w-3.5" /> Add custom part
               </Button>
-              <Button size="sm" className="bg-gradient-primary text-primary-foreground shadow-glow">
+              <Button size="sm" variant="hero">
                 Save & continue
               </Button>
             </>

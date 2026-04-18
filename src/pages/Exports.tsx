@@ -19,7 +19,7 @@ const Exports = () => {
           title="Exports & Reports"
           description="Download engineering reports, raw datasets and STL packages of approved aero configurations."
           actions={
-            <Button size="sm" className="bg-gradient-primary text-primary-foreground shadow-glow">
+            <Button size="sm" variant="hero">
               <Download className="mr-2 h-3.5 w-3.5" /> Export current run
             </Button>
           }

@@ -54,7 +54,7 @@ const Landing = () => {
           Review drag, downforce, balance and pressure fields. Built for engineers and serious enthusiasts.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3">
-          <Button size="lg" asChild className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90">
+          <Button size="lg" asChild variant="hero">
             <Link to="/garage">Enter Garage <ArrowRight className="ml-2 h-4 w-4" /></Link>
           </Button>
           <Button size="lg" variant="outline" className="border-border bg-surface-1/60 backdrop-blur">
