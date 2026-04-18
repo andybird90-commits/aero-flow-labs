@@ -38,7 +38,7 @@ const Garage = () => {
           <StatCard label="VEHICLES" value="6" hint="5 supported" />
           <StatCard label="ACTIVE BUILDS" value="3" delta={{ value: "+1", direction: "up" }} hint="this week" />
           <StatCard label="TOTAL RUNS" value="34" delta={{ value: "+8", direction: "up" }} hint="last 30 days" accent />
-          <StatCard label="SOLVER MIN.", value="218.4" unit="min" hint="quota: 600 min" />
+          <StatCard label="SOLVER MIN" value="218.4" unit="min" hint="quota: 600 min" />
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
