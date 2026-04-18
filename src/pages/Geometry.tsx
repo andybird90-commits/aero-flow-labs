@@ -77,8 +77,8 @@ const Geometry = () => {
                   </div>
                 ))}
               </div>
-              <div className="mt-4 rounded-md border border-success/30 bg-success/5 px-3 py-2 text-mono text-[11px] text-success">
-                ✓ Mesh validated for solver
+              <div className="mt-4">
+                <StatusChip tone="success">Mesh validated for solver</StatusChip>
               </div>
             </div>
 

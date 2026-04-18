@@ -15,11 +15,14 @@ const Results = () => {
     <AppLayout>
       <div className="mx-auto max-w-7xl px-6 py-8">
         <PageHeader
-          eyebrow="Run #2184 · Variant B · Converged"
+          eyebrow="Run #2184 · Variant B"
           title="Results"
           description="CIVIC_FK8 · Track Pack · 180 km/h · 0° yaw · 2,400 iterations · wall time 38m 12s"
           actions={
             <>
+              <StatusChip tone="success">Converged</StatusChip>
+              <StatusChip tone="solver">Solver-backed</StatusChip>
+              <ConfidenceBadge level="high" compact />
               <Button variant="outline" size="sm" className="border-border bg-surface-1" asChild>
                 <Link to="/compare"><GitCompareArrows className="mr-2 h-3.5 w-3.5" /> Compare</Link>
               </Button>
@@ -116,10 +119,14 @@ const Results = () => {
                     <path key={i} d={p.d} stroke={p.c} strokeWidth="1.5" fill="none" />
                   ))}
                 </svg>
-                <div className="absolute top-2 left-3 flex gap-3 text-mono text-[10px]">
-                  <span className="text-primary">● Cd</span>
-                  <span className="text-destructive">● Cl</span>
-                  <span className="text-warning">● momentum</span>
+                <div className="absolute top-2 left-3">
+                  <Legend
+                    items={[
+                      { label: "Cd", color: "text-primary" },
+                      { label: "Cl", color: "text-destructive" },
+                      { label: "momentum", color: "text-warning" },
+                    ]}
+                  />
                 </div>
               </div>
             </div>
