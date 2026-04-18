@@ -415,7 +415,7 @@ const Simulation = () => {
               icon={CloudFog}
               title="Environment"
               sub="Free-stream conditions"
-              right={<StatusChip tone="primary" size="sm" dot={false}>ISA · sea level</StatusChip>}
+              right={<StatusChip tone="simulating" size="sm" dot={false}>ISA · sea level</StatusChip>}
             >
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
