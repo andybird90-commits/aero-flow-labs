@@ -21,11 +21,13 @@ import { cn } from "@/lib/utils";
 /*  Mode definitions                                                   */
 /* ─────────────────────────────────────────────────────────────────── */
 type Mode = "preview" | "full" | "optim";
+type Tone = "warning" | "simulating" | "success";
+type ConfLevel = "low" | "medium" | "high";
 
 const MODES: {
   id: Mode; label: string; sub: string; icon: typeof Wind;
-  runtime: string; cost: string; cells: string; confidence: "low" | "medium" | "high" | "optimized";
-  tone: "warning" | "primary" | "success"; tag: string;
+  runtime: string; cost: string; cells: string; confidence: ConfLevel;
+  tone: Tone; tag: string;
 }[] = [
   {
     id: "preview", label: "Preview Estimate", sub: "Surrogate model · seconds",
@@ -35,12 +37,12 @@ const MODES: {
   {
     id: "full",    label: "Full Simulation", sub: "Solver-backed CFD · single point",
     icon: Server,  runtime: "≈ 18 min", cost: "12 cr",  cells: "1.84M",
-    confidence: "high", tone: "primary", tag: "RANS · k-ω SST",
+    confidence: "high", tone: "simulating", tag: "RANS · k-ω SST",
   },
   {
     id: "optim",   label: "Optimization Run", sub: "DOE sweep · multi-point",
     icon: TrendingUp, runtime: "≈ 3 h 40 min", cost: "120 cr", cells: "1.84M × 16",
-    confidence: "optimized", tone: "success", tag: "Adjoint · 16 designs",
+    confidence: "high", tone: "success", tag: "Adjoint · 16 designs",
   },
 ];
 
