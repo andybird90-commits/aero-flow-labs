@@ -25,6 +25,7 @@ import {
   Activity,
   Wind,
   Palette,
+  Sparkles,
 } from "lucide-react";
 
 const primary = [
@@ -36,6 +37,7 @@ const buildNav = [
   { title: "Geometry", url: "/geometry", icon: Box },
   { title: "Aero Parts", url: "/parts", icon: Wrench },
   { title: "Simulation Setup", url: "/simulation", icon: PlayCircle },
+  { title: "Optimization", url: "/optimization", icon: Sparkles },
   { title: "Results", url: "/results", icon: BarChart3 },
   { title: "Compare", url: "/compare", icon: GitCompareArrows },
 ];
