@@ -514,7 +514,7 @@ const Simulation = () => {
               icon={Target}
               title="Objective"
               sub="What the solver should optimise toward"
-              right={<StatusChip tone="primary" size="sm" dot={false}>{OBJECTIVES.find(o => o.id === objective)?.label}</StatusChip>}
+              right={<StatusChip tone="simulating" size="sm" dot={false}>{OBJECTIVES.find(o => o.id === objective)?.label}</StatusChip>}
             >
               <ObjectiveSelector value={objective} onChange={setObjective} />
             </SectionCard>
