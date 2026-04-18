@@ -701,7 +701,7 @@ const Simulation = () => {
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="text-mono text-[10px] text-muted-foreground">{j.eta}</span>
                         <StatusChip
-                          tone={j.state === "solving" ? "primary" : j.state === "queued" ? "neutral" : "success"}
+                          tone={j.state === "solving" ? "simulating" : j.state === "queued" ? "neutral" : "success"}
                           size="sm"
                           dot={j.state === "solving"}
                         >
