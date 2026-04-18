@@ -347,8 +347,8 @@ function DragDfChart({ variants, allVariants }: { variants: Variant[]; allVarian
         </div>
         <Legend
           items={[
-            { label: "Compared", color: "text-primary", shape: "circle" },
-            { label: "Other", color: "text-muted-foreground", shape: "circle" },
+            { label: "Compared", color: "text-primary", shape: "dot" },
+            { label: "Other", color: "text-muted-foreground", shape: "dot" },
             { label: "L/D iso", color: "text-warning", shape: "line" },
           ]}
         />
