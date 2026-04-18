@@ -152,12 +152,13 @@ const Simulation = () => {
             </div>
 
             {running && (
-              <div className="glass rounded-lg p-5 ring-1 ring-primary/30">
-                <div className="text-mono text-[10px] uppercase tracking-widest text-primary mb-2">Run #2185 queued</div>
-                <p className="text-xs text-muted-foreground">
-                  Variant B will start in ~2m. You'll be notified when results are ready.
-                </p>
-              </div>
+              <JobProgress
+                state="queued"
+                label="Run #2185 · Variant B"
+                iteration={0}
+                eta="2m 14s"
+                residual="Awaiting node assignment"
+              />
             )}
           </div>
         </div>
