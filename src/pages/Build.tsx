@@ -3,6 +3,8 @@ import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { ViewerPlaceholder } from "@/components/ViewerPlaceholder";
+import { ConfidenceBadge } from "@/components/ConfidenceBadge";
+import { JobProgress } from "@/components/JobProgress";
 import { Button } from "@/components/ui/button";
 import { Box, Wrench, PlayCircle, BarChart3, GitCompareArrows, ArrowRight, ChevronRight, CheckCircle2, Circle, Loader2 } from "lucide-react";
 
@@ -131,12 +133,19 @@ const Build = () => {
               </Button>
             </div>
 
-            <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 text-xs">
-              <div className="text-mono text-[10px] uppercase tracking-widest text-warning mb-1">Confidence note</div>
-              <p className="text-muted-foreground leading-relaxed">
-                Results are <span className="text-foreground">comparative</span>. Use deltas between variants — not absolute values — for setup decisions.
-              </p>
-            </div>
+            <JobProgress
+              state="running"
+              label="Run #2185 · Variant B"
+              iteration={1820}
+              eta="6m 02s"
+              residual="Cd 1.2e-04 · Cl 8.7e-05"
+            />
+
+            <ConfidenceBadge
+              level="medium"
+              label="Comparative output"
+              detail="Use deltas between variants — not absolute values — for setup decisions."
+            />
           </div>
         </div>
       </div>
