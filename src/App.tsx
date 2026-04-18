@@ -14,6 +14,7 @@ import Results from "./pages/Results";
 import Compare from "./pages/Compare";
 import Exports from "./pages/Exports";
 import SystemStatus from "./pages/SystemStatus";
+import DesignSystem from "./pages/DesignSystem";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
           <Route path="/compare" element={<Compare />} />
           <Route path="/exports" element={<Exports />} />
           <Route path="/system" element={<SystemStatus />} />
+          <Route path="/design-system" element={<DesignSystem />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

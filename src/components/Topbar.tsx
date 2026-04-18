@@ -12,6 +12,7 @@ const labels: Record<string, string[]> = {
   "/compare": ["Build", "Compare"],
   "/exports": ["Exports & Reports"],
   "/system": ["System Status"],
+  "/design-system": ["Design System"],
   "/": ["Welcome"],
 };
 

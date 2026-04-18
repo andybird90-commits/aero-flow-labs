@@ -24,6 +24,7 @@ import {
   FileDown,
   Activity,
   Wind,
+  Palette,
 } from "lucide-react";
 
 const primary = [
@@ -42,6 +43,7 @@ const buildNav = [
 const system = [
   { title: "Exports & Reports", url: "/exports", icon: FileDown },
   { title: "System Status", url: "/system", icon: Activity },
+  { title: "Design System", url: "/design-system", icon: Palette },
 ];
 
 export function AppSidebar() {
