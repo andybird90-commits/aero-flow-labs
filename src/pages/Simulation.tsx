@@ -2,6 +2,8 @@ import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { ParamSlider } from "@/components/ParamSlider";
+import { StatusChip } from "@/components/StatusChip";
+import { JobProgress } from "@/components/JobProgress";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlayCircle, Server, Clock, CheckCircle2 } from "lucide-react";
@@ -25,7 +27,7 @@ const Simulation = () => {
               <Button
                 size="sm"
                 onClick={() => setRunning(true)}
-                className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+                variant="hero"
               >
                 <PlayCircle className="mr-2 h-3.5 w-3.5" /> Queue run
               </Button>
@@ -141,21 +143,22 @@ const Simulation = () => {
                 ].map((c) => (
                   <li key={c.l} className="flex items-center justify-between">
                     <span className="text-muted-foreground">{c.l}</span>
-                    <span className={`text-mono text-[11px] ${c.ok ? "text-success" : "text-warning"}`}>
-                      {c.ok ? "PASS" : "REVIEW"}
-                    </span>
+                    <StatusChip tone={c.ok ? "success" : "warning"} size="sm">
+                      {c.ok ? "Pass" : "Review"}
+                    </StatusChip>
                   </li>
                 ))}
               </ul>
             </div>
 
             {running && (
-              <div className="glass rounded-lg p-5 ring-1 ring-primary/30">
-                <div className="text-mono text-[10px] uppercase tracking-widest text-primary mb-2">Run #2185 queued</div>
-                <p className="text-xs text-muted-foreground">
-                  Variant B will start in ~2m. You'll be notified when results are ready.
-                </p>
-              </div>
+              <JobProgress
+                state="queued"
+                label="Run #2185 · Variant B"
+                iteration={0}
+                eta="2m 14s"
+                residual="Awaiting node assignment"
+              />
             )}
           </div>
         </div>

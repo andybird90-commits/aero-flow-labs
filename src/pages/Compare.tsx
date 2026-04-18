@@ -30,7 +30,7 @@ const Compare = () => {
               <Button variant="outline" size="sm" className="border-border bg-surface-1">
                 <Plus className="mr-2 h-3.5 w-3.5" /> Add variant
               </Button>
-              <Button size="sm" className="bg-gradient-primary text-primary-foreground shadow-glow">
+              <Button size="sm" variant="hero">
                 Promote Variant B <ArrowRight className="ml-2 h-3.5 w-3.5" />
               </Button>
             </>

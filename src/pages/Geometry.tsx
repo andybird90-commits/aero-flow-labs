@@ -1,6 +1,7 @@
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { ViewerPlaceholder } from "@/components/ViewerPlaceholder";
+import { StatusChip } from "@/components/StatusChip";
 import { Button } from "@/components/ui/button";
 import { Upload, RotateCcw, Maximize2, Layers, Ruler } from "lucide-react";
 
@@ -17,7 +18,7 @@ const Geometry = () => {
               <Button variant="outline" size="sm" className="border-border bg-surface-1">
                 <Upload className="mr-2 h-3.5 w-3.5" /> Upload custom STL
               </Button>
-              <Button size="sm" className="bg-gradient-primary text-primary-foreground shadow-glow">
+              <Button size="sm" variant="hero">
                 Continue to parts
               </Button>
             </>
@@ -77,8 +78,8 @@ const Geometry = () => {
                   </div>
                 ))}
               </div>
-              <div className="mt-4 rounded-md border border-success/30 bg-success/5 px-3 py-2 text-mono text-[11px] text-success">
-                ✓ Mesh validated for solver
+              <div className="mt-4">
+                <StatusChip tone="success">Mesh validated for solver</StatusChip>
               </div>
             </div>
 

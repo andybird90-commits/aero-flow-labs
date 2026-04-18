@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Plus, Filter, ArrowRight, Wind, Lock } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
+import { StatusChip } from "@/components/StatusChip";
 
 const cars = [
   { id: "civic-fk8", make: "Honda", model: "Civic Type R", year: "2020 · FK8", supported: true, runs: 14, lastRun: "2h ago", power: "320 hp", weight: "1410 kg" },
@@ -27,7 +28,7 @@ const Garage = () => {
               <Button variant="outline" size="sm" className="border-border bg-surface-1">
                 <Filter className="mr-2 h-3.5 w-3.5" /> Filter
               </Button>
-              <Button size="sm" className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90">
+              <Button size="sm" variant="hero">
                 <Plus className="mr-2 h-3.5 w-3.5" /> Request a car
               </Button>
             </>
@@ -53,13 +54,9 @@ const Garage = () => {
                   <div className="text-mono text-[11px] text-muted-foreground">{c.year}</div>
                 </div>
                 {c.supported ? (
-                  <span className="text-mono text-[10px] uppercase tracking-widest rounded border border-success/30 bg-success/10 px-2 py-0.5 text-success">
-                    Supported
-                  </span>
+                  <StatusChip tone="success">Supported</StatusChip>
                 ) : (
-                  <span className="text-mono text-[10px] uppercase tracking-widest rounded border border-border bg-surface-2 px-2 py-0.5 text-muted-foreground inline-flex items-center gap-1">
-                    <Lock className="h-3 w-3" /> Soon
-                  </span>
+                  <StatusChip tone="neutral" icon={<Lock className="h-3 w-3" />}>Soon</StatusChip>
                 )}
               </div>
 
