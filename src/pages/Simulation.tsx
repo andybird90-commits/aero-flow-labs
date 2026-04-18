@@ -2,6 +2,8 @@ import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { ParamSlider } from "@/components/ParamSlider";
+import { StatusChip } from "@/components/StatusChip";
+import { JobProgress } from "@/components/JobProgress";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlayCircle, Server, Clock, CheckCircle2 } from "lucide-react";
@@ -141,9 +143,9 @@ const Simulation = () => {
                 ].map((c) => (
                   <li key={c.l} className="flex items-center justify-between">
                     <span className="text-muted-foreground">{c.l}</span>
-                    <span className={`text-mono text-[11px] ${c.ok ? "text-success" : "text-warning"}`}>
-                      {c.ok ? "PASS" : "REVIEW"}
-                    </span>
+                    <StatusChip tone={c.ok ? "success" : "warning"} size="sm">
+                      {c.ok ? "Pass" : "Review"}
+                    </StatusChip>
                   </li>
                 ))}
               </ul>

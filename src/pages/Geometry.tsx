@@ -1,6 +1,7 @@
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { ViewerPlaceholder } from "@/components/ViewerPlaceholder";
+import { StatusChip } from "@/components/StatusChip";
 import { Button } from "@/components/ui/button";
 import { Upload, RotateCcw, Maximize2, Layers, Ruler } from "lucide-react";
 
