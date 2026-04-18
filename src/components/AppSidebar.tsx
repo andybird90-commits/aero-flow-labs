@@ -25,6 +25,7 @@ import {
   Activity,
   Wind,
   Palette,
+  Sparkles,
 } from "lucide-react";
 
 const primary = [
