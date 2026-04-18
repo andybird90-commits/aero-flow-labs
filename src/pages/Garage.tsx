@@ -7,6 +7,7 @@ import { StatCard } from "@/components/StatCard";
 import { StatusChip } from "@/components/StatusChip";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { EmptyState } from "@/components/EmptyState";
+import { FeaturedDemoBuild } from "@/components/FeaturedDemoBuild";
 import {
   Plus, Filter, ArrowRight, Wind, Lock, Car, Layers, Wrench, PlayCircle,
   BarChart3, GitCompareArrows, FileDown, Clock, Star, Sparkles, MoreHorizontal,
@@ -438,8 +439,13 @@ const Garage = () => {
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="ACTIVE BUILDS" value="6" delta={{ value: "+1", direction: "up" }} hint="this week" />
           <StatCard label="TOTAL RUNS"    value="34" delta={{ value: "+8", direction: "up" }} hint="last 30 days" accent />
-          <StatCard label="BEST L/D"      value="2.54" delta={{ value: "+0.31", direction: "up" }} hint="Track pack v3" />
+          <StatCard label="BEST L/D"      value="2.54" delta={{ value: "+0.31", direction: "up" }} hint="GR86 Time-Attack" />
           <StatCard label="SOLVER MIN"    value="218.4" unit="min" hint="quota: 600 min" />
+        </div>
+
+        {/* Featured demo build */}
+        <div className="mt-6">
+          <FeaturedDemoBuild />
         </div>
 
         {/* Car selector */}
