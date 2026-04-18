@@ -651,14 +651,11 @@ const Simulation = () => {
                 {running ? (
                   <JobProgress
                     label="GR86 · Optimized v3 · point 2/3"
-                    progress={progress}
+                    state="running"
+                    iteration={Math.round((progress / 100) * 2400)}
+                    totalIterations={2400}
                     eta="11 min"
-                    status="solving"
-                    metrics={[
-                      { l: "Iter", v: "2,340" },
-                      { l: "Res", v: "8.2e-5" },
-                      { l: "CPU", v: "64 c" },
-                    ]}
+                    residual="residual 8.2e-5 · 64 cores"
                   />
                 ) : (
                   <div className="rounded-md border border-dashed border-border bg-surface-1/40 px-3 py-4 text-center">
