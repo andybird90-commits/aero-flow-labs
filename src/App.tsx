@@ -15,6 +15,7 @@ import Compare from "./pages/Compare";
 import Exports from "./pages/Exports";
 import SystemStatus from "./pages/SystemStatus";
 import DesignSystem from "./pages/DesignSystem";
+import Optimization from "./pages/Optimization";
 
 const queryClient = new QueryClient();
 
@@ -31,6 +32,7 @@ const App = () => (
           <Route path="/geometry" element={<Geometry />} />
           <Route path="/parts" element={<Parts />} />
           <Route path="/simulation" element={<Simulation />} />
+          <Route path="/optimization" element={<Optimization />} />
           <Route path="/results" element={<Results />} />
           <Route path="/compare" element={<Compare />} />
           <Route path="/exports" element={<Exports />} />
