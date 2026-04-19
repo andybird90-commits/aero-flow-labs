@@ -13,7 +13,7 @@
  *     they are seeded by the integrated forces from the surrogate aero
  *     estimator and react to component params, but they are not a CFD field.
  */
-import { Suspense, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
   OrbitControls,
@@ -24,10 +24,13 @@ import {
   Bounds,
 } from "@react-three/drei";
 import * as THREE from "three";
+import { STLLoader } from "three-stdlib";
+import { OBJLoader } from "three-stdlib";
 import type { AeroComponent, CarTemplate, Geometry } from "@/lib/repo";
 import type { AeroEstimate } from "@/lib/aero-estimator";
 import type { PackageMode } from "@/lib/aero-package-modes";
 import { getPackageMode } from "@/lib/aero-package-modes";
+import { useSignedMeshUrl, meshExtension } from "@/lib/mesh-url";
 
 export type ViewerMode = "flow" | "pressure" | "wake" | "forces" | "compare";
 
