@@ -9,9 +9,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Camera, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle,
+  Sparkles, Camera, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
 
 export default function Concepts() {
   return (
@@ -143,6 +144,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
             {concepts.map((c) => (
               <ConceptCard
                 key={c.id}
+                projectId={projectId}
                 concept={c}
                 onApprove={() => updateConcept.mutate({ id: c.id, patch: { status: "approved" } })}
                 onReject={() => updateConcept.mutate({ id: c.id, patch: { status: "rejected" } })}
@@ -215,8 +217,9 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
 }
 
 function ConceptCard({
-  concept, onApprove, onReject, onFavourite, onDelete,
+  projectId, concept, onApprove, onReject, onFavourite, onDelete,
 }: {
+  projectId: string;
   concept: Concept;
   onApprove: () => void;
   onReject: () => void;
@@ -232,16 +235,18 @@ function ConceptCard({
         : "neutral";
 
   // Build the ordered angle list for the turntable (front → side → rear-3/4 → rear).
-  const angles = [
-    { key: "front", label: "Front 3/4", url: concept.render_front_url },
-    { key: "side", label: "Side", url: concept.render_side_url },
-    { key: "rear34", label: "Rear 3/4", url: (concept as any).render_rear34_url as string | null },
-    { key: "rear", label: "Rear", url: concept.render_rear_url },
-  ].filter((a) => !!a.url) as Array<{ key: string; label: string; url: string }>;
+  const angles: Array<{ key: ViewKey; label: string; url: string | null }> = [
+    { key: "front",  label: "Front 3/4", url: concept.render_front_url },
+    { key: "side",   label: "Side",      url: concept.render_side_url },
+    { key: "rear34", label: "Rear 3/4",  url: (concept as any).render_rear34_url as string | null },
+    { key: "rear",   label: "Rear",      url: concept.render_rear_url },
+  ];
+  const visibleAngles = angles.filter((a) => !!a.url) as Array<{ key: ViewKey; label: string; url: string }>;
 
   const [angleIdx, setAngleIdx] = useState(0);
-  const current = angles[angleIdx];
-  const hasMultiple = angles.length > 1;
+  const [pickMode, setPickMode] = useState(false);
+  const current = visibleAngles[angleIdx];
+  const hasMultiple = visibleAngles.length > 1;
 
   return (
     <div className={cn(
@@ -262,15 +267,40 @@ function ConceptCard({
             <Sparkles className="h-8 w-8" />
           </div>
         )}
-        <div className="absolute top-2 right-2">
+
+        {/* Click-to-extract hotspots overlay */}
+        {current && (
+          <PartHotspotOverlay
+            active={pickMode}
+            view={current.key}
+            projectId={projectId}
+            conceptId={concept.id}
+            conceptTitle={concept.title}
+          />
+        )}
+
+        <div className="absolute top-2 right-2 flex items-center gap-1.5">
+          <button
+            onClick={() => setPickMode((p) => !p)}
+            className={cn(
+              "rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border backdrop-blur transition-colors",
+              pickMode
+                ? "bg-primary/90 text-primary-foreground border-primary"
+                : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
+            )}
+            title="Click any part on the render to extract it as STL"
+          >
+            <MousePointer2 className="h-3 w-3" />
+            {pickMode ? "Picking" : "Pick parts"}
+          </button>
           <StatusChip tone={tone as any} size="sm">{concept.status}</StatusChip>
         </div>
 
         {hasMultiple && (
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-surface-0/80 backdrop-blur px-1.5 py-1 border border-border">
-            {angles.map((a, i) => (
+            {visibleAngles.map((a, i) => (
               <button
-                key={a.key}
+                key={a.key + i}
                 onClick={() => setAngleIdx(i)}
                 className={cn(
                   "px-2.5 py-0.5 rounded-full text-[10px] text-mono uppercase tracking-widest transition-colors",
@@ -290,6 +320,11 @@ function ConceptCard({
         <div className="text-sm font-semibold tracking-tight truncate">{concept.title}</div>
         {concept.direction && (
           <div className="text-mono text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{concept.direction}</div>
+        )}
+        {pickMode && (
+          <div className="mt-2 text-[10px] text-mono uppercase tracking-widest text-primary/80">
+            Click any highlighted part → downloads as STL
+          </div>
         )}
       </div>
       <div className="grid grid-cols-4 border-t border-border">
