@@ -55,8 +55,8 @@ export function MeshOrientationControls({ geometry }: Props) {
       patch: {
         metadata: {
           ...((geometry.metadata as object) ?? {}),
-          mesh_orientation: merged,
-        },
+          mesh_orientation: { ...merged } as Record<string, unknown>,
+        } as any,
       },
     });
   };
