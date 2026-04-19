@@ -387,7 +387,7 @@ export function ExtractedPartPreview({
 
           {stage === "ready" && (
             <Button onClick={onDownload}>
-              <Download className="h-4 w-4 mr-1" /> Download GLB
+              <Download className="h-4 w-4 mr-1" /> Download STL
             </Button>
           )}
 
