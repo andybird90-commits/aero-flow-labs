@@ -307,37 +307,29 @@ export function ExtractedPartPreview({
           </DialogDescription>
         </DialogHeader>
 
-        {/* RENDERING / REVIEW: hero + side + rear-3/4 grid */}
+        {/* RENDERING / REVIEW: single hero render */}
         {(stage === "rendering" || stage === "review" || stage === "meshing") && (
           <div className="relative">
-            <div className="grid grid-cols-3 gap-2">
-              {[0, 1, 2].map((i) => {
-                const img = images[i];
-                return (
-                  <div
-                    key={i}
-                    className="relative aspect-square rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center"
-                  >
-                    {img ? (
-                      <>
-                        <img
-                          src={img.url}
-                          alt={`${label} ${img.angle}`}
-                          className="w-full h-full object-contain"
-                        />
-                        <span className="absolute bottom-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1 py-0.5 rounded">
-                          {img.angle}
-                        </span>
-                      </>
-                    ) : (
-                      <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-[9px] font-mono uppercase tracking-widest">Drawing…</span>
-                      </div>
-                    )}
+            <div className="flex justify-center">
+              <div className="relative aspect-square w-full max-w-md rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
+                {images[0] ? (
+                  <>
+                    <img
+                      src={images[0].url}
+                      alt={`${label} ${images[0].angle}`}
+                      className="w-full h-full object-contain"
+                    />
+                    <span className="absolute bottom-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1 py-0.5 rounded">
+                      {images[0].angle}
+                    </span>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-[9px] font-mono uppercase tracking-widest">Drawing…</span>
                   </div>
-                );
-              })}
+                )}
+              </div>
             </div>
             {stage === "meshing" && (
               <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2 rounded-md">
