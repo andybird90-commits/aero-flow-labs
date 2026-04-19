@@ -141,12 +141,16 @@ export function ExtractedPartPreview({
     setMeshProgress(0);
     try {
       // 1) Start the Meshy job → get a task_id
+      // If the user trimmed the render with the lasso/click tool, send the
+      // masked image to Meshy instead of the raw render — the mesher only
+      // ever sees the cleaned silhouette.
+      const meshImages = maskedUrl ? [maskedUrl] : images.map((i) => i.url);
       const startRes = await supabase.functions.invoke("meshify-part", {
         body: {
           action: "start",
           concept_id: conceptId,
           part_kind: kind,
-          image_urls: images.map((i) => i.url),
+          image_urls: meshImages,
         },
       });
       if (startRes.error) throw startRes.error;
