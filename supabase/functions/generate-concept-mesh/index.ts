@@ -84,7 +84,29 @@ Deno.serve(async (req) => {
 
     console.log("generate-concept-mesh: starting Replicate run for concept", concept_id, "with views:", Object.keys(input).filter(k => k.endsWith("_image")));
 
-    // Create prediction
+    // Run the long Replicate job in the background so we don't hit the 150s
+    // edge-runtime idle timeout. The client polls `preview_mesh_status` on
+    // the concept row to know when it's done.
+    // @ts-ignore - EdgeRuntime is available in Supabase edge runtime
+    EdgeRuntime.waitUntil(runReplicateJob({ admin, concept_id, userId, projectId: concept.project_id, input }));
+
+    return json({ status: "generating", concept_id }, 202);
+  } catch (e) {
+    console.error("generate-concept-mesh error:", e);
+    return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
+  }
+});
+
+async function runReplicateJob({
+  admin, concept_id, userId, projectId, input,
+}: {
+  admin: ReturnType<typeof createClient>;
+  concept_id: string;
+  userId: string;
+  projectId: string;
+  input: Record<string, unknown>;
+}) {
+  try {
     const createResp = await fetch("https://api.replicate.com/v1/predictions", {
       method: "POST",
       headers: {
