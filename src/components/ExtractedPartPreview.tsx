@@ -470,6 +470,7 @@ export function ExtractedPartPreview({
         <DialogHeader>
           {titleLine}
           <DialogDescription>
+            {stage === "pretrim"   && "Optional: lasso the part on the original image so the AI only sees that crop. Or skip and render the full view."}
             {stage === "rendering" && "Drawing the part on a clean white background…"}
             {stage === "review"    && "Review the render. Regenerate if it looks generic, or turn it into a 3D model."}
             {stage === "meshing"   && "Building 3D mesh — usually 1-3 minutes."}
