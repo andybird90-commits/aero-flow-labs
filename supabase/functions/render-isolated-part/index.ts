@@ -79,12 +79,13 @@ const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
   },
 };
 
-// Three angles: hero front-3/4 generated first, then side and rear-3/4 lock
-// onto the hero as ground truth so all three depict the same physical part.
+// Two angles only — Gemini Pro image is slow (~50s each) and 3 sequential
+// calls blow past the 150s edge function timeout. Hero front-3/4 is generated
+// first, then the side view locks onto the hero as ground truth so both
+// depict the same physical part. Meshy can still build a 3D model from 2 images.
 const ANGLES = [
   { key: "front34", label: "front 3/4 view, slightly above, hero product shot" },
   { key: "side",    label: "pure side profile view, camera level with the part" },
-  { key: "rear34",  label: "rear 3/4 view, slightly above" },
 ] as const;
 
 Deno.serve(async (req) => {
