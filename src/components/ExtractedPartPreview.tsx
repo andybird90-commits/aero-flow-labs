@@ -474,7 +474,7 @@ export function ExtractedPartPreview({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-[96vw] w-[96vw] sm:max-w-[92vw] h-[94vh] flex flex-col">
         <DialogHeader>
           {titleLine}
           <DialogDescription>
@@ -489,9 +489,9 @@ export function ExtractedPartPreview({
 
         {/* PRETRIM: lasso on the original concept image, before AI render */}
         {stage === "pretrim" && sourceImageUrl && (
-          <div className="space-y-2">
-            <div className="flex justify-center">
-              <div className="relative aspect-square w-full max-w-md rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
+          <div className="space-y-2 flex-1 min-h-0 flex flex-col">
+            <div className="flex justify-center flex-1 min-h-0">
+              <div className="relative w-full h-full rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
                 {preMaskedUrl ? (
                   <>
                     <img
@@ -554,9 +554,9 @@ export function ExtractedPartPreview({
             tool when the user opens "Trim". Mask, once produced, replaces the
             hero image so the user can see what they're about to mesh. */}
         {(stage === "rendering" || stage === "review" || stage === "meshing") && (
-          <div className="relative">
-            <div className="flex justify-center">
-              <div className="relative aspect-square w-full max-w-md rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
+          <div className="relative flex-1 min-h-0 flex flex-col">
+            <div className="flex justify-center flex-1 min-h-0">
+              <div className="relative w-full h-full rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
                 {trimOpen && images[0] ? (
                   <PartLasso
                     imageUrl={maskedUrl ?? images[0].url}
