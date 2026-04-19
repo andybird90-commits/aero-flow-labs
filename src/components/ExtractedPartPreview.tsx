@@ -216,6 +216,47 @@ export function ExtractedPartPreview({
     }
   };
 
+  // Send the user's lasso/click marks to the SAM-backed segment-part edge
+  // function and replace the hero render with the masked output.
+  const onSnap = async () => {
+    const sourceUrl = images[0]?.url;
+    if (!sourceUrl) return;
+    if (trimPoints.length === 0 && trimLasso.length < 3) {
+      toast({
+        title: "Mark the part first",
+        description: "Click on the part or draw a rough outline around it.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSnapping(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("segment-part", {
+        body: {
+          image_url: sourceUrl,
+          points: trimPoints,
+          lasso: trimLasso,
+          concept_id: conceptId,
+          part_kind: kind,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const url = (data as any).masked_url as string;
+      if (!url) throw new Error("No masked image returned");
+      setMaskedUrl(url);
+      setTrimOpen(false);
+      toast({ title: "Trimmed", description: "Masked render is ready to mesh." });
+    } catch (e: any) {
+      toast({ title: "Snap failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setSnapping(false);
+    }
+  };
+
+  const resetTrim = () => { setTrimPoints([]); setTrimLasso([]); };
+  const clearMask = () => { setMaskedUrl(null); resetTrim(); };
+
   // GLB viewer (only when stage === "ready")
   useEffect(() => {
     if (stage !== "ready" || !glbUrl) return;
