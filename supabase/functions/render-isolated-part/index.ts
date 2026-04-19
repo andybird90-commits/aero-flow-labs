@@ -156,9 +156,16 @@ Deno.serve(async (req) => {
     console.log(`render-isolated-part: loaded ${refDataUrls.length}/${referenceUrls.length} reference images for ${kind}`);
 
     const renders: Array<{ angle: string; url: string }> = [];
+    // After we generate the hero (front34) shot, we use IT as the primary
+    // reference for the other 3 angles. This forces consistency — same vents,
+    // same fasteners, same proportions, same finish — instead of Gemini
+    // inventing a fresh-looking part for each angle.
+    let heroDataUrl: string | null = null;
 
     for (const angle of ANGLES) {
-      const promptText = [
+      const isHero = angle.key === "front34";
+
+      const promptLines = isHero ? [
         `Look at the attached reference images of a customised car concept (${refDataUrls.length} angles).`,
         `${styleHint}.`,
         ``,
@@ -172,14 +179,42 @@ Deno.serve(async (req) => {
         `- Soft even studio lighting, gentle ground shadow.`,
         `- The part is centred and fills ~60% of the frame.`,
         `- Camera angle: ${angle.label}.`,
-        `- Material/finish: match what the concept shows (carbon weave, painted, primer, etc.). If unclear, use glossy black carbon-fibre.`,
+        `- Material/finish: match what the concept shows (carbon weave, painted, primer, etc.). If unclear, use matte/satin black carbon-fibre.`,
         `- Photorealistic 4k product photo, like an aftermarket aero catalogue (APR, Voltex, Liberty Walk, Pandem).`,
         `- No car, no wheels, no fenders around it. No text, no watermarks.`,
-      ].join("\n");
+      ] : [
+        `The FIRST attached image is the hero product photo of a ${spec.what} that we already approved.`,
+        `Subsequent attached images are the original car concept references for context.`,
+        ``,
+        `TASK: Draw the EXACT SAME PART shown in the first attached image, but from a different camera angle.`,
+        `Camera angle for this render: ${angle.label}.`,
+        ``,
+        `MUST match the hero image identically:`,
+        `- Same overall shape and silhouette`,
+        `- Same vents, louvres, mounting tabs, fasteners and bolt locations`,
+        `- Same surface curvature and edge treatment`,
+        `- Same material finish, colour, and gloss level`,
+        `- Same proportions and thickness`,
+        `Treat the hero image as the ground truth — this is just a turntable rotation of the same physical object.`,
+        ``,
+        `${spec.not}`,
+        ``,
+        `Output requirements:`,
+        `- Pure white seamless background, identical lighting to the hero.`,
+        `- Soft even studio lighting, gentle ground shadow.`,
+        `- The part is centred and fills ~60% of the frame.`,
+        `- Photorealistic 4k product photo. No car, no wheels, no fenders. No text, no watermarks.`,
+      ];
+
+      const promptText = promptLines.join("\n");
+
+      const imageUrlsForThisAngle = isHero
+        ? refDataUrls
+        : (heroDataUrl ? [heroDataUrl, ...refDataUrls] : refDataUrls);
 
       const userContent: Array<any> = [
         { type: "text", text: promptText },
-        ...refDataUrls.map((url) => ({ type: "image_url", image_url: { url } })),
+        ...imageUrlsForThisAngle.map((url) => ({ type: "image_url", image_url: { url } })),
       ];
 
       const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -230,6 +265,9 @@ Deno.serve(async (req) => {
       }
       const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
       renders.push({ angle: angle.key, url: publicUrl });
+
+      // Stash the hero data URL so subsequent angles can lock onto it.
+      if (isHero) heroDataUrl = imgUrl;
     }
 
     return json({ renders, label: label ?? kind });
