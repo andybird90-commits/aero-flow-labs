@@ -172,6 +172,20 @@ const Auth = () => {
                 {errors.password && <p className="text-xs text-destructive">{errors.password}</p>}
               </div>
 
+              {mode === "signin" && (
+                <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
+                  <Checkbox
+                    id="remember"
+                    checked={remember}
+                    onCheckedChange={(v) => setRemember(v === true)}
+                    className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Remember me on this device
+                  </span>
+                </label>
+              )}
+
               <Button type="submit" variant="hero" className="w-full" disabled={submitting}>
                 {submitting ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Working…</>
