@@ -9,7 +9,7 @@
  * No CFD overlays — this is a pure design viewer.
  */
 import { Suspense, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   Environment,
@@ -486,7 +486,22 @@ function CameraRig({ preset }: { preset: CameraPreset }) {
   return null;
 }
 
-/* ─── Main component ──────────────────────────────────── */
+/** Captures the live scene + camera into refs so the parent can re-render on demand. */
+function SceneCapturer({
+  sceneRef,
+  cameraRef,
+}: {
+  sceneRef: React.MutableRefObject<THREE.Scene | null>;
+  cameraRef: React.MutableRefObject<THREE.Camera | null>;
+}) {
+  const { scene, camera } = useThree();
+  useEffect(() => {
+    sceneRef.current = scene;
+    cameraRef.current = camera;
+  }, [scene, camera, sceneRef, cameraRef]);
+  return null;
+}
+
 export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(function CarViewer3D(
   { template, geometry, parts = [], hideParts, className, preset = "free", partVisibility },
   ref,
@@ -497,13 +512,21 @@ export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(funct
   const [meshBounds, setMeshBounds] = useState<MeshBounds | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const glRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.Camera | null>(null);
 
   useImperativeHandle(ref, () => ({
     captureFrame: () => {
       const gl = glRef.current;
-      if (!gl) return null;
+      const scene = sceneRef.current;
+      const camera = cameraRef.current;
+      if (!gl || !scene || !camera) return null;
       try {
-        return gl.domElement.toDataURL("image/png");
+        // Force a fresh render so the drawing buffer is populated right now,
+        // then read it back. Without this, toDataURL often returns a blank
+        // image because the buffer has been cleared since the last paint.
+        gl.render(scene, camera);
+        return gl.domElement.toDataURL("image/jpeg", 0.92);
       } catch {
         return null;
       }
@@ -529,6 +552,7 @@ export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(funct
       <Canvas
         shadows
         dpr={[1, 2]}
+        gl={{ preserveDrawingBuffer: true, antialias: true }}
         camera={{ position: [4.5, 1.8, 4.2], fov: 35 }}
         onCreated={({ gl }) => {
           glRef.current = gl;
@@ -537,6 +561,7 @@ export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(funct
           gl.toneMappingExposure = 0.95;
         }}
       >
+        <SceneCapturer sceneRef={sceneRef} cameraRef={cameraRef} />
         <color attach="background" args={["#06080c"]} />
         <fog attach="fog" args={["#06080c", 14, 28]} />
         <ambientLight intensity={0.25} />
