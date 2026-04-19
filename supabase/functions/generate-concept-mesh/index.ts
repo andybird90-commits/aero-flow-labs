@@ -62,20 +62,22 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (cErr || !concept) return json({ error: "Concept not found" }, 404);
 
-    // Multi-view requires at least front_image
+    // Trellis takes a single image
     const frontImage = concept.render_front_url;
     if (!frontImage) return json({ error: "Concept has no front render" }, 400);
 
-    // Map our 4 renders to the model's 4 view slots
+    // Trellis input schema: images (array), generate model output, GLB format
     const input: Record<string, unknown> = {
-      front_image: frontImage,
-      steps: 50,
-      guidance_scale: 5.5,
-      octree_resolution: 384,
+      images: [frontImage],
+      texture_size: 2048,
+      mesh_simplify: 0.95,
+      generate_model: true,
+      save_gaussian_ply: false,
+      ss_sampling_steps: 38,
+      slat_sampling_steps: 38,
+      ss_guidance_strength: 7.5,
+      slat_guidance_strength: 3,
     };
-    if (concept.render_rear_url)   input.back_image  = concept.render_rear_url;
-    if (concept.render_side_url)   input.left_image  = concept.render_side_url;
-    if (concept.render_rear34_url) input.right_image = concept.render_rear34_url;
 
     // Mark generating
     await admin
