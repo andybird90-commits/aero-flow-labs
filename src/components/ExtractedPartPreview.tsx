@@ -56,7 +56,7 @@ export function ExtractedPartPreview({
       .maybeSingle();
     if (signal?.cancelled) return false;
     if (error || !data) return false;
-    const renders = (data.render_urls as RenderImage[] | null) ?? [];
+    const renders = ((data.render_urls as unknown) as RenderImage[] | null) ?? [];
     if (!renders.length) return false;
     setImages(renders);
     if (data.glb_url) {
