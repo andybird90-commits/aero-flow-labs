@@ -14,94 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      aero_components: {
-        Row: {
-          created_at: string
-          enabled: boolean
-          id: string
-          kind: string
-          params: Json
-          updated_at: string
-          user_id: string
-          variant_id: string
-        }
-        Insert: {
-          created_at?: string
-          enabled?: boolean
-          id?: string
-          kind: string
-          params?: Json
-          updated_at?: string
-          user_id: string
-          variant_id: string
-        }
-        Update: {
-          created_at?: string
-          enabled?: boolean
-          id?: string
-          kind?: string
-          params?: Json
-          updated_at?: string
-          user_id?: string
-          variant_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "aero_components_variant_id_fkey"
-            columns: ["variant_id"]
-            isOneToOne: false
-            referencedRelation: "variants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      builds: {
-        Row: {
-          car_id: string
-          created_at: string
-          id: string
-          name: string
-          notes: string | null
-          objective: Database["public"]["Enums"]["objective_type"]
-          starred: boolean
-          status: Database["public"]["Enums"]["build_status"]
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          car_id: string
-          created_at?: string
-          id?: string
-          name: string
-          notes?: string | null
-          objective?: Database["public"]["Enums"]["objective_type"]
-          starred?: boolean
-          status?: Database["public"]["Enums"]["build_status"]
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          car_id?: string
-          created_at?: string
-          id?: string
-          name?: string
-          notes?: string | null
-          objective?: Database["public"]["Enums"]["objective_type"]
-          starred?: boolean
-          status?: Database["public"]["Enums"]["build_status"]
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "builds_car_id_fkey"
-            columns: ["car_id"]
-            isOneToOne: false
-            referencedRelation: "cars"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       car_templates: {
         Row: {
           cd_stock: number | null
@@ -203,75 +115,286 @@ export type Database = {
           },
         ]
       }
+      concept_sets: {
+        Row: {
+          created_at: string
+          geometry_id: string | null
+          id: string
+          name: string
+          notes: string | null
+          project_id: string
+          status: Database["public"]["Enums"]["concept_set_status"]
+          tag: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          geometry_id?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          project_id: string
+          status?: Database["public"]["Enums"]["concept_set_status"]
+          tag?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          geometry_id?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          project_id?: string
+          status?: Database["public"]["Enums"]["concept_set_status"]
+          tag?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variants_build_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variants_geometry_id_fkey"
+            columns: ["geometry_id"]
+            isOneToOne: false
+            referencedRelation: "geometries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      concepts: {
+        Row: {
+          ai_notes: string | null
+          concept_set_id: string | null
+          created_at: string
+          direction: string | null
+          id: string
+          locked_features: Json
+          project_id: string
+          render_front_url: string | null
+          render_rear_url: string | null
+          render_side_url: string | null
+          status: Database["public"]["Enums"]["concept_status"]
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_notes?: string | null
+          concept_set_id?: string | null
+          created_at?: string
+          direction?: string | null
+          id?: string
+          locked_features?: Json
+          project_id: string
+          render_front_url?: string | null
+          render_rear_url?: string | null
+          render_side_url?: string | null
+          status?: Database["public"]["Enums"]["concept_status"]
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_notes?: string | null
+          concept_set_id?: string | null
+          created_at?: string
+          direction?: string | null
+          id?: string
+          locked_features?: Json
+          project_id?: string
+          render_front_url?: string | null
+          render_rear_url?: string | null
+          render_side_url?: string | null
+          status?: Database["public"]["Enums"]["concept_status"]
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "concepts_concept_set_id_fkey"
+            columns: ["concept_set_id"]
+            isOneToOne: false
+            referencedRelation: "concept_sets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "concepts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      design_briefs: {
+        Row: {
+          build_type: string | null
+          constraints: string[]
+          created_at: string
+          id: string
+          project_id: string
+          prompt: string
+          reference_image_paths: string[]
+          rights_confirmed: boolean
+          style_tags: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          build_type?: string | null
+          constraints?: string[]
+          created_at?: string
+          id?: string
+          project_id: string
+          prompt?: string
+          reference_image_paths?: string[]
+          rights_confirmed?: boolean
+          style_tags?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          build_type?: string | null
+          constraints?: string[]
+          created_at?: string
+          id?: string
+          project_id?: string
+          prompt?: string
+          reference_image_paths?: string[]
+          rights_confirmed?: boolean
+          style_tags?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "design_briefs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       exports: {
         Row: {
           audience: string
-          build_id: string | null
+          concept_set_id: string | null
           created_at: string
           expires_at: string | null
           file_path: string | null
           file_size_bytes: number | null
           id: string
           kind: Database["public"]["Enums"]["export_kind"]
+          project_id: string | null
           sections: Json
           status: Database["public"]["Enums"]["export_status"]
           updated_at: string
           user_id: string
-          variant_id: string | null
         }
         Insert: {
           audience?: string
-          build_id?: string | null
+          concept_set_id?: string | null
           created_at?: string
           expires_at?: string | null
           file_path?: string | null
           file_size_bytes?: number | null
           id?: string
           kind: Database["public"]["Enums"]["export_kind"]
+          project_id?: string | null
           sections?: Json
           status?: Database["public"]["Enums"]["export_status"]
           updated_at?: string
           user_id: string
-          variant_id?: string | null
         }
         Update: {
           audience?: string
-          build_id?: string | null
+          concept_set_id?: string | null
           created_at?: string
           expires_at?: string | null
           file_path?: string | null
           file_size_bytes?: number | null
           id?: string
           kind?: Database["public"]["Enums"]["export_kind"]
+          project_id?: string | null
           sections?: Json
           status?: Database["public"]["Enums"]["export_status"]
           updated_at?: string
           user_id?: string
-          variant_id?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "exports_build_id_fkey"
-            columns: ["build_id"]
+            columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "builds"
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "exports_variant_id_fkey"
-            columns: ["variant_id"]
+            columns: ["concept_set_id"]
             isOneToOne: false
-            referencedRelation: "variants"
+            referencedRelation: "concept_sets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fitted_parts: {
+        Row: {
+          concept_set_id: string
+          created_at: string
+          enabled: boolean
+          id: string
+          kind: string
+          params: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          concept_set_id: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kind: string
+          params?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          concept_set_id?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kind?: string
+          params?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aero_components_variant_id_fkey"
+            columns: ["concept_set_id"]
+            isOneToOne: false
+            referencedRelation: "concept_sets"
             referencedColumns: ["id"]
           },
         ]
       }
       geometries: {
         Row: {
-          build_id: string
           created_at: string
           id: string
           metadata: Json
+          project_id: string
           ride_height_front_mm: number | null
           ride_height_rear_mm: number | null
           source: string
@@ -283,10 +406,10 @@ export type Database = {
           wheel_rotation: string
         }
         Insert: {
-          build_id: string
           created_at?: string
           id?: string
           metadata?: Json
+          project_id: string
           ride_height_front_mm?: number | null
           ride_height_rear_mm?: number | null
           source?: string
@@ -298,10 +421,10 @@ export type Database = {
           wheel_rotation?: string
         }
         Update: {
-          build_id?: string
           created_at?: string
           id?: string
           metadata?: Json
+          project_id?: string
           ride_height_front_mm?: number | null
           ride_height_rear_mm?: number | null
           source?: string
@@ -315,96 +438,69 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "geometries_build_id_fkey"
-            columns: ["build_id"]
+            columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "builds"
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
       }
-      optimization_jobs: {
+      parts_generation_jobs: {
         Row: {
-          allowed_components: Json
-          baseline_variant_id: string | null
-          best_candidate: Json | null
-          build_id: string
-          candidates_evaluated: number
-          candidates_total: number
           completed_at: string | null
-          confidence: Database["public"]["Enums"]["confidence_level"]
-          constraints: Json
+          concept_id: string | null
           created_at: string
-          credits_charged: number
+          error_message: string | null
           id: string
-          objective: Database["public"]["Enums"]["objective_type"]
-          objective_weights: Json
-          ranked_candidates: Json
+          project_id: string
           reasoning: string | null
           started_at: string | null
-          state: Database["public"]["Enums"]["job_state"]
+          state: Database["public"]["Enums"]["parts_job_state"]
+          suggested_params: Json
           updated_at: string
           user_id: string
-          walltime_s: number | null
         }
         Insert: {
-          allowed_components?: Json
-          baseline_variant_id?: string | null
-          best_candidate?: Json | null
-          build_id: string
-          candidates_evaluated?: number
-          candidates_total?: number
           completed_at?: string | null
-          confidence?: Database["public"]["Enums"]["confidence_level"]
-          constraints?: Json
+          concept_id?: string | null
           created_at?: string
-          credits_charged?: number
+          error_message?: string | null
           id?: string
-          objective: Database["public"]["Enums"]["objective_type"]
-          objective_weights?: Json
-          ranked_candidates?: Json
+          project_id: string
           reasoning?: string | null
           started_at?: string | null
-          state?: Database["public"]["Enums"]["job_state"]
+          state?: Database["public"]["Enums"]["parts_job_state"]
+          suggested_params?: Json
           updated_at?: string
           user_id: string
-          walltime_s?: number | null
         }
         Update: {
-          allowed_components?: Json
-          baseline_variant_id?: string | null
-          best_candidate?: Json | null
-          build_id?: string
-          candidates_evaluated?: number
-          candidates_total?: number
           completed_at?: string | null
-          confidence?: Database["public"]["Enums"]["confidence_level"]
-          constraints?: Json
+          concept_id?: string | null
           created_at?: string
-          credits_charged?: number
+          error_message?: string | null
           id?: string
-          objective?: Database["public"]["Enums"]["objective_type"]
-          objective_weights?: Json
-          ranked_candidates?: Json
+          project_id?: string
           reasoning?: string | null
           started_at?: string | null
-          state?: Database["public"]["Enums"]["job_state"]
+          state?: Database["public"]["Enums"]["parts_job_state"]
+          suggested_params?: Json
           updated_at?: string
           user_id?: string
-          walltime_s?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "optimization_jobs_baseline_variant_id_fkey"
-            columns: ["baseline_variant_id"]
+            foreignKeyName: "parts_generation_jobs_concept_id_fkey"
+            columns: ["concept_id"]
             isOneToOne: false
-            referencedRelation: "variants"
+            referencedRelation: "concepts"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "optimization_jobs_build_id_fkey"
-            columns: ["build_id"]
+            foreignKeyName: "parts_generation_jobs_project_id_fkey"
+            columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "builds"
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -442,181 +538,46 @@ export type Database = {
         }
         Relationships: []
       }
-      simulation_jobs: {
+      projects: {
         Row: {
-          air_density: number
-          assumptions_snapshot: Json
-          completed_at: string | null
+          car_id: string
           created_at: string
-          credits_charged: number
-          error_message: string | null
           id: string
-          iterations_done: number
-          iterations_target: number
-          kind: Database["public"]["Enums"]["job_kind"]
-          residual: string | null
-          solver: string
-          speed_kmh: number
-          started_at: string | null
-          state: Database["public"]["Enums"]["job_state"]
+          name: string
+          notes: string | null
+          starred: boolean
+          status: Database["public"]["Enums"]["project_status"]
           updated_at: string
           user_id: string
-          variant_id: string
-          walltime_s: number | null
-          yaw_deg: number
         }
         Insert: {
-          air_density?: number
-          assumptions_snapshot?: Json
-          completed_at?: string | null
+          car_id: string
           created_at?: string
-          credits_charged?: number
-          error_message?: string | null
           id?: string
-          iterations_done?: number
-          iterations_target?: number
-          kind?: Database["public"]["Enums"]["job_kind"]
-          residual?: string | null
-          solver?: string
-          speed_kmh?: number
-          started_at?: string | null
-          state?: Database["public"]["Enums"]["job_state"]
+          name: string
+          notes?: string | null
+          starred?: boolean
+          status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string
           user_id: string
-          variant_id: string
-          walltime_s?: number | null
-          yaw_deg?: number
         }
         Update: {
-          air_density?: number
-          assumptions_snapshot?: Json
-          completed_at?: string | null
+          car_id?: string
           created_at?: string
-          credits_charged?: number
-          error_message?: string | null
           id?: string
-          iterations_done?: number
-          iterations_target?: number
-          kind?: Database["public"]["Enums"]["job_kind"]
-          residual?: string | null
-          solver?: string
-          speed_kmh?: number
-          started_at?: string | null
-          state?: Database["public"]["Enums"]["job_state"]
+          name?: string
+          notes?: string | null
+          starred?: boolean
+          status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string
           user_id?: string
-          variant_id?: string
-          walltime_s?: number | null
-          yaw_deg?: number
         }
         Relationships: [
           {
-            foreignKeyName: "simulation_jobs_variant_id_fkey"
-            columns: ["variant_id"]
+            foreignKeyName: "builds_car_id_fkey"
+            columns: ["car_id"]
             isOneToOne: false
-            referencedRelation: "variants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      simulation_results: {
-        Row: {
-          balance_front_pct: number
-          cd: number
-          confidence: Database["public"]["Enums"]["confidence_level"]
-          confidence_reasons: Json
-          cp_roof: number | null
-          cp_stagnation: number | null
-          cp_underfloor: number | null
-          cp_wing: number | null
-          created_at: string
-          df_front_kgf: number
-          df_rear_kgf: number
-          df_total_kgf: number
-          drag_kgf: number
-          id: string
-          is_stale: boolean
-          job_id: string
-          kind: Database["public"]["Enums"]["job_kind"]
-          ld_ratio: number
-          raw_data: Json
-          stability_score: number | null
-          top_speed_kmh: number | null
-          track_score: number | null
-          user_id: string
-          v_max_roof: number | null
-          v_underfloor: number | null
-          variant_id: string
-        }
-        Insert: {
-          balance_front_pct: number
-          cd: number
-          confidence?: Database["public"]["Enums"]["confidence_level"]
-          confidence_reasons?: Json
-          cp_roof?: number | null
-          cp_stagnation?: number | null
-          cp_underfloor?: number | null
-          cp_wing?: number | null
-          created_at?: string
-          df_front_kgf: number
-          df_rear_kgf: number
-          df_total_kgf: number
-          drag_kgf: number
-          id?: string
-          is_stale?: boolean
-          job_id: string
-          kind: Database["public"]["Enums"]["job_kind"]
-          ld_ratio: number
-          raw_data?: Json
-          stability_score?: number | null
-          top_speed_kmh?: number | null
-          track_score?: number | null
-          user_id: string
-          v_max_roof?: number | null
-          v_underfloor?: number | null
-          variant_id: string
-        }
-        Update: {
-          balance_front_pct?: number
-          cd?: number
-          confidence?: Database["public"]["Enums"]["confidence_level"]
-          confidence_reasons?: Json
-          cp_roof?: number | null
-          cp_stagnation?: number | null
-          cp_underfloor?: number | null
-          cp_wing?: number | null
-          created_at?: string
-          df_front_kgf?: number
-          df_rear_kgf?: number
-          df_total_kgf?: number
-          drag_kgf?: number
-          id?: string
-          is_stale?: boolean
-          job_id?: string
-          kind?: Database["public"]["Enums"]["job_kind"]
-          ld_ratio?: number
-          raw_data?: Json
-          stability_score?: number | null
-          top_speed_kmh?: number | null
-          track_score?: number | null
-          user_id?: string
-          v_max_roof?: number | null
-          v_underfloor?: number | null
-          variant_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "simulation_results_job_id_fkey"
-            columns: ["job_id"]
-            isOneToOne: true
-            referencedRelation: "simulation_jobs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "simulation_results_variant_id_fkey"
-            columns: ["variant_id"]
-            isOneToOne: false
-            referencedRelation: "variants"
+            referencedRelation: "cars"
             referencedColumns: ["id"]
           },
         ]
@@ -642,63 +603,6 @@ export type Database = {
         }
         Relationships: []
       }
-      variants: {
-        Row: {
-          build_id: string
-          created_at: string
-          geometry_id: string | null
-          id: string
-          is_baseline: boolean
-          name: string
-          notes: string | null
-          status: Database["public"]["Enums"]["variant_status"]
-          tag: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          build_id: string
-          created_at?: string
-          geometry_id?: string | null
-          id?: string
-          is_baseline?: boolean
-          name: string
-          notes?: string | null
-          status?: Database["public"]["Enums"]["variant_status"]
-          tag?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          build_id?: string
-          created_at?: string
-          geometry_id?: string | null
-          id?: string
-          is_baseline?: boolean
-          name?: string
-          notes?: string | null
-          status?: Database["public"]["Enums"]["variant_status"]
-          tag?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "variants_build_id_fkey"
-            columns: ["build_id"]
-            isOneToOne: false
-            referencedRelation: "builds"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "variants_geometry_id_fkey"
-            columns: ["geometry_id"]
-            isOneToOne: false
-            referencedRelation: "geometries"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never
@@ -708,8 +612,7 @@ export type Database = {
         Args: { _amount: number; _user_id: string }
         Returns: number
       }
-      duplicate_build: { Args: { _build_id: string }; Returns: string }
-      duplicate_variant: { Args: { _variant_id: string }; Returns: string }
+      duplicate_project: { Args: { _project_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -720,17 +623,20 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "engineer" | "viewer"
-      build_status: "draft" | "ready" | "archived"
-      confidence_level: "low" | "medium" | "high"
+      concept_set_status:
+        | "draft"
+        | "generating"
+        | "ready"
+        | "approved"
+        | "failed"
+      concept_status: "pending" | "approved" | "rejected" | "favourited"
       export_kind:
-        | "pdf_report"
-        | "image_pack"
-        | "comparison_sheet"
-        | "aero_summary"
-        | "stl_pack"
-        | "assumptions_sheet"
+        | "kit_stl_pack"
+        | "kit_obj_pack"
+        | "single_part_stl"
+        | "single_part_obj"
+        | "project_pack"
       export_status: "generating" | "ready" | "expired" | "failed"
-      job_kind: "preview" | "full" | "optimization"
       job_state:
         | "queued"
         | "preprocessing"
@@ -739,21 +645,21 @@ export type Database = {
         | "completed"
         | "failed"
         | "cancelled"
-      objective_type:
-        | "top_speed"
-        | "track_use"
-        | "balance"
-        | "high_speed_stability"
-        | "rear_grip"
-        | "custom"
-      plan_tier: "free" | "pro" | "team" | "enterprise"
-      variant_status:
-        | "draft"
-        | "validating"
-        | "ready"
-        | "simulating"
+      parts_job_state:
+        | "queued"
+        | "analyzing"
+        | "generating"
         | "completed"
         | "failed"
+      plan_tier: "free" | "pro" | "team" | "enterprise"
+      project_status:
+        | "draft"
+        | "brief"
+        | "concepts"
+        | "approved"
+        | "parts"
+        | "exported"
+        | "archived"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -882,18 +788,22 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "engineer", "viewer"],
-      build_status: ["draft", "ready", "archived"],
-      confidence_level: ["low", "medium", "high"],
+      concept_set_status: [
+        "draft",
+        "generating",
+        "ready",
+        "approved",
+        "failed",
+      ],
+      concept_status: ["pending", "approved", "rejected", "favourited"],
       export_kind: [
-        "pdf_report",
-        "image_pack",
-        "comparison_sheet",
-        "aero_summary",
-        "stl_pack",
-        "assumptions_sheet",
+        "kit_stl_pack",
+        "kit_obj_pack",
+        "single_part_stl",
+        "single_part_obj",
+        "project_pack",
       ],
       export_status: ["generating", "ready", "expired", "failed"],
-      job_kind: ["preview", "full", "optimization"],
       job_state: [
         "queued",
         "preprocessing",
@@ -903,22 +813,22 @@ export const Constants = {
         "failed",
         "cancelled",
       ],
-      objective_type: [
-        "top_speed",
-        "track_use",
-        "balance",
-        "high_speed_stability",
-        "rear_grip",
-        "custom",
-      ],
-      plan_tier: ["free", "pro", "team", "enterprise"],
-      variant_status: [
-        "draft",
-        "validating",
-        "ready",
-        "simulating",
+      parts_job_state: [
+        "queued",
+        "analyzing",
+        "generating",
         "completed",
         "failed",
+      ],
+      plan_tier: ["free", "pro", "team", "enterprise"],
+      project_status: [
+        "draft",
+        "brief",
+        "concepts",
+        "approved",
+        "parts",
+        "exported",
+        "archived",
       ],
     },
   },

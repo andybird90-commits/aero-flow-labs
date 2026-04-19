@@ -1,5 +1,5 @@
 /**
- * AeroLab data layer — typed React Query hooks over Lovable Cloud.
+ * BodyKit Studio data layer — typed React Query hooks over Lovable Cloud.
  * Use these from pages instead of calling supabase.from(...) directly.
  */
 import { useEffect } from "react";
@@ -10,13 +10,13 @@ import type { Database } from "@/integrations/supabase/types";
 export type Profile        = Database["public"]["Tables"]["profiles"]["Row"];
 export type CarTemplate    = Database["public"]["Tables"]["car_templates"]["Row"];
 export type Car            = Database["public"]["Tables"]["cars"]["Row"];
-export type Build          = Database["public"]["Tables"]["builds"]["Row"];
+export type Project        = Database["public"]["Tables"]["projects"]["Row"];
 export type Geometry       = Database["public"]["Tables"]["geometries"]["Row"];
-export type Variant        = Database["public"]["Tables"]["variants"]["Row"];
-export type AeroComponent  = Database["public"]["Tables"]["aero_components"]["Row"];
-export type SimJob         = Database["public"]["Tables"]["simulation_jobs"]["Row"];
-export type SimResult      = Database["public"]["Tables"]["simulation_results"]["Row"];
-export type OptJob         = Database["public"]["Tables"]["optimization_jobs"]["Row"];
+export type ConceptSet     = Database["public"]["Tables"]["concept_sets"]["Row"];
+export type FittedPart     = Database["public"]["Tables"]["fitted_parts"]["Row"];
+export type DesignBrief    = Database["public"]["Tables"]["design_briefs"]["Row"];
+export type Concept        = Database["public"]["Tables"]["concepts"]["Row"];
+export type PartsJob       = Database["public"]["Tables"]["parts_generation_jobs"]["Row"];
 export type ExportRow      = Database["public"]["Tables"]["exports"]["Row"];
 
 /* ─── PROFILE ──────────────────────────────────────────────── */
@@ -44,138 +44,137 @@ export function useCarTemplates() {
   });
 }
 
-/* ─── CARS (per user) ──────────────────────────────────────── */
-export function useCars(userId: string | undefined) {
+/* ─── PROJECTS ─────────────────────────────────────────────── */
+export function useProjects(userId: string | undefined) {
   return useQuery({
-    queryKey: ["cars", userId],
-    enabled: !!userId,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("cars").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as Car[];
-    },
-  });
-}
-
-/* ─── BUILDS ───────────────────────────────────────────────── */
-export function useBuilds(userId: string | undefined) {
-  return useQuery({
-    queryKey: ["builds", userId],
+    queryKey: ["projects", userId],
     enabled: !!userId,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("builds")
+        .from("projects")
         .select("*, car:cars(*, template:car_templates(*))")
         .order("updated_at", { ascending: false });
       if (error) throw error;
-      return data as (Build & { car: Car & { template: CarTemplate | null } })[];
+      return data as (Project & { car: Car & { template: CarTemplate | null } })[];
     },
   });
 }
 
-export function useBuild(buildId: string | undefined) {
+export function useProject(projectId: string | undefined) {
   return useQuery({
-    queryKey: ["build", buildId],
-    enabled: !!buildId,
+    queryKey: ["project", projectId],
+    enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("builds")
+        .from("projects")
         .select("*, car:cars(*, template:car_templates(*))")
-        .eq("id", buildId!)
+        .eq("id", projectId!)
         .maybeSingle();
       if (error) throw error;
-      return data as (Build & { car: Car & { template: CarTemplate | null } }) | null;
+      return data as (Project & { car: Car & { template: CarTemplate | null } }) | null;
     },
   });
 }
 
-export function useCreateBuild() {
+export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { userId: string; templateSlug: string; name: string; objective: Database["public"]["Enums"]["objective_type"] }) => {
-      const { data: tpl, error: tplErr } = await supabase.from("car_templates").select("*").eq("slug", input.templateSlug).maybeSingle();
-      if (tplErr) throw tplErr;
-      if (!tpl) throw new Error("Template not found");
-
+    mutationFn: async (input: { userId: string; name: string; carName?: string }) => {
+      // Create a minimal car shell (no template required for the new flow).
       const { data: car, error: carErr } = await supabase.from("cars").insert({
-        user_id: input.userId, template_id: tpl.id, name: `${tpl.make} ${tpl.model}`,
+        user_id: input.userId,
+        name: input.carName ?? "Untitled vehicle",
       }).select("*").single();
       if (carErr) throw carErr;
 
-      const { data: build, error: buildErr } = await supabase.from("builds").insert({
-        user_id: input.userId, car_id: car.id, name: input.name,
-        objective: input.objective, status: "draft",
+      const { data: project, error: pErr } = await supabase.from("projects").insert({
+        user_id: input.userId,
+        car_id: car.id,
+        name: input.name,
+        status: "draft",
       }).select("*").single();
-      if (buildErr) throw buildErr;
+      if (pErr) throw pErr;
 
       const { data: geo, error: geoErr } = await supabase.from("geometries").insert({
-        user_id: input.userId, build_id: build.id, source: "template",
-        ride_height_front_mm: 130, ride_height_rear_mm: 135,
-        underbody_model: "simplified", wheel_rotation: "static", steady_state: true,
+        user_id: input.userId,
+        project_id: project.id,
+        source: "template",
+        underbody_model: "simplified",
+        wheel_rotation: "static",
+        steady_state: true,
       }).select("*").single();
       if (geoErr) throw geoErr;
 
-      // Create a baseline variant
-      await supabase.from("variants").insert({
-        user_id: input.userId, build_id: build.id, geometry_id: geo.id,
-        name: "Baseline", tag: "Baseline", status: "draft", is_baseline: true,
+      // Default working concept set
+      await supabase.from("concept_sets").insert({
+        user_id: input.userId,
+        project_id: project.id,
+        geometry_id: geo.id,
+        name: "Working set",
+        status: "draft",
       });
 
-      return build;
+      // Empty design brief
+      await supabase.from("design_briefs").insert({
+        user_id: input.userId,
+        project_id: project.id,
+        prompt: "",
+      });
+
+      return project;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["builds"] });
-      qc.invalidateQueries({ queryKey: ["cars"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
     },
   });
 }
 
-export function useUpdateBuild() {
+export function useUpdateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; patch: Partial<Build> }) => {
-      const { data, error } = await supabase.from("builds").update(input.patch).eq("id", input.id).select("*").single();
+    mutationFn: async (input: { id: string; patch: Partial<Project> }) => {
+      const { data, error } = await supabase.from("projects").update(input.patch).eq("id", input.id).select("*").single();
       if (error) throw error;
       return data;
     },
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ["builds"] });
-      qc.invalidateQueries({ queryKey: ["build", v.id] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["project", v.id] });
     },
   });
 }
 
-export function useDuplicateBuild() {
+export function useDuplicateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (buildId: string) => {
-      const { data, error } = await supabase.rpc("duplicate_build", { _build_id: buildId });
+    mutationFn: async (projectId: string) => {
+      const { data, error } = await supabase.rpc("duplicate_project", { _project_id: projectId });
       if (error) throw error;
       return data as string;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["builds"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
   });
 }
 
-export function useDeleteBuild() {
+export function useDeleteProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (buildId: string) => {
-      const { error } = await supabase.from("builds").delete().eq("id", buildId);
+    mutationFn: async (projectId: string) => {
+      const { error } = await supabase.from("projects").delete().eq("id", projectId);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["builds"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
   });
 }
 
-/* ─── GEOMETRY ─────────────────────────────────────────────── */
-export function useGeometry(buildId: string | undefined) {
+/* ─── GEOMETRY (uploaded car model) ────────────────────────── */
+export function useGeometry(projectId: string | undefined) {
   return useQuery({
-    queryKey: ["geometry", buildId],
-    enabled: !!buildId,
+    queryKey: ["geometry", projectId],
+    enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await supabase.from("geometries")
-        .select("*").eq("build_id", buildId!)
+        .select("*").eq("project_id", projectId!)
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (error) throw error;
       return data as Geometry | null;
@@ -189,283 +188,205 @@ export function useUpdateGeometry() {
     mutationFn: async (input: { id: string; patch: Partial<Geometry> }) => {
       const { data, error } = await supabase.from("geometries").update(input.patch).eq("id", input.id).select("*").single();
       if (error) throw error;
-      // Mark all results for this build's variants stale
-      await supabase.from("simulation_results").update({ is_stale: true }).eq("user_id", data.user_id);
       return data as Geometry;
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["geometry", data.build_id] });
-      qc.invalidateQueries({ queryKey: ["variants", data.build_id] });
+      qc.invalidateQueries({ queryKey: ["geometry", data.project_id] });
+      qc.invalidateQueries({ queryKey: ["concept_sets", data.project_id] });
     },
   });
 }
 
-/* ─── VARIANTS ─────────────────────────────────────────────── */
-export function useVariants(buildId: string | undefined) {
+/* ─── DESIGN BRIEF ─────────────────────────────────────────── */
+export function useBrief(projectId: string | undefined) {
   return useQuery({
-    queryKey: ["variants", buildId],
-    enabled: !!buildId,
+    queryKey: ["brief", projectId],
+    enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("variants")
-        .select("*, results:simulation_results(*)")
-        .eq("build_id", buildId!)
-        .order("created_at");
+      const { data, error } = await supabase.from("design_briefs")
+        .select("*").eq("project_id", projectId!)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (error) throw error;
-      return data as (Variant & { results: SimResult[] })[];
+      return data as DesignBrief | null;
     },
   });
 }
 
-export function useCreateVariant() {
+export function useUpsertBrief() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { userId: string; buildId: string; geometryId: string | null; name: string; tag?: string | null }) => {
-      const { data, error } = await supabase.from("variants").insert({
-        user_id: input.userId, build_id: input.buildId, geometry_id: input.geometryId,
-        name: input.name, tag: input.tag ?? null, status: "draft", is_baseline: false,
+    mutationFn: async (input: { userId: string; projectId: string; id?: string; patch: Partial<DesignBrief> }) => {
+      if (input.id) {
+        const { data, error } = await supabase.from("design_briefs")
+          .update(input.patch).eq("id", input.id).select("*").single();
+        if (error) throw error;
+        return data as DesignBrief;
+      }
+      const { data, error } = await supabase.from("design_briefs").insert({
+        user_id: input.userId, project_id: input.projectId,
+        prompt: input.patch.prompt ?? "",
+        style_tags: input.patch.style_tags ?? [],
+        build_type: input.patch.build_type ?? null,
+        constraints: input.patch.constraints ?? [],
+        reference_image_paths: input.patch.reference_image_paths ?? [],
+        rights_confirmed: input.patch.rights_confirmed ?? false,
       }).select("*").single();
       if (error) throw error;
-      return data as Variant;
+      return data as DesignBrief;
     },
-    onSuccess: (v) => qc.invalidateQueries({ queryKey: ["variants", v.build_id] }),
+    onSuccess: (d) => qc.invalidateQueries({ queryKey: ["brief", d.project_id] }),
   });
 }
 
-export function useDuplicateVariant() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (variantId: string) => {
-      const { data, error } = await supabase.rpc("duplicate_variant", { _variant_id: variantId });
-      if (error) throw error;
-      return data as string;
-    },
-    onSuccess: () => qc.invalidateQueries(),
-  });
-}
-
-export function useDeleteVariant() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (variantId: string) => {
-      const { error } = await supabase.from("variants").delete().eq("id", variantId);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries(),
-  });
-}
-
-export function useUpdateVariant() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { id: string; patch: Partial<Variant> }) => {
-      const { data, error } = await supabase.from("variants").update(input.patch).eq("id", input.id).select("*").single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => qc.invalidateQueries(),
-  });
-}
-
-/* ─── AERO COMPONENTS ──────────────────────────────────────── */
-export function useComponents(variantId: string | undefined) {
+/* ─── CONCEPT SETS ─────────────────────────────────────────── */
+export function useConceptSets(projectId: string | undefined) {
   return useQuery({
-    queryKey: ["components", variantId],
-    enabled: !!variantId,
+    queryKey: ["concept_sets", projectId],
+    enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("aero_components")
-        .select("*").eq("variant_id", variantId!).order("created_at");
+      const { data, error } = await supabase
+        .from("concept_sets")
+        .select("*")
+        .eq("project_id", projectId!)
+        .order("created_at");
       if (error) throw error;
-      return data as AeroComponent[];
+      return data as ConceptSet[];
     },
   });
 }
 
-export function useUpsertComponent() {
+export function useActiveConceptSet(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["concept_set_active", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("concept_sets")
+        .select("*")
+        .eq("project_id", projectId!)
+        .order("created_at")
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as ConceptSet | null;
+    },
+  });
+}
+
+/* ─── CONCEPTS ─────────────────────────────────────────────── */
+export function useConcepts(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["concepts", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("concepts")
+        .select("*").eq("project_id", projectId!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as Concept[];
+    },
+  });
+}
+
+export function useApprovedConcept(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["concept_approved", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("concepts")
+        .select("*").eq("project_id", projectId!).eq("status", "approved")
+        .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error;
+      return data as Concept | null;
+    },
+  });
+}
+
+export function useUpdateConcept() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { userId: string; variantId: string; id?: string; kind: string; params: any; enabled: boolean }) => {
+    mutationFn: async (input: { id: string; patch: Partial<Concept> }) => {
+      const { data, error } = await supabase.from("concepts")
+        .update(input.patch).eq("id", input.id).select("*").single();
+      if (error) throw error;
+      return data as Concept;
+    },
+    onSuccess: (d) => {
+      qc.invalidateQueries({ queryKey: ["concepts", d.project_id] });
+      qc.invalidateQueries({ queryKey: ["concept_approved", d.project_id] });
+    },
+  });
+}
+
+export function useDeleteConcept() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("concepts").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["concepts"] }),
+  });
+}
+
+/* ─── FITTED PARTS ─────────────────────────────────────────── */
+export function useFittedParts(conceptSetId: string | undefined) {
+  return useQuery({
+    queryKey: ["fitted_parts", conceptSetId],
+    enabled: !!conceptSetId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("fitted_parts")
+        .select("*").eq("concept_set_id", conceptSetId!).order("created_at");
+      if (error) throw error;
+      return data as FittedPart[];
+    },
+  });
+}
+
+export function useUpsertFittedPart() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { userId: string; conceptSetId: string; id?: string; kind: string; params: any; enabled: boolean }) => {
       if (input.id) {
-        const { data, error } = await supabase.from("aero_components")
+        const { data, error } = await supabase.from("fitted_parts")
           .update({ kind: input.kind, params: input.params, enabled: input.enabled })
           .eq("id", input.id).select("*").single();
         if (error) throw error;
         return data;
       }
-      const { data, error } = await supabase.from("aero_components").insert({
-        user_id: input.userId, variant_id: input.variantId,
+      const { data, error } = await supabase.from("fitted_parts").insert({
+        user_id: input.userId, concept_set_id: input.conceptSetId,
         kind: input.kind, params: input.params, enabled: input.enabled,
       }).select("*").single();
       if (error) throw error;
       return data;
     },
-    onSuccess: (d: any) => qc.invalidateQueries({ queryKey: ["components", d.variant_id] }),
+    onSuccess: (d: any) => qc.invalidateQueries({ queryKey: ["fitted_parts", d.concept_set_id] }),
   });
 }
 
-export function useDeleteComponent() {
+export function useDeleteFittedPart() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("aero_components").delete().eq("id", id);
+      const { error } = await supabase.from("fitted_parts").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["components"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fitted_parts"] }),
   });
 }
 
-/* ─── RESULTS ──────────────────────────────────────────────── */
-export function useUserResults(userId: string | undefined) {
+/* ─── PARTS GENERATION JOBS ────────────────────────────────── */
+export function usePartsJobs(projectId: string | undefined) {
   return useQuery({
-    queryKey: ["results", userId],
-    enabled: !!userId,
+    queryKey: ["parts_jobs", projectId],
+    enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("simulation_results")
-        .select("*, variant:variants(*, build:builds(*, car:cars(*, template:car_templates(*))))")
+      const { data, error } = await supabase.from("parts_generation_jobs")
+        .select("*").eq("project_id", projectId!)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as (SimResult & { variant: Variant & { build: Build & { car: Car & { template: CarTemplate | null } } } })[];
-    },
-  });
-}
-
-export function useLatestResult(variantId: string | undefined) {
-  return useQuery({
-    queryKey: ["result", variantId],
-    enabled: !!variantId,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("simulation_results")
-        .select("*").eq("variant_id", variantId!)
-        .order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (error) throw error;
-      return data as SimResult | null;
-    },
-  });
-}
-
-/* ─── SIMULATION JOBS ──────────────────────────────────────── */
-export function useUserJobs(userId: string | undefined, limit = 10) {
-  return useQuery({
-    queryKey: ["jobs", userId, limit],
-    enabled: !!userId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("simulation_jobs")
-        .select("*, variant:variants(name, build:builds(name, car:cars(name)))")
-        .order("created_at", { ascending: false })
-        .limit(limit);
-      if (error) throw error;
-      return data as (SimJob & { variant: { name: string; build: { name: string; car: { name: string } } } })[];
-    },
-  });
-}
-
-export function useVariantJobs(variantId: string | undefined) {
-  return useQuery({
-    queryKey: ["variant_jobs", variantId],
-    enabled: !!variantId,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("simulation_jobs")
-        .select("*").eq("variant_id", variantId!)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as SimJob[];
-    },
-  });
-}
-
-export function useRunSimulation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { variant_id: string; kind: "preview" | "full"; speed_kmh?: number; yaw_deg?: number; air_density?: number }) => {
-      const { data, error } = await supabase.functions.invoke("simulate-variant", { body: input });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data as { job_id: string; status: string };
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["jobs"] });
-      qc.invalidateQueries({ queryKey: ["variant_jobs"] });
-      qc.invalidateQueries({ queryKey: ["profile"] });
-    },
-  });
-}
-
-/* ─── REALTIME job subscription ────────────────────────────── */
-export function useJobRealtime(userId: string | undefined) {
-  const qc = useQueryClient();
-  useEffect(() => {
-    if (!userId) return;
-    const channelName = `jobs-${userId}`;
-    // Reuse-or-create: avoid re-binding .on() on an already-subscribed channel
-    // (happens under React StrictMode double-mount).
-    const existing = supabase.getChannels().find((c) => c.topic === `realtime:${channelName}`);
-    if (existing) {
-      supabase.removeChannel(existing);
-    }
-    const ch = supabase.channel(channelName);
-    ch.on("postgres_changes", { event: "*", schema: "public", table: "simulation_jobs", filter: `user_id=eq.${userId}` },
-        () => {
-          qc.invalidateQueries({ queryKey: ["jobs"] });
-          qc.invalidateQueries({ queryKey: ["variant_jobs"] });
-        })
-      .on("postgres_changes", { event: "*", schema: "public", table: "simulation_results", filter: `user_id=eq.${userId}` },
-        () => {
-          qc.invalidateQueries({ queryKey: ["results"] });
-          qc.invalidateQueries({ queryKey: ["variants"] });
-          qc.invalidateQueries({ queryKey: ["result"] });
-        })
-      .on("postgres_changes", { event: "*", schema: "public", table: "optimization_jobs", filter: `user_id=eq.${userId}` },
-        () => {
-          qc.invalidateQueries({ queryKey: ["opt_jobs"] });
-        })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [userId, qc]);
-}
-
-/* ─── OPTIMIZATION JOBS ────────────────────────────────────── */
-export function useOptJobs(userId: string | undefined) {
-  return useQuery({
-    queryKey: ["opt_jobs", userId],
-    enabled: !!userId,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("optimization_jobs")
-        .select("*, build:builds(name)")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as (OptJob & { build: { name: string } })[];
-    },
-  });
-}
-
-export function useBuildOptJobs(buildId: string | undefined) {
-  return useQuery({
-    queryKey: ["opt_jobs", "build", buildId],
-    enabled: !!buildId,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("optimization_jobs")
-        .select("*").eq("build_id", buildId!)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as OptJob[];
-    },
-  });
-}
-
-export function useRunOptimization() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { build_id: string; objective: string; allowed_components?: string[]; constraints?: any }) => {
-      const { data, error } = await supabase.functions.invoke("run-optimization", { body: input });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data as { job_id: string; status: string };
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["opt_jobs"] });
-      qc.invalidateQueries({ queryKey: ["profile"] });
+      return data as PartsJob[];
     },
   });
 }
@@ -477,35 +398,50 @@ export function useExports(userId: string | undefined) {
     enabled: !!userId,
     queryFn: async () => {
       const { data, error } = await supabase.from("exports")
-        .select("*, build:builds(name), variant:variants(name)")
+        .select("*, project:projects(name)")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as (ExportRow & { build: { name: string } | null; variant: { name: string } | null })[];
+      return data as (ExportRow & { project: { name: string } | null })[];
     },
   });
 }
 
-export function useGenerateExport() {
+export function useCreateExport() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { build_id?: string | null; variant_id?: string | null; kind: string; sections?: string[]; audience?: string }) => {
-      const { data, error } = await supabase.functions.invoke("generate-export", { body: input });
+    mutationFn: async (input: { userId: string; projectId: string; kind: ExportRow["kind"]; sections: any; filePath: string; fileSizeBytes: number }) => {
+      const { data, error } = await supabase.from("exports").insert({
+        user_id: input.userId,
+        project_id: input.projectId,
+        kind: input.kind,
+        sections: input.sections,
+        file_path: input.filePath,
+        file_size_bytes: input.fileSizeBytes,
+        status: "ready",
+      }).select("*").single();
       if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data as { export_id: string; status: string; path: string };
+      return data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["exports"] }),
   });
 }
 
-export async function downloadExport(filePath: string, filename: string) {
-  const { data, error } = await supabase.storage.from("exports").createSignedUrl(filePath, 60);
-  if (error || !data) throw error ?? new Error("Failed to sign URL");
-  const a = document.createElement("a");
-  a.href = data.signedUrl;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+/* ─── REALTIME ─────────────────────────────────────────────── */
+export function useJobRealtime(userId: string | undefined) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!userId) return;
+    const channelName = `bk-jobs-${userId}`;
+    const existing = supabase.getChannels().find((c) => c.topic === `realtime:${channelName}`);
+    if (existing) supabase.removeChannel(existing);
+    const ch = supabase.channel(channelName);
+    ch.on("postgres_changes", { event: "*", schema: "public", table: "concepts", filter: `user_id=eq.${userId}` },
+        () => qc.invalidateQueries({ queryKey: ["concepts"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "parts_generation_jobs", filter: `user_id=eq.${userId}` },
+        () => qc.invalidateQueries({ queryKey: ["parts_jobs"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "exports", filter: `user_id=eq.${userId}` },
+        () => qc.invalidateQueries({ queryKey: ["exports"] }))
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [userId, qc]);
 }
-

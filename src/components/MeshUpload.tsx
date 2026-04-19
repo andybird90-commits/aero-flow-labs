@@ -1,10 +1,6 @@
 /**
  * MeshUpload — uploads STL / OBJ to the `geometries` storage bucket
- * and patches the geometry row with the new path + source = "upload".
- *
- * Honest framing: the uploaded mesh is used as a *visual reference* in the
- * 3D viewer. The aero estimator still uses the parametric template — we
- * label this clearly with an "Inferred geometry · visual reference only" badge.
+ * and patches the geometry row with the new path.
  */
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -60,9 +56,8 @@ export function MeshUpload({ geometry }: Props) {
 
     try {
       const safe = file.name.replace(/[^a-z0-9._-]/gi, "_");
-      const path = `${user.id}/${geometry.build_id}/${Date.now()}_${safe}`;
+      const path = `${user.id}/${geometry.project_id}/${Date.now()}_${safe}`;
 
-      // If there's an existing upload, remove it first (best-effort).
       if (geometry.stl_path) {
         await supabase.storage.from("geometries").remove([geometry.stl_path]).catch(() => {});
       }
@@ -89,8 +84,8 @@ export function MeshUpload({ geometry }: Props) {
       });
       setProgress(100);
       toast({
-        title: "Mesh uploaded",
-        description: `${file.name} is now linked to this build.`,
+        title: "Model uploaded",
+        description: `${file.name} is now linked to this project.`,
       });
     } catch (e: any) {
       toast({ title: "Upload failed", description: e.message, variant: "destructive" });
@@ -109,7 +104,7 @@ export function MeshUpload({ geometry }: Props) {
         id: geometry.id,
         patch: { stl_path: null, source: "template" },
       });
-      toast({ title: "Mesh removed", description: "Reverted to template baseline." });
+      toast({ title: "Model removed" });
     } catch (e: any) {
       toast({ title: "Couldn't remove", description: e.message, variant: "destructive" });
     } finally {
@@ -127,12 +122,12 @@ export function MeshUpload({ geometry }: Props) {
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <FileBox className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-semibold tracking-tight">Custom mesh</h3>
+          <h3 className="text-sm font-semibold tracking-tight">Vehicle model</h3>
         </div>
         {geometry.stl_path ? (
           <StatusChip tone="success" size="sm">Uploaded</StatusChip>
         ) : (
-          <StatusChip tone="neutral" size="sm">Template baseline</StatusChip>
+          <StatusChip tone="neutral" size="sm">Not uploaded</StatusChip>
         )}
       </div>
 
@@ -143,7 +138,7 @@ export function MeshUpload({ geometry }: Props) {
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium truncate">{filename}</div>
               <div className="text-mono text-[10px] text-muted-foreground mt-0.5">
-                Inferred geometry · visual reference only. Aero estimates still use the chassis template.
+                Linked to project · ready for design brief
               </div>
             </div>
             <Button
@@ -173,19 +168,19 @@ export function MeshUpload({ geometry }: Props) {
             }}
             disabled={busy}
             className={cn(
-              "group w-full rounded-md border-2 border-dashed p-6 text-center transition-colors",
+              "group w-full rounded-md border-2 border-dashed p-8 text-center transition-colors",
               drag
                 ? "border-primary/60 bg-primary/[0.06]"
                 : "border-border bg-surface-1 hover:border-primary/30",
               busy && "opacity-60 cursor-wait",
             )}
           >
-            <Upload className="mx-auto h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+            <Upload className="mx-auto h-7 w-7 text-muted-foreground group-hover:text-primary transition-colors" />
             <div className="mt-2 text-sm font-medium">
-              {busy ? `Uploading… ${progress}%` : "Drop STL or OBJ"}
+              {busy ? `Uploading… ${progress}%` : "Drop your STL or OBJ"}
             </div>
             <div className="text-mono text-[10px] text-muted-foreground mt-1">
-              Up to 100 MB · used as visual reference in the 3D viewer
+              Up to 100 MB · STL or OBJ formats supported
             </div>
           </button>
         )}
@@ -205,8 +200,8 @@ export function MeshUpload({ geometry }: Props) {
         <div className="flex items-start gap-2 rounded-md border border-border/60 bg-surface-0 p-3">
           <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
           <p className="text-mono text-[10px] text-muted-foreground leading-relaxed">
-            Uploads are private to your account. The mesh is shown for design context only —
-            aero numbers remain comparative geometry-aware estimates derived from the chassis template.
+            Uploads are private to your account. The model is used as the reference body
+            for AI concept generation and as the base for fitted body kit parts.
           </p>
         </div>
       </div>

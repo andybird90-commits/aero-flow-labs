@@ -1,32 +1,28 @@
 import { useLocation } from "react-router-dom";
-import { Bell, Search, ChevronRight, Cpu } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ChevronRight } from "lucide-react";
 import { UserMenu } from "@/components/UserMenu";
 
 const labels: Record<string, string[]> = {
-  "/garage": ["Garage"],
-  "/build": ["Build", "Overview"],
-  "/geometry": ["Build", "Geometry"],
-  "/parts": ["Build", "Aero Parts"],
-  "/simulation": ["Build", "Simulation Setup"],
-  "/results": ["Build", "Results"],
-  "/compare": ["Build", "Compare"],
-  "/optimization": ["Optimization"],
-  "/exports": ["Exports & Reports"],
-  "/system": ["System Status"],
-  "/design-system": ["Design System"],
+  "/projects": ["Projects"],
+  "/upload": ["Studio", "Upload Model"],
+  "/brief": ["Studio", "Design Brief"],
+  "/concepts": ["Studio", "Concepts"],
+  "/parts": ["Studio", "Fitted Parts"],
+  "/refine": ["Studio", "Refine"],
+  "/exports": ["Studio", "Exports"],
+  "/settings": ["Settings"],
   "/": ["Welcome"],
 };
 
 export function Topbar() {
   const { pathname } = useLocation();
-  const crumbs = labels[pathname] ?? ["AeroLab"];
+  const crumbs = labels[pathname] ?? ["BodyKit Studio"];
 
   return (
     <div className="flex w-full items-center gap-4">
       <nav className="flex items-center gap-2 text-sm">
         <span className="text-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          AeroLab
+          BodyKit Studio
         </span>
         {crumbs.map((c, i) => (
           <span key={c} className="flex items-center gap-2">
@@ -39,29 +35,6 @@ export function Topbar() {
       </nav>
 
       <div className="ml-auto flex items-center gap-2">
-        <div className="hidden md:flex items-center gap-2 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-muted-foreground w-72">
-          <Search className="h-3.5 w-3.5" />
-          <input
-            placeholder="Search builds, parts, runs…"
-            className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground/70"
-          />
-          <kbd className="text-mono text-[10px] rounded border border-border bg-surface-2 px-1.5 py-0.5">
-            ⌘K
-          </kbd>
-        </div>
-
-        <div className="hidden lg:flex items-center gap-2 rounded-md border border-border bg-surface-1 px-2.5 py-1.5">
-          <Cpu className="h-3.5 w-3.5 text-primary" />
-          <span className="text-mono text-[11px] text-muted-foreground">SOLVER</span>
-          <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse-soft" />
-          <span className="text-mono text-[11px] text-foreground">ONLINE</span>
-        </div>
-
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground relative">
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
-        </Button>
-
         <UserMenu />
       </div>
     </div>
