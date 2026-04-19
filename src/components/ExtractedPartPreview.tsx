@@ -30,9 +30,13 @@ interface Props {
   kind: string;
   label: string;
   filenameBase: string;
+  /** The on-screen concept render the user clicked from. Used to power the
+   *  optional pre-render trim step so we can isolate the part BEFORE Gemini
+   *  draws it. */
+  sourceImageUrl?: string;
 }
 
-type Stage = "rendering" | "review" | "meshing" | "ready" | "error";
+type Stage = "pretrim" | "rendering" | "review" | "meshing" | "ready" | "error";
 
 interface RenderImage { angle: string; url: string }
 
