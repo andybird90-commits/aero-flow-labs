@@ -79,13 +79,12 @@ const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
   },
 };
 
-// Two angles only — Gemini Pro image is slow (~50s each) and 3 sequential
-// calls blow past the 150s edge function timeout. Hero front-3/4 is generated
-// first, then the side view locks onto the hero as ground truth so both
-// depict the same physical part. Meshy can still build a 3D model from 2 images.
+// Single hero render only. Gemini Pro image gen is ~50s per call; multiple
+// sequential calls blow past the 150s edge function timeout, and our best
+// fidelity results came from a single Pro render. Meshy can still build a
+// 3D model from one image.
 const ANGLES = [
   { key: "front34", label: "front 3/4 view, slightly above, hero product shot" },
-  { key: "side",    label: "pure side profile view, camera level with the part" },
 ] as const;
 
 Deno.serve(async (req) => {
