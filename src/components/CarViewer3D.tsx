@@ -491,7 +491,7 @@ export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(funct
   { template, geometry, parts = [], hideParts, className, preset = "free", partVisibility },
   ref,
 ) {
-  const meshUrl = useSignedMeshUrl(geometry?.stl_path ?? null);
+  const { url: meshUrl } = useSignedMeshUrl(geometry?.stl_path ?? null);
   const ext = meshExtension(geometry?.stl_path ?? null);
   const [meshLoaded, setMeshLoaded] = useState(false);
   const [meshBounds, setMeshBounds] = useState<MeshBounds | null>(null);
