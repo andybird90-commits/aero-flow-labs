@@ -240,12 +240,16 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
       x: (a.clientX + b.clientX) / 2 - rect.left,
       y: (a.clientY + b.clientY) / 2 - rect.top,
     };
+    const prevCenterX = pinchRef.current.centerX;
+    const prevCenterY = pinchRef.current.centerY;
+    const startZoom = pinchRef.current.zoom;
+    const startDistance = pinchRef.current.distance;
     setPan((prev) => clampPan({
-      x: prev.x + (anchor.x - pinchRef.current!.centerX),
-      y: prev.y + (anchor.y - pinchRef.current!.centerY),
+      x: prev.x + (anchor.x - prevCenterX),
+      y: prev.y + (anchor.y - prevCenterY),
     }));
-    pinchRef.current = { ...pinchRef.current, centerX: anchor.x, centerY: anchor.y };
-    setZoomAround(pinchRef.current.zoom * (distance / pinchRef.current.distance), anchor);
+    pinchRef.current = { distance: startDistance, zoom: startZoom, centerX: anchor.x, centerY: anchor.y };
+    setZoomAround(startZoom * (distance / startDistance), anchor);
   };
 
   const onTouchEnd = () => {
