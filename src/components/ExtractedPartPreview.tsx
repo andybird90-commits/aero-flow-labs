@@ -255,9 +255,14 @@ export function ExtractedPartPreview({
           const size = box.getSize(new THREE.Vector3());
           const center = box.getCenter(new THREE.Vector3());
           const maxDim = Math.max(size.x, size.y, size.z) || 1;
-          const dist = maxDim * 2.4;
-          camera.position.set(center.x + dist * 0.7, center.y + dist * 0.55, center.z + dist * 0.9);
+          const dist = maxDim * 1.4;
+          camera.near = Math.max(0.1, maxDim / 1000);
+          camera.far = Math.max(10000, maxDim * 10);
+          camera.updateProjectionMatrix();
+          camera.position.set(center.x + dist * 0.9, center.y + dist * 0.35, center.z + dist * 0.9);
           controls.target.copy(center);
+          controls.minDistance = maxDim * 0.2;
+          controls.maxDistance = maxDim * 6;
           controls.update();
         } catch (err) {
           console.error("STL load failed", err);
