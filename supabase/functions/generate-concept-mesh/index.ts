@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
     console.log("generate-concept-mesh: starting Replicate run for concept", concept_id);
 
     // Create prediction
-    const createResp = await fetch("https://api.replicate.com/v1/models/" + REPLICATE_MODEL + "/predictions", {
+    const createResp = await fetch("https://api.replicate.com/v1/predictions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
@@ -85,9 +85,13 @@ Deno.serve(async (req) => {
         Prefer: "wait=5",
       },
       body: JSON.stringify({
+        version: REPLICATE_VERSION,
         input: {
           image: imageUrl,
-          // Hunyuan-3d-3.1 default params; let model decide texture/geometry quality.
+          steps: 50,
+          guidance_scale: 5.5,
+          octree_resolution: 256,
+          remove_background: true,
         },
       }),
     });
