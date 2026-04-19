@@ -28,6 +28,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const MESHY_SINGLE = "https://api.meshy.ai/openapi/v1/image-to-3d";
+const MESHY_MULTI  = "https://api.meshy.ai/openapi/v1/multi-image-to-3d";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -72,24 +73,38 @@ Deno.serve(async (req) => {
       if (!Array.isArray(image_urls) || image_urls.length === 0) {
         return json({ error: "image_urls required" }, 400);
       }
-      const inputUrl = image_urls[0];
+      // Use multi-image-to-3d when we have >1 angle, else single.
+      const useMulti = image_urls.length > 1;
+      const endpoint = useMulti ? MESHY_MULTI : MESHY_SINGLE;
+      const payload = useMulti
+        ? {
+            image_urls,
+            ai_model: "meshy-6",
+            topology: "triangle",
+            target_polycount: 30000,
+            should_remesh: true,
+            should_texture: true,
+            enable_pbr: true,
+            symmetry_mode: "auto",
+          }
+        : {
+            image_url: image_urls[0],
+            ai_model: "meshy-6",
+            topology: "triangle",
+            target_polycount: 30000,
+            should_remesh: true,
+            should_texture: true,
+            enable_pbr: true,
+            symmetry_mode: "auto",
+          };
 
-      const createResp = await fetch(MESHY_SINGLE, {
+      const createResp = await fetch(endpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${MESHY_API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          image_url: inputUrl,
-          ai_model: "meshy-6",
-          topology: "triangle",
-          target_polycount: 30000,
-          should_remesh: true,
-          should_texture: true,
-          enable_pbr: true,
-          symmetry_mode: "auto",
-        }),
+        body: JSON.stringify(payload),
       });
       if (!createResp.ok) {
         const t = await createResp.text();
@@ -100,14 +115,16 @@ Deno.serve(async (req) => {
       const taskId: string | undefined = createJson.result;
       if (!taskId) return json({ error: "Meshy returned no task id" }, 500);
       console.log("meshify-part task created:", taskId, "for", part_kind);
-      return json({ task_id: taskId, status: "IN_PROGRESS", progress: 0 });
+      return json({ task_id: taskId, status: "IN_PROGRESS", progress: 0, is_multi: useMulti });
     }
 
     // ─────────── STATUS ───────────
     const taskId = body.task_id;
     if (!taskId) return json({ error: "task_id required for status" }, 400);
+    const isMulti = (body as any).is_multi === true;
+    const pollEndpoint = isMulti ? MESHY_MULTI : MESHY_SINGLE;
 
-    const pollResp = await fetch(`${MESHY_SINGLE}/${taskId}`, {
+    const pollResp = await fetch(`${pollEndpoint}/${taskId}`, {
       headers: { Authorization: `Bearer ${MESHY_API_KEY}` },
     });
     if (!pollResp.ok) {

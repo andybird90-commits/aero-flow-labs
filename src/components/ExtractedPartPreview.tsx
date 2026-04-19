@@ -98,6 +98,7 @@ export function ExtractedPartPreview({
       const startData = startRes.data as any;
       if (startData?.error) throw new Error(startData.error);
       const taskId: string | undefined = startData?.task_id;
+      const isMulti: boolean = !!startData?.is_multi;
       if (!taskId) throw new Error("No task id returned");
 
       // 2) Poll status every 4s for up to 8 minutes
@@ -110,6 +111,7 @@ export function ExtractedPartPreview({
             concept_id: conceptId,
             part_kind: kind,
             task_id: taskId,
+            is_multi: isMulti,
           },
         });
         if (pollRes.error) throw pollRes.error;
@@ -277,28 +279,40 @@ export function ExtractedPartPreview({
           </DialogDescription>
         </DialogHeader>
 
-        {/* RENDERING / REVIEW: single hero image */}
+        {/* RENDERING / REVIEW: hero + side + rear-3/4 grid */}
         {(stage === "rendering" || stage === "review" || stage === "meshing") && (
-          <div className="rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center relative aspect-[4/3]">
-            {images[0] ? (
-              <>
-                <img
-                  src={images[0].url}
-                  alt={`${label} hero render`}
-                  className="w-full h-full object-contain"
-                />
-                <span className="absolute bottom-2 left-2 text-[10px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
-                  {images[0].angle}
-                </span>
-              </>
-            ) : (
-              <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-6 w-6 animate-spin" />
-                <span className="text-xs font-mono uppercase tracking-widest">Drawing part…</span>
-              </div>
-            )}
+          <div className="relative">
+            <div className="grid grid-cols-3 gap-2">
+              {[0, 1, 2].map((i) => {
+                const img = images[i];
+                return (
+                  <div
+                    key={i}
+                    className="relative aspect-square rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center"
+                  >
+                    {img ? (
+                      <>
+                        <img
+                          src={img.url}
+                          alt={`${label} ${img.angle}`}
+                          className="w-full h-full object-contain"
+                        />
+                        <span className="absolute bottom-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1 py-0.5 rounded">
+                          {img.angle}
+                        </span>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-[9px] font-mono uppercase tracking-widest">Drawing…</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
             {stage === "meshing" && (
-              <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
+              <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2 rounded-md">
                 <Box className="h-6 w-6 text-primary animate-pulse" />
                 <span className="text-xs font-mono uppercase tracking-widest text-primary">
                   Meshing… {meshProgress}%
