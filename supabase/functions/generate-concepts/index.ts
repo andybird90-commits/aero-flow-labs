@@ -106,18 +106,38 @@ Deno.serve(async (req) => {
 
     const inserted: string[] = [];
 
+    const hasSnapshot = !!(body.snapshot_data_url
+      && typeof body.snapshot_data_url === "string"
+      && body.snapshot_data_url.startsWith("data:image/"));
+
     for (const v of VARIATIONS) {
-      const fullPrompt =
+      // When we have the user's car screenshot, frame this as an EDIT of that
+      // exact vehicle so the model preserves silhouette, proportions, greenhouse,
+      // headlights, wheelbase and overall identity. Otherwise fall back to a
+      // pure text-to-image prompt.
+      const editPrompt =
+        `Re-render THE EXACT CAR shown in the reference image with an added ${v.modifier} body kit. ` +
+        `CRITICAL: Preserve the original car's identity — same make and model, same body shape, ` +
+        `same silhouette, same greenhouse, same headlight and taillight design, same wheelbase, ` +
+        `same door and window lines, same overall proportions. Do NOT replace the car with a ` +
+        `different model. Only add or modify bolt-on aero/styling parts (front splitter, side ` +
+        `skirts, arches, rear diffuser, wing, canards) consistent with the styling brief. ` +
+        `${stylePrompt} ` +
+        `Output a single premium automotive concept render: studio lighting, dark dramatic ` +
+        `backdrop, three-quarter front view, photorealistic, sharp focus, clean reflections, ` +
+        `no text, no watermark, no UI overlays.`;
+
+      const textPrompt =
         `Premium automotive concept render of a custom car body kit. ${v.modifier}. ` +
         `${stylePrompt} ` +
         `Studio lighting, dark dramatic backdrop, three-quarter front view, photorealistic, ` +
         `concept design quality, sharp focus, clean reflections, no text, no watermark.`;
 
+      const fullPrompt = hasSnapshot ? editPrompt : textPrompt;
+
       const messages: any[] = [{ role: "user", content: [{ type: "text", text: fullPrompt }] }];
 
-      // Attach the viewer screenshot to ground the styling on the actual car
-      if (body.snapshot_data_url && typeof body.snapshot_data_url === "string"
-          && body.snapshot_data_url.startsWith("data:image/")) {
+      if (hasSnapshot) {
         messages[0].content.push({
           type: "image_url",
           image_url: { url: body.snapshot_data_url },
@@ -131,7 +151,8 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-image",
+          // Nano Banana 2: pro-quality image edits with better identity preservation
+          model: "google/gemini-3.1-flash-image-preview",
           messages,
           modalities: ["image", "text"],
         }),
