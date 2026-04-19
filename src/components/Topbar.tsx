@@ -4,7 +4,6 @@ import { UserMenu } from "@/components/UserMenu";
 
 const labels: Record<string, string[]> = {
   "/projects": ["Projects"],
-  "/upload": ["Studio", "Upload Model"],
   "/brief": ["Studio", "Design Brief"],
   "/concepts": ["Studio", "Concepts"],
   "/parts": ["Studio", "Fitted Parts"],

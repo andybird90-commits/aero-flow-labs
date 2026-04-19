@@ -26,8 +26,8 @@ export default function Projects() {
     if (!user) return;
     try {
       const p = await create.mutateAsync({ userId: user.id, name: "Untitled project" });
-      toast({ title: "Project created", description: "Upload your car model to get started." });
-      navigate(`/upload?project=${p.id}`);
+      toast({ title: "Project created", description: "Write your design brief to get started." });
+      navigate(`/brief?project=${p.id}`);
     } catch (e: any) {
       toast({ title: "Couldn't create project", description: e.message, variant: "destructive" });
     }
@@ -40,7 +40,7 @@ export default function Projects() {
           <div>
             <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Studio</div>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Projects</h1>
-            <p className="mt-1.5 text-muted-foreground">Each project starts with an uploaded car model and a design brief.</p>
+            <p className="mt-1.5 text-muted-foreground">Each project starts with a design brief — the AI generates concepts from there.</p>
           </div>
           <Button variant="hero" size="lg" onClick={handleCreate} disabled={create.isPending}>
             <Plus className="mr-2 h-4 w-4" /> New project
@@ -91,7 +91,7 @@ export default function Projects() {
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                   <Button variant="hero" size="sm" asChild>
-                    <Link to={`/upload?project=${p.id}`}>
+                    <Link to={`/brief?project=${p.id}`}>
                       Open <ArrowRight className="ml-1 h-3.5 w-3.5" />
                     </Link>
                   </Button>
@@ -107,7 +107,7 @@ export default function Projects() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this project?</AlertDialogTitle>
             <AlertDialogDescription>
-              The uploaded model, design brief, concepts and fitted parts will be permanently removed.
+              The design brief, concepts and fitted parts will be permanently removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

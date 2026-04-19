@@ -11,7 +11,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import Projects from "./pages/Projects";
-import Upload from "./pages/Upload";
+
 import Brief from "./pages/Brief";
 import Concepts from "./pages/Concepts";
 import Parts from "./pages/Parts";
@@ -39,7 +39,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
-            <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+            <Route path="/upload" element={<Navigate to="/brief" replace />} />
             <Route path="/brief" element={<ProtectedRoute><Brief /></ProtectedRoute>} />
             <Route path="/concepts" element={<ProtectedRoute><Concepts /></ProtectedRoute>} />
             <Route path="/parts" element={<ProtectedRoute><Parts /></ProtectedRoute>} />
@@ -50,7 +50,7 @@ const App = () => (
             {/* Legacy redirects */}
             <Route path="/garage" element={<Navigate to="/projects" replace />} />
             <Route path="/build" element={<Navigate to="/projects" replace />} />
-            <Route path="/geometry" element={<Navigate to="/upload" replace />} />
+            <Route path="/geometry" element={<Navigate to="/brief" replace />} />
             <Route path="/simulation" element={<Navigate to="/concepts" replace />} />
             <Route path="/results" element={<Navigate to="/concepts" replace />} />
             <Route path="/compare" element={<Navigate to="/concepts" replace />} />

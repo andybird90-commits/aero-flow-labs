@@ -89,7 +89,7 @@ function BriefInner({ projectId }: { projectId: string }) {
   return (
     <div className="mx-auto max-w-4xl p-6 space-y-6">
       <div>
-        <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Step 2 · Design Brief</div>
+        <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Step 1 · Design Brief</div>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Brief the AI like an automotive designer</h1>
         <p className="mt-1.5 text-muted-foreground">
           The clearer the brief, the stronger the concepts. Describe the look you want, the build context and any hard constraints.

@@ -1,15 +1,14 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
-import { CarViewer3D, type CarViewer3DHandle } from "@/components/CarViewer3D";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
-import { useBrief, useConcepts, useGeometry, useUpdateConcept, useDeleteConcept, type Concept } from "@/lib/repo";
+import { useBrief, useConcepts, useUpdateConcept, useDeleteConcept, type Concept } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Camera, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2,
+  Sparkles, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
@@ -25,47 +24,31 @@ export default function Concepts() {
 function ConceptsInner({ projectId, project }: { projectId: string; project: any }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { data: geometry } = useGeometry(projectId);
   const { data: brief } = useBrief(projectId);
   const { data: concepts = [], refetch } = useConcepts(projectId);
   const updateConcept = useUpdateConcept();
   const deleteConcept = useDeleteConcept();
-  const viewerRef = useRef<CarViewer3DHandle>(null);
   const [generating, setGenerating] = useState(false);
 
-  const hasMesh = !!geometry?.stl_path;
   const hasBrief = !!(brief?.prompt && brief.prompt.trim().length > 10);
 
   const generate = async () => {
-    if (!user || !brief || !geometry) return;
+    if (!user || !brief) return;
     if (!hasBrief) {
       toast({ title: "Add a design brief first", variant: "destructive" });
       return;
     }
     setGenerating(true);
 
-    // Capture multiple viewer angles for a stronger reference set + future turntable.
-    let snapshots: Record<string, string | null> = {};
-    try {
-      const v = viewerRef.current;
-      if (v) {
-        snapshots = {
-          front_three_quarter: v.captureAngle("front_three_quarter"),
-          side: v.captureAngle("side"),
-          rear_three_quarter: v.captureAngle("rear_three_quarter"),
-          rear: v.captureAngle("rear_three_quarter"), // same preset but model will re-render rear
-        };
-      }
-    } catch {}
-
     try {
       const { data, error } = await supabase.functions.invoke("generate-concepts", {
         body: {
           project_id: projectId,
           brief_id: brief.id,
-          // Keep legacy field for backward-compat in the edge function
-          snapshot_data_url: snapshots.front_three_quarter ?? null,
-          snapshots,
+          // No user-uploaded mesh in the new flow — generator falls back to
+          // template-driven defaults for vehicle proportions.
+          snapshot_data_url: null,
+          snapshots: {},
         },
       });
       if (error) throw error;
@@ -87,14 +70,14 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   };
 
   return (
-    <div className="grid gap-6 p-6 lg:grid-cols-[1fr_400px]">
+    <div className="grid gap-6 p-6 lg:grid-cols-[1fr_360px]">
       <div className="space-y-4">
         <div className="flex items-end justify-between gap-3 flex-wrap">
           <div>
-            <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Step 3 · Concepts</div>
+            <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Step 2 · Concepts</div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">Generated styling concepts</h1>
           </div>
-          <Button variant="hero" size="lg" onClick={generate} disabled={!hasMesh || !hasBrief || generating}>
+          <Button variant="hero" size="lg" onClick={generate} disabled={!hasBrief || generating}>
             {generating ? (
               <>
                 <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Generating…
@@ -107,26 +90,16 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
           </Button>
         </div>
 
-        {(!hasMesh || !hasBrief) && (
+        {!hasBrief && (
           <div className="glass rounded-xl p-4 flex items-start gap-3">
             <AlertCircle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
             <div className="text-sm">
-              {!hasMesh && (
-                <p className="text-muted-foreground">
-                  Upload a car model first.{" "}
-                  <Link to={`/upload?project=${projectId}`} className="text-primary hover:underline">
-                    Go to Upload
-                  </Link>
-                </p>
-              )}
-              {hasMesh && !hasBrief && (
-                <p className="text-muted-foreground">
-                  Add a design brief first.{" "}
-                  <Link to={`/brief?project=${projectId}`} className="text-primary hover:underline">
-                    Go to Brief
-                  </Link>
-                </p>
-              )}
+              <p className="text-muted-foreground">
+                Add a design brief first.{" "}
+                <Link to={`/brief?project=${projectId}`} className="text-primary hover:underline">
+                  Go to Brief
+                </Link>
+              </p>
             </div>
           </div>
         )}
@@ -136,7 +109,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
             <Sparkles className="mx-auto h-8 w-8 text-primary/60" />
             <h3 className="mt-3 text-lg font-semibold tracking-tight">No concepts yet</h3>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Click <span className="text-foreground">Generate concepts</span> to create AI styling concepts based on your brief and uploaded model.
+              Click <span className="text-foreground">Generate concepts</span> to create AI styling concepts based on your brief.
             </p>
           </div>
         ) : (
@@ -176,40 +149,28 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
       </div>
 
       <div className="space-y-4 lg:sticky lg:top-32 lg:self-start">
-        <div className="glass rounded-xl overflow-hidden h-[400px] relative">
-          {geometry ? (
-            <CarViewer3D
-              ref={viewerRef}
-              template={project.car?.template ?? null}
-              geometry={geometry}
-              hideParts
-              preset="front_three_quarter"
-            />
-          ) : (
-            <div className="h-full grid place-items-center text-muted-foreground">Loading…</div>
-          )}
-          <div className="absolute top-3 left-3 inline-flex items-center gap-2 rounded-md bg-surface-0/80 backdrop-blur px-2.5 py-1.5 border border-border">
-            <Camera className="h-3.5 w-3.5 text-primary" />
-            <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Reference frame
-            </span>
-          </div>
-        </div>
-
         <div className="glass rounded-xl p-4">
           <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Brief summary</div>
-          <p className="mt-2 text-sm text-muted-foreground line-clamp-6">
+          <p className="mt-2 text-sm text-muted-foreground line-clamp-[12]">
             {brief?.prompt || <em className="text-muted-foreground/60">No brief yet.</em>}
           </p>
           {brief?.style_tags && brief.style_tags.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1">
-              {brief.style_tags.slice(0, 6).map((t) => (
+              {brief.style_tags.slice(0, 8).map((t) => (
                 <span key={t} className="rounded-full border border-border px-2 py-0.5 text-[10px] text-mono uppercase tracking-widest text-muted-foreground">
                   {t}
                 </span>
               ))}
             </div>
           )}
+          <div className="mt-4 pt-4 border-t border-border">
+            <Link
+              to={`/brief?project=${projectId}`}
+              className="text-mono text-[10px] uppercase tracking-widest text-primary hover:underline"
+            >
+              Edit brief →
+            </Link>
+          </div>
         </div>
       </div>
     </div>

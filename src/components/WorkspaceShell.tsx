@@ -12,7 +12,6 @@ import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
 import {
-  Upload as UploadIcon,
   FileText,
   Sparkles,
   Wrench,
@@ -32,7 +31,6 @@ import { formatDistanceToNow } from "date-fns";
 type Ctx = ReturnType<typeof useCurrentProject>;
 
 const steps = [
-  { label: "Upload",   icon: UploadIcon, to: "/upload" },
   { label: "Brief",    icon: FileText,   to: "/brief" },
   { label: "Concepts", icon: Sparkles,   to: "/concepts" },
   { label: "Parts",    icon: Wrench,     to: "/parts" },
@@ -70,7 +68,7 @@ export function WorkspaceShell({ children, headerActions }: WorkspaceShellProps)
           </div>
           <h2 className="text-2xl font-semibold tracking-tight">Start your first project</h2>
           <p className="mt-2 text-muted-foreground">
-            Create a project to upload a car model, write a design brief and generate aero kit concepts.
+            Create a project to write a design brief and generate AI body kit concepts.
           </p>
           <Button
             variant="hero"
@@ -80,7 +78,7 @@ export function WorkspaceShell({ children, headerActions }: WorkspaceShellProps)
             onClick={async () => {
               if (!user) return;
               const p = await create.mutateAsync({ userId: user.id, name: "New project" });
-              navigate(`/upload?project=${p.id}`);
+              navigate(`/brief?project=${p.id}`);
             }}
           >
             <Plus className="mr-2 h-4 w-4" /> New project
