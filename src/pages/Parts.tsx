@@ -1,18 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
 import { CarViewer3D } from "@/components/CarViewer3D";
+import { ConceptMeshViewer } from "@/components/ConceptMeshViewer";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
 import { Switch } from "@/components/ui/switch";
 import {
   useGeometry, useApprovedConcept, useActiveConceptSet, useFittedParts, useUpsertFittedPart,
-  type FittedPart,
 } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Wand2, RefreshCw, ArrowRight, Wrench, AlertCircle } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Wand2, RefreshCw, ArrowRight, Wrench, AlertCircle, Sparkles, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PART_KINDS = [
@@ -37,14 +38,27 @@ export default function Parts() {
 function PartsInner({ projectId, project }: { projectId: string; project: any }) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const qc = useQueryClient();
   const { data: geometry } = useGeometry(projectId);
   const { data: approved } = useApprovedConcept(projectId);
   const { data: conceptSet } = useActiveConceptSet(projectId);
   const { data: parts = [] } = useFittedParts(conceptSet?.id);
   const upsert = useUpsertFittedPart();
   const [suggesting, setSuggesting] = useState(false);
+  const [generatingMesh, setGeneratingMesh] = useState(false);
 
   const partByKind = (k: string) => parts.find((p) => p.kind === k);
+
+  /* Poll while a mesh is generating so the UI updates without a refresh. */
+  const meshStatus = (approved as any)?.preview_mesh_status as string | undefined;
+  const meshUrl = (approved as any)?.preview_mesh_url as string | undefined;
+  useEffect(() => {
+    if (meshStatus !== "generating") return;
+    const t = setInterval(() => {
+      qc.invalidateQueries({ queryKey: ["concept_approved", projectId] });
+    }, 4000);
+    return () => clearInterval(t);
+  }, [meshStatus, projectId, qc]);
 
   const togglePart = async (kind: string) => {
     if (!user || !conceptSet) return;
@@ -100,20 +114,103 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
     }
   };
 
+  const generateMesh = async () => {
+    if (!approved) return;
+    setGeneratingMesh(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-concept-mesh", {
+        body: { concept_id: approved.id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      qc.invalidateQueries({ queryKey: ["concept_approved", projectId] });
+      toast({ title: "3D preview ready", description: "Experimental AI mesh generated." });
+    } catch (e: any) {
+      toast({ title: "Mesh generation failed", description: String(e.message ?? e), variant: "destructive" });
+      qc.invalidateQueries({ queryKey: ["concept_approved", projectId] });
+    } finally {
+      setGeneratingMesh(false);
+    }
+  };
+
+  const isGenerating = generatingMesh || meshStatus === "generating";
+
   return (
     <div className="grid gap-6 p-6 lg:grid-cols-[1fr_360px]">
-      <div className="glass rounded-xl overflow-hidden h-[640px] relative">
-        {geometry ? (
-          <CarViewer3D template={project.car?.template ?? null} geometry={geometry} parts={parts} />
-        ) : (
-          <div className="h-full grid place-items-center text-muted-foreground">Loading viewer…</div>
-        )}
-        <div className="absolute top-3 left-3 inline-flex items-center gap-2 rounded-md bg-surface-0/80 backdrop-blur px-2.5 py-1.5 border border-border">
-          <Wrench className="h-3.5 w-3.5 text-primary" />
-          <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            Fitted parts preview
-          </span>
+      <div className="space-y-4">
+        {/* Side-by-side viewers */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Real STL + parametric kit */}
+          <div className="glass rounded-xl overflow-hidden h-[460px] relative">
+            {geometry ? (
+              <CarViewer3D template={project.car?.template ?? null} geometry={geometry} parts={parts} />
+            ) : (
+              <div className="h-full grid place-items-center text-muted-foreground">Loading viewer…</div>
+            )}
+            <div className="absolute top-3 left-3 inline-flex items-center gap-2 rounded-md bg-surface-0/80 backdrop-blur px-2.5 py-1.5 border border-border">
+              <Wrench className="h-3.5 w-3.5 text-primary" />
+              <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Your STL · Parametric kit
+              </span>
+            </div>
+          </div>
+
+          {/* Experimental AI mesh */}
+          <div className="glass rounded-xl overflow-hidden h-[460px] relative">
+            {meshUrl ? (
+              <ConceptMeshViewer meshUrl={meshUrl} />
+            ) : (
+              <div className="h-full grid place-items-center text-center px-6">
+                <div className="space-y-3 max-w-[260px]">
+                  <Box className="h-8 w-8 mx-auto text-muted-foreground" />
+                  {isGenerating ? (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Generating 3D preview from your approved concept…
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        This usually takes 30–90 seconds.
+                      </p>
+                      <RefreshCw className="h-4 w-4 mx-auto animate-spin text-primary" />
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No 3D preview yet. Generate one from the approved concept render.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="absolute top-3 left-3 inline-flex items-center gap-2 rounded-md bg-surface-0/80 backdrop-blur px-2.5 py-1.5 border border-border">
+              <Sparkles className="h-3.5 w-3.5 text-accent" />
+              <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                AI 3D preview · experimental
+              </span>
+            </div>
+            {meshUrl && (
+              <div className="absolute bottom-3 right-3">
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={generateMesh}
+                  disabled={isGenerating || !approved}
+                >
+                  <RefreshCw className={cn("mr-2 h-3.5 w-3.5", isGenerating && "animate-spin")} />
+                  Regenerate
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
+
+        {meshStatus === "failed" && (approved as any)?.preview_mesh_error && (
+          <div className="glass rounded-xl p-3 flex items-start gap-2.5">
+            <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+            <div className="text-sm text-muted-foreground">
+              Mesh generation failed: {(approved as any).preview_mesh_error}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -149,6 +246,36 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
             <><Wand2 className="mr-2 h-4 w-4" /> Generate parts from concept</>
           )}
         </Button>
+
+        {/* Experimental 3D preview generation */}
+        <div className="glass rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-accent" />
+            <h3 className="text-sm font-semibold tracking-tight">AI 3D preview</h3>
+            <span className="ml-auto text-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+              experimental
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Turn your approved concept render into a rough 3D mesh for visual reference.
+            Not exportable — the parametric kit is still the source of truth.
+          </p>
+          <Button
+            variant="glass"
+            size="sm"
+            className="w-full"
+            onClick={generateMesh}
+            disabled={!approved || isGenerating}
+          >
+            {isGenerating ? (
+              <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Generating mesh…</>
+            ) : meshUrl ? (
+              <><RefreshCw className="mr-2 h-4 w-4" /> Regenerate 3D preview</>
+            ) : (
+              <><Box className="mr-2 h-4 w-4" /> Generate 3D preview</>
+            )}
+          </Button>
+        </div>
 
         <div className="glass rounded-xl">
           <div className="border-b border-border px-4 py-3 flex items-center justify-between">
