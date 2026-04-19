@@ -32,6 +32,7 @@ import type { PackageMode } from "@/lib/aero-package-modes";
 import { getPackageMode } from "@/lib/aero-package-modes";
 import { useSignedMeshUrl, meshExtension } from "@/lib/mesh-url";
 import { readOrientation } from "@/components/MeshOrientation";
+import { computeAnchors, readNudge, nudged, type AeroAnchors, type MeshBounds } from "@/lib/aero-anchors";
 
 export type ViewerMode = "flow" | "pressure" | "wake" | "forces" | "compare";
 
