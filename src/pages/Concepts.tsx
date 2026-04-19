@@ -9,9 +9,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Camera, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle,
+  Sparkles, Camera, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
 
 export default function Concepts() {
   return (
