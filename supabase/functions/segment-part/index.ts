@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
       headers: {
         "Authorization": `Bearer ${REPLICATE_API_TOKEN}`,
         "Content-Type": "application/json",
-        "Prefer": "wait=120",
+        "Prefer": "wait=60",
       },
       body: JSON.stringify({
         version: SAM_VERSION,
