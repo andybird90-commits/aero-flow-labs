@@ -145,33 +145,37 @@ Deno.serve(async (req) => {
       return json({ status, progress });
     }
 
-    // SUCCEEDED — download GLB and re-host it
-    const glbUrl: string | undefined = task.model_urls?.glb;
-    if (!glbUrl) return json({ error: "Meshy returned no GLB" }, 500);
+    // SUCCEEDED — download STL and re-host it
+    const stlUrl: string | undefined = task.model_urls?.stl;
+    if (!stlUrl) {
+      console.error("Meshy succeeded but no STL url:", JSON.stringify(task.model_urls).slice(0, 500));
+      return json({ error: "Meshy returned no STL" }, 500);
+    }
 
-    const glbResp = await fetch(glbUrl);
-    if (!glbResp.ok) return json({ error: `Failed to fetch GLB: ${glbResp.status}` }, 500);
-    const glbBytes = new Uint8Array(await glbResp.arrayBuffer());
+    const stlResp = await fetch(stlUrl);
+    if (!stlResp.ok) return json({ error: `Failed to fetch STL: ${stlResp.status}` }, 500);
+    const stlBytes = new Uint8Array(await stlResp.arrayBuffer());
 
-    const path = `${userId}/${concept.project_id}/parts/${concept_id}/${part_kind}-${Date.now()}.glb`;
+    const path = `${userId}/${concept.project_id}/parts/${concept_id}/${part_kind}-${Date.now()}.stl`;
     const { error: upErr } = await admin.storage
       .from("concept-renders")
-      .upload(path, glbBytes, { contentType: "model/gltf-binary", upsert: true });
+      .upload(path, stlBytes, { contentType: "model/stl", upsert: true });
     if (upErr) return json({ error: `Upload failed: ${upErr.message}` }, 500);
 
     const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
     const bustedUrl = `${publicUrl}?v=${Date.now()}`;
 
-    // Cache the GLB url against the concept so we don't re-mesh next time.
+    // Cache the STL url against the concept so we don't re-mesh next time.
+    // (column is named glb_url for legacy reasons but now stores STL)
     const { error: cacheErr } = await admin
       .from("concept_parts")
       .update({ glb_url: bustedUrl })
       .eq("concept_id", concept_id)
       .eq("kind", part_kind)
       .eq("user_id", userId);
-    if (cacheErr) console.warn("concept_parts glb cache failed:", cacheErr.message);
+    if (cacheErr) console.warn("concept_parts stl cache failed:", cacheErr.message);
 
-    return json({ status: "SUCCEEDED", progress: 100, glb_url: bustedUrl });
+    return json({ status: "SUCCEEDED", progress: 100, stl_url: bustedUrl, glb_url: bustedUrl });
   } catch (e) {
     console.error("meshify-part error:", e);
     return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
