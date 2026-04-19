@@ -31,13 +31,27 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const pinchRef = useRef<{ distance: number; zoom: number; centerX: number; centerY: number } | null>(null);
+  const panRef = useRef<{ startX: number; startY: number; pan: { x: number; y: number } } | null>(null);
   // Natural (image-space) → display-space mapping. We draw in display space
   // but store everything in image space for the edge function.
   const [scale, setScale] = useState({ sx: 1, sy: 1, w: 0, h: 0 });
   const [drawing, setDrawing] = useState(false);
+  const [spaceDown, setSpaceDown] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const draftLasso = useRef<LassoPoint[]>([]);
+
+  // Spacebar toggles temporary pan mode.
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { if (e.code === "Space") setSpaceDown(true); };
+    const up   = (e: KeyboardEvent) => { if (e.code === "Space") setSpaceDown(false); };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
 
   // Load image natural size + observe the wrapping element so we recompute
   // scale on resize / dialog open.
@@ -88,9 +102,6 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
     const ctx = c.getContext("2d")!;
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, scale.w, scale.h);
-    ctx.save();
-    ctx.translate(pan.x, pan.y);
-    ctx.scale(zoom, zoom);
 
     // Lasso (committed)
     if (lasso.length >= 2) drawPoly(ctx, lasso.map(p => imgToDisp(p)), "hsl(140 80% 55%)", true);
@@ -109,7 +120,6 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
       ctx.strokeStyle = "white";
       ctx.stroke();
     }
-    ctx.restore();
   };
 
   const drawPoly = (
@@ -189,14 +199,31 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
   };
 
   // LASSO MODE
+  const isPanGesture = (e: React.PointerEvent) =>
+    spaceDown || e.button === 1 || e.button === 2 || (e.pointerType === "mouse" && e.altKey);
+
   const onPointerDown = (e: React.PointerEvent) => {
+    const { x, y } = localXY(e);
+    if (isPanGesture(e)) {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      panRef.current = { startX: x, startY: y, pan: { ...pan } };
+      e.preventDefault();
+      return;
+    }
     if (mode !== "lasso") return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    const { x, y } = localXY(e);
     draftLasso.current = [{ x, y }];
     setDrawing(true);
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    if (panRef.current) {
+      const { x, y } = localXY(e);
+      setPan(clampPan({
+        x: panRef.current.pan.x + (x - panRef.current.startX),
+        y: panRef.current.pan.y + (y - panRef.current.startY),
+      }));
+      return;
+    }
     if (mode !== "lasso" || !drawing) return;
     const { x, y } = localXY(e);
     const last = draftLasso.current[draftLasso.current.length - 1];
@@ -207,6 +234,7 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
     }
   };
   const onPointerUp = () => {
+    if (panRef.current) { panRef.current = null; return; }
     if (mode !== "lasso" || !drawing) return;
     setDrawing(false);
     if (draftLasso.current.length >= 3) {
@@ -274,7 +302,9 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
         ref={canvasRef}
         className={cn(
           "absolute",
-          mode === "click" ? "cursor-crosshair" : "cursor-cell",
+          panRef.current || spaceDown ? "cursor-grab"
+            : mode === "click" ? "cursor-crosshair"
+            : "cursor-cell",
         )}
         style={{ width: scale.w, height: scale.h }}
         onWheel={zoomFromWheel}
@@ -283,6 +313,7 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onContextMenu={(e) => e.preventDefault()}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
