@@ -92,37 +92,34 @@ Deno.serve(async (req) => {
     // 2) Call SAM-2 everything-mode via Replicate (sync via Prefer: wait).
     console.log(`[segment-part] running SAM on ${W}x${H} image`);
     const samStart = Date.now();
-    const samResp = await fetch("https://api.replicate.com/v1/predictions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${REPLICATE_API_TOKEN}`,
-        "Content-Type": "application/json",
-        "Prefer": "wait=60",
-      },
-      body: JSON.stringify({
-        version: SAM_VERSION,
-        input: {
-          image: body.image_url,
-          // Modest mask budget keeps latency down and is plenty for one part.
-          mask_limit: 24,
-          points_per_side: 32,
-          pred_iou_thresh: 0.8,
-          min_mask_region_area: 200,
-          crop_n_layers: 0,
-        },
-      }),
+    const samPrimary = await runSamEverything(body.image_url, {
+      mask_limit: 24,
+      points_per_side: 32,
+      pred_iou_thresh: 0.8,
+      min_mask_region_area: 200,
+      crop_n_layers: 0,
     });
-    const samJson = await samResp.json();
-    if (!samResp.ok) {
-      console.error("[segment-part] SAM error", samJson);
-      return json({ error: `SAM call failed: ${samJson?.detail || samResp.statusText}` }, 502);
+
+    let maskUrls: string[] = samPrimary.maskUrls;
+    if (maskUrls.length === 0) {
+      console.warn("[segment-part] SAM returned no masks on primary settings, retrying with relaxed params");
+      const samRetry = await runSamEverything(body.image_url, {
+        mask_limit: 32,
+        points_per_side: 48,
+        pred_iou_thresh: 0.7,
+        min_mask_region_area: 64,
+        crop_n_layers: 1,
+      });
+      maskUrls = samRetry.maskUrls;
     }
-    if (samJson.status === "failed") {
-      return json({ error: `SAM failed: ${samJson.error}` }, 502);
+
+    console.log(`[segment-part] SAM returned ${maskUrls.length} masks in ${Date.now() - samStart}ms`);
+    if (maskUrls.length === 0) {
+      return json({
+        error: "SAM could not detect a usable part boundary from this selection. Try a tighter lasso or add a few click points on the part.",
+        fallback: true,
+      });
     }
-    const maskUrls: string[] = (samJson.output?.individual_masks ?? []) as string[];
-    console.log(`[segment-part] SAM returned ${maskUrls.length} masks in ${Date.now()-samStart}ms`);
-    if (maskUrls.length === 0) return json({ error: "SAM returned no masks" }, 502);
 
     // 3) Build the prompt sample set.
     //    - foreground: explicit fg points + dense samples inside the lasso polygon
@@ -226,6 +223,45 @@ function json(obj: unknown, status = 200) {
   });
 }
 
+type SamRunOptions = {
+  mask_limit: number;
+  points_per_side: number;
+  pred_iou_thresh: number;
+  min_mask_region_area: number;
+  crop_n_layers: number;
+};
+
+async function runSamEverything(imageUrl: string, options: SamRunOptions): Promise<{ maskUrls: string[] }> {
+  const samResp = await fetch("https://api.replicate.com/v1/predictions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${REPLICATE_API_TOKEN}`,
+      "Content-Type": "application/json",
+      "Prefer": "wait=60",
+    },
+    body: JSON.stringify({
+      version: SAM_VERSION,
+      input: {
+        image: imageUrl,
+        ...options,
+      },
+    }),
+  });
+
+  const samJson = await samResp.json();
+  if (!samResp.ok) {
+    console.error("[segment-part] SAM error", samJson);
+    throw new Error(`SAM call failed: ${samJson?.detail || samResp.statusText}`);
+  }
+  if (samJson.status === "failed") {
+    throw new Error(`SAM failed: ${samJson.error}`);
+  }
+
+  return {
+    maskUrls: (samJson.output?.individual_masks ?? []) as string[],
+  };
+}
+
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 
 // Normalize decoded PNG pixels to RGBA. The `pngs` lib returns 3 bytes per
@@ -298,25 +334,23 @@ function feather(mask: Uint8Array, w: number, h: number, r: number): Uint8Array 
   const tmp = new Uint8Array(w * h);
   const out = new Uint8Array(w * h);
   const win = r * 2 + 1;
-  // Horizontal pass
   for (let y = 0; y < h; y++) {
     let sum = 0;
     for (let x = -r; x <= r; x++) sum += mask[y * w + clamp(x, 0, w - 1)];
     for (let x = 0; x < w; x++) {
       tmp[y * w + x] = Math.round(sum / win);
       const xAdd = clamp(x + r + 1, 0, w - 1);
-      const xRem = clamp(x - r,     0, w - 1);
+      const xRem = clamp(x - r, 0, w - 1);
       sum += mask[y * w + xAdd] - mask[y * w + xRem];
     }
   }
-  // Vertical pass
   for (let x = 0; x < w; x++) {
     let sum = 0;
     for (let y = -r; y <= r; y++) sum += tmp[clamp(y, 0, h - 1) * w + x];
     for (let y = 0; y < h; y++) {
       out[y * w + x] = Math.round(sum / win);
       const yAdd = clamp(y + r + 1, 0, h - 1);
-      const yRem = clamp(y - r,     0, h - 1);
+      const yRem = clamp(y - r, 0, h - 1);
       sum += tmp[yAdd * w + x] - tmp[yRem * w + x];
     }
   }
