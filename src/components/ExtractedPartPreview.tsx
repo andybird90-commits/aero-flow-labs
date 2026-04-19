@@ -67,6 +67,8 @@ export function ExtractedPartPreview({
 
   // Reset trim state whenever the dialog opens or the underlying render changes.
   useEffect(() => {
+    if (!open) return;
+    setStage(sourceImageUrl ? "pretrim" : "rendering");
     setTrimOpen(false);
     setTrimPoints([]);
     setTrimLasso([]);
@@ -74,7 +76,7 @@ export function ExtractedPartPreview({
     setPrePoints([]);
     setPreLasso([]);
     setPreMaskedUrl(null);
-  }, [open, conceptId, kind]);
+  }, [open, conceptId, kind, sourceImageUrl]);
 
   const purgeCachedMesh = async () => {
     const { error } = await supabase
