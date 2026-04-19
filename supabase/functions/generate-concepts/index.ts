@@ -135,21 +135,46 @@ Deno.serve(async (req) => {
     console.log("generate-concepts: snapshots present =",
       Object.fromEntries(Object.entries(snaps).map(([k, v]) => [k, !!v])));
 
-    async function renderAngle(v: typeof VARIATIONS[number], angle: typeof ANGLES[number]): Promise<string | null> {
-      const ref = snaps[angle.key];
-      const hasRef = !!(ref && ref.startsWith("data:image/"));
+    /**
+     * Render one angle for a variation.
+     *
+     * `referenceImages` is an ordered list of reference data URLs / public URLs
+     * to send alongside the prompt. The first reference is treated as the
+     * primary identity anchor (the user's car for the front pass, or the
+     * just-generated front concept for the side/rear passes).
+     *
+     * Returns both the public URL (for DB) and a data URL (for chaining as
+     * a reference into subsequent angle calls).
+     */
+    async function renderAngle(
+      v: typeof VARIATIONS[number],
+      angle: typeof ANGLES[number],
+      referenceImages: string[],
+      mode: "from_user_car" | "from_concept_front",
+    ): Promise<{ publicUrl: string; dataUrl: string } | null> {
+      const hasRef = referenceImages.length > 0;
 
-      const editPrompt =
+      const fromUserPrompt =
         `Re-render THE EXACT CAR shown in the reference image with an added ${v.modifier} body kit, ` +
         `framed as a ${angle.framing}. ` +
         `CRITICAL: Preserve the original car's identity — same make and model, same body shape, ` +
         `same silhouette, same greenhouse, same headlight and taillight design, same wheelbase, ` +
         `same door and window lines, same overall proportions. Do NOT replace the car with a ` +
-        `different model. Across all generated angles for this concept, keep the SAME paint colour, ` +
-        `SAME wheels, and the SAME body kit details so the four views look like one consistent car. ` +
+        `different model. ` +
         `Only add or modify bolt-on aero/styling parts (front splitter, side skirts, arches, rear ` +
         `diffuser, wing, canards) consistent with the styling brief. ` +
         `${stylePrompt} ` +
+        `Studio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
+        `no text, no watermark, no UI overlays.`;
+
+      const fromConceptPrompt =
+        `The reference image shows a custom car concept (front three-quarter view) with a specific ` +
+        `body kit, paint colour, and wheels. Render THE SAME EXACT CAR — same make, model, ` +
+        `silhouette, paint colour, wheels, and body kit details (splitter, skirts, arches, wing, ` +
+        `diffuser, canards) — but viewed from a different camera angle: ${angle.framing}. ` +
+        `CRITICAL: This must look like the same physical car as the reference, just photographed ` +
+        `from another side. Do NOT change the colour, do NOT change the wheels, do NOT change the ` +
+        `aero kit shapes. Match the reference's lighting style, backdrop, and overall mood. ` +
         `Studio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
         `no text, no watermark, no UI overlays.`;
 
@@ -159,11 +184,17 @@ Deno.serve(async (req) => {
         `Studio lighting, dark dramatic backdrop, photorealistic, concept design quality, ` +
         `sharp focus, clean reflections, no text, no watermark.`;
 
+      const promptText = !hasRef
+        ? textPrompt
+        : mode === "from_concept_front"
+          ? fromConceptPrompt
+          : fromUserPrompt;
+
       const messages: any[] = [{
         role: "user",
-        content: [{ type: "text", text: hasRef ? editPrompt : textPrompt }],
+        content: [{ type: "text", text: promptText }],
       }];
-      if (hasRef) {
+      for (const ref of referenceImages) {
         messages[0].content.push({ type: "image_url", image_url: { url: ref } });
       }
 
@@ -183,7 +214,6 @@ Deno.serve(async (req) => {
       if (!aiResp.ok) {
         const t = await aiResp.text();
         console.error(`AI gen failed (${v.title} / ${angle.key}):`, aiResp.status, t.slice(0, 200));
-        // Surface rate-limit / payment errors up so the caller sees them
         if (aiResp.status === 429) throw new Error("__RATE_LIMIT__");
         if (aiResp.status === 402) throw new Error("__NO_CREDITS__");
         return null;
@@ -208,14 +238,45 @@ Deno.serve(async (req) => {
         console.error("upload failed:", upErr);
         return null;
       }
-      return admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
+      const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
+      return { publicUrl, dataUrl: imgUrl };
     }
 
     try {
       for (const v of VARIATIONS) {
-        // Render all 4 angles in parallel
-        const results = await Promise.all(ANGLES.map((a) => renderAngle(v, a)));
-        const [front, side, rear34, rear] = results;
+        const frontAngle = ANGLES[0];
+        const otherAngles = ANGLES.slice(1);
+
+        // 1) Generate the FRONT concept first using the user's car snapshot(s)
+        //    as identity reference. This becomes the source of truth for paint,
+        //    wheels, and body kit details.
+        const userFrontRef = snaps.front_three_quarter;
+        const frontRefs = userFrontRef && userFrontRef.startsWith("data:image/")
+          ? [userFrontRef]
+          : [];
+        const frontResult = await renderAngle(v, frontAngle, frontRefs, "from_user_car");
+
+        if (!frontResult) {
+          console.warn("Front render failed for variation:", v.title);
+          continue;
+        }
+
+        // 2) Generate the OTHER 3 angles in parallel, using the just-generated
+        //    front concept as the primary reference. Optionally include the
+        //    user's snapshot for that angle as a secondary geometry hint.
+        const otherResults = await Promise.all(otherAngles.map((a) => {
+          const userAngleRef = snaps[a.key];
+          const refs: string[] = [frontResult.dataUrl];
+          if (userAngleRef && userAngleRef.startsWith("data:image/")) {
+            refs.push(userAngleRef);
+          }
+          return renderAngle(v, a, refs, "from_concept_front");
+        }));
+
+        const front = frontResult.publicUrl;
+        const side = otherResults[0]?.publicUrl ?? null;
+        const rear34 = otherResults[1]?.publicUrl ?? null;
+        const rear = otherResults[2]?.publicUrl ?? null;
 
         if (!front && !side && !rear34 && !rear) {
           console.warn("All angles failed for variation:", v.title);
