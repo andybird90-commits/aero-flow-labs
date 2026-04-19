@@ -9,7 +9,7 @@
  * No CFD overlays — this is a pure design viewer.
  */
 import { Suspense, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   Environment,
