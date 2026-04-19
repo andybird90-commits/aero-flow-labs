@@ -45,13 +45,41 @@ export function ExtractedPartPreview({
   const [error, setError] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Kick off render generation when the modal opens
-  const runRender = async (signal?: { cancelled: boolean }) => {
+  // Look up cached renders/mesh for this concept+kind. Returns true if we
+  // hydrated from the cache (so the caller skips regeneration).
+  const loadFromCache = async (signal?: { cancelled: boolean }) => {
+    const { data, error } = await supabase
+      .from("concept_parts")
+      .select("render_urls, glb_url")
+      .eq("concept_id", conceptId)
+      .eq("kind", kind)
+      .maybeSingle();
+    if (signal?.cancelled) return false;
+    if (error || !data) return false;
+    const renders = ((data.render_urls as unknown) as RenderImage[] | null) ?? [];
+    if (!renders.length) return false;
+    setImages(renders);
+    if (data.glb_url) {
+      setGlbUrl(data.glb_url);
+      setStage("ready");
+    } else {
+      setStage("review");
+    }
+    return true;
+  };
+
+  // Run the AI render. Pass `force` to bypass cache and always regenerate.
+  const runRender = async (signal?: { cancelled: boolean }, force = false) => {
     setStage("rendering");
     setImages([]);
     setGlbUrl(null);
     setError(null);
     try {
+      if (!force) {
+        const hit = await loadFromCache(signal);
+        if (hit) return;
+        if (signal?.cancelled) return;
+      }
       const { data, error } = await supabase.functions.invoke("render-isolated-part", {
         body: { concept_id: conceptId, part_kind: kind, label },
       });
@@ -344,7 +372,7 @@ export function ExtractedPartPreview({
 
           {stage === "review" && (
             <>
-              <Button variant="outline" onClick={() => runRender()}>
+              <Button variant="outline" onClick={() => runRender(undefined, true)}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Regenerate
               </Button>
               <Button onClick={onMakeMesh}>

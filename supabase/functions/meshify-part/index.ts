@@ -162,6 +162,15 @@ Deno.serve(async (req) => {
     const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
     const bustedUrl = `${publicUrl}?v=${Date.now()}`;
 
+    // Cache the GLB url against the concept so we don't re-mesh next time.
+    const { error: cacheErr } = await admin
+      .from("concept_parts")
+      .update({ glb_url: bustedUrl })
+      .eq("concept_id", concept_id)
+      .eq("kind", part_kind)
+      .eq("user_id", userId);
+    if (cacheErr) console.warn("concept_parts glb cache failed:", cacheErr.message);
+
     return json({ status: "SUCCEEDED", progress: 100, glb_url: bustedUrl });
   } catch (e) {
     console.error("meshify-part error:", e);

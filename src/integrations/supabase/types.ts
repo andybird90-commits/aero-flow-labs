@@ -115,6 +115,45 @@ export type Database = {
           },
         ]
       }
+      concept_parts: {
+        Row: {
+          concept_id: string
+          created_at: string
+          glb_url: string | null
+          id: string
+          kind: string
+          label: string | null
+          project_id: string
+          render_urls: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          concept_id: string
+          created_at?: string
+          glb_url?: string | null
+          id?: string
+          kind: string
+          label?: string | null
+          project_id: string
+          render_urls?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          concept_id?: string
+          created_at?: string
+          glb_url?: string | null
+          id?: string
+          kind?: string
+          label?: string | null
+          project_id?: string
+          render_urls?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       concept_sets: {
         Row: {
           created_at: string

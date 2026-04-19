@@ -273,6 +273,21 @@ Deno.serve(async (req) => {
       if (isHero) heroDataUrl = imgUrl;
     }
 
+    // Cache the renders against the concept so we don't regenerate next time.
+    // Clears any previously cached glb_url since renders changed.
+    const { error: cacheErr } = await admin
+      .from("concept_parts")
+      .upsert({
+        user_id: userId,
+        project_id: concept.project_id,
+        concept_id,
+        kind,
+        label: label ?? kind,
+        render_urls: renders,
+        glb_url: null,
+      }, { onConflict: "concept_id,kind" });
+    if (cacheErr) console.warn("concept_parts upsert failed:", cacheErr.message);
+
     return json({ renders, label: label ?? kind });
   } catch (e) {
     console.error("render-isolated-part error:", e);
