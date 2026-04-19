@@ -172,7 +172,8 @@ async function runReplicateJob({
     if (typeof out === "string") glbUrl = out;
     else if (Array.isArray(out)) glbUrl = out.find((u: unknown) => typeof u === "string" && /\.(glb|gltf)$/i.test(u as string)) ?? out[0];
     else if (out && typeof out === "object") {
-      glbUrl = out.mesh || out.glb || out.model || Object.values(out).find((v) => typeof v === "string") as string | undefined;
+      // Trellis returns { model_file, color_video, gaussian_ply, ... }
+      glbUrl = out.model_file || out.mesh || out.glb || out.model || Object.values(out).find((v) => typeof v === "string" && /\.(glb|gltf)$/i.test(v as string)) as string | undefined;
     }
     if (!glbUrl) {
       console.error("No GLB url in output:", JSON.stringify(out).slice(0, 500));
