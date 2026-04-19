@@ -207,7 +207,7 @@ export function ExtractedPartPreview({
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x0b0d10);
 
-      const camera = new THREE.PerspectiveCamera(40, width / height, 0.01, 100);
+      const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 10000);
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(width, height);
