@@ -22,7 +22,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import {
   useVariants, useComponents, useGeometry, useDuplicateVariant, useDeleteVariant,
-  useCreateVariant, type Variant, type SimResult,
+  useCreateVariant, useBuild, type Variant, type SimResult,
 } from "@/lib/repo";
 import { estimateAero, aeroFromResult, aeroDelta } from "@/lib/aero-estimator";
 import { cn } from "@/lib/utils";
@@ -293,6 +293,8 @@ function BuildContent({ buildId }: { buildId: string }) {
   const { toast } = useToast();
   const { data: variants = [], isLoading } = useVariants(buildId);
   const { data: geometry } = useGeometry(buildId);
+  const { data: build } = useBuild(buildId);
+  const template = (build as any)?.car?.template ?? null;
   const duplicate = useDuplicateVariant();
   const del = useDeleteVariant();
   const create = useCreateVariant();
@@ -353,7 +355,15 @@ function BuildContent({ buildId }: { buildId: string }) {
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 md:px-6 py-6 space-y-6">
-      <HeroViewer variantName={active.name} runStatus={`${active.status} · ${active.id.slice(0,6)}`} />
+      <HeroViewer
+        variantName={active.name}
+        runStatus={`${active.status} · ${active.id.slice(0,6)}`}
+        template={template}
+        geometry={geometry}
+        components={activeComponents}
+        estimate={currentEst}
+        baselineEstimate={baselineEst}
+      />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2">
