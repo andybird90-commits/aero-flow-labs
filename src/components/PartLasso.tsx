@@ -30,10 +30,13 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const pinchRef = useRef<{ distance: number; zoom: number; centerX: number; centerY: number } | null>(null);
   // Natural (image-space) → display-space mapping. We draw in display space
   // but store everything in image space for the edge function.
   const [scale, setScale] = useState({ sx: 1, sy: 1, w: 0, h: 0 });
   const [drawing, setDrawing] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const draftLasso = useRef<LassoPoint[]>([]);
 
   // Load image natural size + observe the wrapping element so we recompute
@@ -43,6 +46,8 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
     img.crossOrigin = "anonymous";
     img.onload = () => {
       imgRef.current = img;
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
       recompute();
     };
     img.src = imageUrl;
@@ -70,6 +75,8 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
   // Repaint marks whenever inputs or scale change.
   useEffect(() => { paint(); /* eslint-disable-next-line */ }, [points, lasso, scale, mode, drawing]);
 
+  useEffect(() => { paint(); /* eslint-disable-next-line */ }, [zoom, pan]);
+
   const paint = () => {
     const c = canvasRef.current;
     if (!c) return;
@@ -81,6 +88,9 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
     const ctx = c.getContext("2d")!;
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, scale.w, scale.h);
+    ctx.save();
+    ctx.translate(pan.x, pan.y);
+    ctx.scale(zoom, zoom);
 
     // Lasso (committed)
     if (lasso.length >= 2) drawPoly(ctx, lasso.map(p => imgToDisp(p)), "hsl(140 80% 55%)", true);
@@ -99,6 +109,7 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
       ctx.strokeStyle = "white";
       ctx.stroke();
     }
+    ctx.restore();
   };
 
   const drawPoly = (
@@ -121,12 +132,47 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
     }
   };
 
-  const imgToDisp = (p: LassoPoint): LassoPoint => ({ x: p.x / scale.sx, y: p.y / scale.sy });
-  const dispToImg = (x: number, y: number): LassoPoint => ({ x: x * scale.sx, y: y * scale.sy });
+  const clampPan = (next: { x: number; y: number }) => {
+    const maxX = Math.max(0, (scale.w * zoom - scale.w) / 2);
+    const maxY = Math.max(0, (scale.h * zoom - scale.h) / 2);
+    return {
+      x: Math.min(maxX, Math.max(-maxX, next.x)),
+      y: Math.min(maxY, Math.max(-maxY, next.y)),
+    };
+  };
+
+  const setZoomAround = (nextZoom: number, anchor: { x: number; y: number }) => {
+    const clampedZoom = Math.min(6, Math.max(1, nextZoom));
+    const ratio = clampedZoom / zoom;
+    const nextPan = clampPan({
+      x: anchor.x - (anchor.x - pan.x) * ratio,
+      y: anchor.y - (anchor.y - pan.y) * ratio,
+    });
+    setZoom(clampedZoom);
+    setPan(nextPan);
+  };
+
+  const imgToDisp = (p: LassoPoint): LassoPoint => ({
+    x: (p.x / scale.sx) * zoom + pan.x,
+    y: (p.y / scale.sy) * zoom + pan.y,
+  });
+  const dispToImg = (x: number, y: number): LassoPoint => ({
+    x: ((x - pan.x) / zoom) * scale.sx,
+    y: ((y - pan.y) / zoom) * scale.sy,
+  });
 
   const localXY = (e: React.PointerEvent) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const zoomFromWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    if (!scale.w || !scale.h) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const delta = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    setZoomAround(zoom * delta, anchor);
   };
 
   // CLICK MODE
@@ -172,27 +218,70 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
     draftLasso.current = [];
   };
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 2) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const [a, b] = [e.touches[0], e.touches[1]];
+    pinchRef.current = {
+      distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+      zoom,
+      centerX: (a.clientX + b.clientX) / 2 - rect.left,
+      centerY: (a.clientY + b.clientY) / 2 - rect.top,
+    };
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length !== 2 || !pinchRef.current) return;
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const [a, b] = [e.touches[0], e.touches[1]];
+    const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const anchor = {
+      x: (a.clientX + b.clientX) / 2 - rect.left,
+      y: (a.clientY + b.clientY) / 2 - rect.top,
+    };
+    setPan((prev) => clampPan({
+      x: prev.x + (anchor.x - pinchRef.current!.centerX),
+      y: prev.y + (anchor.y - pinchRef.current!.centerY),
+    }));
+    pinchRef.current = { ...pinchRef.current, centerX: anchor.x, centerY: anchor.y };
+    setZoomAround(pinchRef.current.zoom * (distance / pinchRef.current.distance), anchor);
+  };
+
+  const onTouchEnd = () => {
+    if (pinchRef.current) pinchRef.current = null;
+  };
+
   return (
     <div ref={wrapRef} className={cn("relative w-full h-full flex items-center justify-center", className)}>
       <img
         src={imageUrl}
         alt="part render"
         className="select-none pointer-events-none"
-        style={{ width: scale.w, height: scale.h }}
+        style={{
+          width: scale.w,
+          height: scale.h,
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transformOrigin: "center center",
+        }}
         draggable={false}
       />
       <canvas
         ref={canvasRef}
         className={cn(
-          "absolute touch-none",
+          "absolute",
           mode === "click" ? "cursor-crosshair" : "cursor-cell",
         )}
         style={{ width: scale.w, height: scale.h }}
+        onWheel={zoomFromWheel}
         onClick={onCanvasClick}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       />
     </div>
   );
