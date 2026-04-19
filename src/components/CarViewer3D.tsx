@@ -385,9 +385,10 @@ function Streamlines({
     if (!groupRef.current || !visible) return;
     const t = state.clock.elapsedTime;
     groupRef.current.children.forEach((line, i) => {
-      const mat = (line as THREE.Line).material as THREE.LineDashedMaterial;
+      const mat = (line as THREE.Line).material as THREE.LineBasicMaterial & { opacity: number };
       if (mat) {
-        mat.dashOffset = -t * (1.5 + (i % 5) * 0.2);
+        // Animate opacity to fake flow motion since dashed lines need geometry.computeLineDistances
+        mat.opacity = (0.45 - (i % 8) * 0.04) * (0.6 + Math.sin(t * 1.6 + i * 0.3) * 0.4);
       }
     });
   });
