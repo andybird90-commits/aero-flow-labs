@@ -124,7 +124,7 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       qc.invalidateQueries({ queryKey: ["concept_approved", projectId] });
-      toast({ title: "3D preview ready", description: "Experimental AI mesh generated." });
+      toast({ title: "3D preview started", description: "Generating in the background — this takes 2-3 minutes." });
     } catch (e: any) {
       toast({ title: "Mesh generation failed", description: String(e.message ?? e), variant: "destructive" });
       qc.invalidateQueries({ queryKey: ["concept_approved", projectId] });
