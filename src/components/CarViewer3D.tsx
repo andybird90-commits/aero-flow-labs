@@ -21,7 +21,6 @@ import type { CarTemplate, FittedPart, Geometry } from "@/lib/repo";
 import { useSignedMeshUrl, meshExtension } from "@/lib/mesh-url";
 import { readOrientation } from "@/components/MeshOrientation";
 import { computeAnchors, readNudge, nudged, type AeroAnchors, type MeshBounds } from "@/lib/aero-anchors";
-import { AIPartMesh } from "@/components/AIPartMesh";
 
 export type CameraPreset = "free" | "front_three_quarter" | "rear_three_quarter" | "side" | "top";
 
@@ -341,11 +340,26 @@ function FittedParts({
       {splitter && (() => {
         const n = readNudge(splitter.params);
         const protr = paramN(splitter.params, "depth", 80) / 1000;
+        const fenceH = paramN(splitter.params, "fence_height", 30) / 1000;
+        const fenceInset = paramN(splitter.params, "fence_inset", 60) / 1000;
+        const splitW = width * 0.95;
         const p = nudged(a.splitter, n);
         return (
-          <mesh position={[p.x + protr / 2, p.y, p.z]} material={partMat} castShadow>
-            <boxGeometry args={[protr, 0.025, width * 0.95]} />
-          </mesh>
+          <group position={[p.x + protr / 2, p.y, p.z]}>
+            <mesh material={partMat} castShadow>
+              <boxGeometry args={[protr, 0.022, splitW]} />
+            </mesh>
+            {fenceH > 0.005 && [-1, 1].map((side) => (
+              <mesh
+                key={side}
+                position={[0, fenceH / 2 + 0.011, side * (splitW / 2 - fenceInset)]}
+                material={partMat}
+                castShadow
+              >
+                <boxGeometry args={[protr * 0.9, fenceH, 0.012]} />
+              </mesh>
+            ))}
+          </group>
         );
       })()}
 
@@ -363,37 +377,49 @@ function FittedParts({
       {canards && (() => {
         const n = readNudge(canards.params);
         const angle = paramN(canards.params, "angle", 12) * Math.PI / 180;
+        const count = Math.round(paramN(canards.params, "count", 1));
+        const span = paramN(canards.params, "span", 180) / 1000;
+        const chord = span * 0.7;
         return [
           { side: -1, anchor: a.canardsLeft },
           { side: 1, anchor: a.canardsRight },
-        ].map(({ side, anchor }) => {
+        ].flatMap(({ side, anchor }) => {
           const p = nudged(anchor, n);
-          return (
+          return Array.from({ length: count }).map((_, i) => (
             <mesh
-              key={side}
-              position={[p.x, p.y, p.z]}
-              rotation={[0, 0, angle * -side]}
+              key={`${side}-${i}`}
+              position={[p.x, p.y - i * 0.06, p.z]}
+              rotation={[angle * side, 0, 0]}
               material={accentMat}
               castShadow
             >
-              <boxGeometry args={[0.18, 0.012, 0.16]} />
+              <boxGeometry args={[chord, 0.01, span]} />
             </mesh>
-          );
+          ));
         });
       })()}
 
       {skirts && (() => {
         const n = readNudge(skirts.params);
         const depth = paramN(skirts.params, "depth", 70) / 1000;
+        const drop = paramN(skirts.params, "drop", 25) / 1000;
+        const skirtLen = length * 0.55;
         return [
           { side: -1, anchor: a.skirtsLeft },
           { side: 1, anchor: a.skirtsRight },
         ].map(({ side, anchor }) => {
           const p = nudged(anchor, n);
           return (
-            <mesh key={side} position={[p.x, p.y, p.z]} material={partMat} castShadow>
-              <boxGeometry args={[length * 0.55, depth, 0.04]} />
-            </mesh>
+            <group key={side} position={[p.x, p.y, p.z]}>
+              <mesh material={partMat} castShadow>
+                <boxGeometry args={[skirtLen, depth, 0.04]} />
+              </mesh>
+              {drop > 0.005 && (
+                <mesh position={[0, -depth / 2 - drop / 2, side * 0.01]} material={partMat} castShadow>
+                  <boxGeometry args={[skirtLen * 0.95, drop, 0.025]} />
+                </mesh>
+              )}
+            </group>
           );
         });
       })()}
@@ -424,9 +450,10 @@ function FittedParts({
       {ducktail && (() => {
         const n = readNudge(ducktail.params);
         const h = paramN(ducktail.params, "height", 38) / 1000;
+        const kick = paramN(ducktail.params, "kick", 10) * Math.PI / 180;
         const p = nudged(a.ducktail, n);
         return (
-          <mesh position={[p.x, p.y, p.z]} rotation={[0, 0, 0.25]} material={partMat} castShadow>
+          <mesh position={[p.x, p.y, p.z]} rotation={[0, 0, kick]} material={partMat} castShadow>
             <boxGeometry args={[0.22, h, width * 0.85]} />
           </mesh>
         );
@@ -435,47 +462,59 @@ function FittedParts({
       {wing && (() => {
         const n = readNudge(wing.params);
         const p = nudged(a.wing, n);
-        // If the AI mesh for this part is ready, render it instead of the
-        // parametric placeholder. Same anchor, same nudge — just a different
-        // visual representation of the same logical part.
-        const aiUrl = (wing as any).ai_mesh_url as string | undefined;
-        const aiStatus = (wing as any).ai_mesh_status as string | undefined;
-        if (aiUrl && aiStatus === "ready") {
-          return <AIPartMesh url={aiUrl} kind="wing" position={[p.x, p.y, p.z]} />;
-        }
         const aoa = paramN(wing.params, "aoa", 8) * Math.PI / 180;
         const chord = paramN(wing.params, "chord", 280) / 1000;
         const gurney = paramN(wing.params, "gurney", 12) / 1000;
+        const spanPct = paramN(wing.params, "span_pct", 78) / 100;
+        const span = width * spanPct;
+        const standH = paramN(wing.params, "stand_height", 220) / 1000;
         return (
           <group position={[p.x, p.y, p.z]}>
             {[-1, 1].map((side) => (
-              <mesh key={side} position={[0, -0.1, (width * 0.32) * side]} material={partMat} castShadow>
-                <boxGeometry args={[0.04, 0.22, 0.04]} />
+              <mesh key={side} position={[0, -standH / 2, span * 0.42 * side]} material={partMat} castShadow>
+                <boxGeometry args={[0.04, standH, 0.04]} />
               </mesh>
             ))}
             <mesh rotation={[0, 0, -aoa]} material={partMat} castShadow>
-              <boxGeometry args={[chord, 0.025, width * 0.78]} />
+              <boxGeometry args={[chord, 0.025, span]} />
             </mesh>
-            <mesh position={[-chord / 2, 0.012 + gurney / 2, 0]} material={accentMat}>
-              <boxGeometry args={[0.012, gurney, width * 0.78]} />
-            </mesh>
+            {[-1, 1].map((side) => (
+              <mesh key={`plate-${side}`} position={[0, 0, side * span / 2]} rotation={[0, 0, -aoa]} material={partMat} castShadow>
+                <boxGeometry args={[chord * 1.05, chord * 0.45, 0.01]} />
+              </mesh>
+            ))}
+            {gurney > 0.001 && (
+              <mesh position={[-chord / 2, 0.012 + gurney / 2, 0]} material={accentMat}>
+                <boxGeometry args={[0.012, gurney, span * 0.98]} />
+              </mesh>
+            )}
           </group>
         );
       })()}
 
       {diffuser && (() => {
         const n = readNudge(diffuser.params);
-        const angle = paramN(diffuser.params, "angle", 10) * Math.PI / 180;
+        const angle = paramN(diffuser.params, "angle", 12) * Math.PI / 180;
+        const strakeCount = Math.max(2, Math.round(paramN(diffuser.params, "strake_count", 5)));
+        const strakeH = paramN(diffuser.params, "strake_height", 60) / 1000;
+        const diffLen = 0.55;
+        const diffW = width * 0.85;
         const p = nudged(a.diffuser, n);
+        const spacing = diffW / (strakeCount + 1);
         return (
-          <mesh
-            position={[p.x - 0.15, p.y, p.z]}
-            rotation={[0, 0, angle]}
-            material={partMat}
-            castShadow
-          >
-            <boxGeometry args={[0.4, 0.025, width * 0.8]} />
-          </mesh>
+          <group position={[p.x - 0.15, p.y, p.z]} rotation={[0, 0, angle]}>
+            <mesh material={partMat} castShadow>
+              <boxGeometry args={[diffLen, 0.025, diffW]} />
+            </mesh>
+            {Array.from({ length: strakeCount }).map((_, i) => {
+              const z = -diffW / 2 + (i + 1) * spacing;
+              return (
+                <mesh key={i} position={[0, strakeH / 2 + 0.012, z]} material={partMat} castShadow>
+                  <boxGeometry args={[diffLen * 0.95, strakeH, 0.01]} />
+                </mesh>
+              );
+            })}
+          </group>
         );
       })()}
     </group>
