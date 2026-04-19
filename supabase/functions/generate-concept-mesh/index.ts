@@ -23,8 +23,9 @@ const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// tencent/hunyuan3d-2mv — multi-view variant, much better geometry when fed multiple angles
-const REPLICATE_VERSION = "71798fbc3c9f7b7097e3bb85496e5a797d8b8f616b550692e7c3e176a8e9e5db";
+// firtoz/trellis — Microsoft TRELLIS, best open-source image-to-3D for hard surfaces (cars, mech).
+// Single image in, GLB out. Much cleaner topology than Hunyuan.
+const REPLICATE_VERSION = "e8f6c45206993f297372f5436b90350817bd9b4a0d52d2a76df50c1c8afa2b3c";
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -61,20 +62,22 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (cErr || !concept) return json({ error: "Concept not found" }, 404);
 
-    // Multi-view requires at least front_image
+    // Trellis takes a single image
     const frontImage = concept.render_front_url;
     if (!frontImage) return json({ error: "Concept has no front render" }, 400);
 
-    // Map our 4 renders to the model's 4 view slots
+    // Trellis input schema: images (array), generate model output, GLB format
     const input: Record<string, unknown> = {
-      front_image: frontImage,
-      steps: 50,
-      guidance_scale: 5.5,
-      octree_resolution: 384,
+      images: [frontImage],
+      texture_size: 2048,
+      mesh_simplify: 0.95,
+      generate_model: true,
+      save_gaussian_ply: false,
+      ss_sampling_steps: 38,
+      slat_sampling_steps: 38,
+      ss_guidance_strength: 7.5,
+      slat_guidance_strength: 3,
     };
-    if (concept.render_rear_url)   input.back_image  = concept.render_rear_url;
-    if (concept.render_side_url)   input.left_image  = concept.render_side_url;
-    if (concept.render_rear34_url) input.right_image = concept.render_rear34_url;
 
     // Mark generating
     await admin
@@ -169,7 +172,8 @@ async function runReplicateJob({
     if (typeof out === "string") glbUrl = out;
     else if (Array.isArray(out)) glbUrl = out.find((u: unknown) => typeof u === "string" && /\.(glb|gltf)$/i.test(u as string)) ?? out[0];
     else if (out && typeof out === "object") {
-      glbUrl = out.mesh || out.glb || out.model || Object.values(out).find((v) => typeof v === "string") as string | undefined;
+      // Trellis returns { model_file, color_video, gaussian_ply, ... }
+      glbUrl = out.model_file || out.mesh || out.glb || out.model || Object.values(out).find((v) => typeof v === "string" && /\.(glb|gltf)$/i.test(v as string)) as string | undefined;
     }
     if (!glbUrl) {
       console.error("No GLB url in output:", JSON.stringify(out).slice(0, 500));
