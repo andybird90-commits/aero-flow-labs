@@ -210,6 +210,13 @@ Deno.serve(async (req) => {
     return json({ masked_url: pub.publicUrl });
   } catch (e) {
     console.error("[segment-part] fatal", e);
+    if (e instanceof SamThrottledError) {
+      return json({
+        error: `Segmentation service is busy (rate-limited). Please try again in ~${e.retryAfter}s.`,
+        fallback: true,
+        retry_after: e.retryAfter,
+      }, 200);
+    }
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
