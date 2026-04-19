@@ -111,6 +111,7 @@ export function ExtractedPartPreview({
             concept_id: conceptId,
             part_kind: kind,
             task_id: taskId,
+            is_multi: isMulti,
           },
         });
         if (pollRes.error) throw pollRes.error;
