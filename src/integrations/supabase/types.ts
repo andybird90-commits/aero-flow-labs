@@ -362,9 +362,6 @@ export type Database = {
       }
       fitted_parts: {
         Row: {
-          ai_mesh_error: string | null
-          ai_mesh_status: string
-          ai_mesh_url: string | null
           concept_set_id: string
           created_at: string
           enabled: boolean
@@ -375,9 +372,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          ai_mesh_error?: string | null
-          ai_mesh_status?: string
-          ai_mesh_url?: string | null
           concept_set_id: string
           created_at?: string
           enabled?: boolean
@@ -388,9 +382,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          ai_mesh_error?: string | null
-          ai_mesh_status?: string
-          ai_mesh_url?: string | null
           concept_set_id?: string
           created_at?: string
           enabled?: boolean
