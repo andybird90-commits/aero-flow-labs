@@ -112,33 +112,75 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     const { data: concept } = await admin
       .from("concepts")
-      .select("id, project_id, user_id, title, direction")
+      .select("id, project_id, user_id, title, direction, render_front_url, render_side_url, render_rear34_url, render_rear_url")
       .eq("id", concept_id)
       .eq("user_id", userId)
       .maybeSingle();
     if (!concept) return json({ error: "Concept not found" }, 404);
 
     const styleHint = [
-      `Style match the concept "${concept.title}"`,
-      concept.direction ? `Direction: ${concept.direction}` : "",
+      `Concept name: "${concept.title}"`,
+      concept.direction ? `Concept direction: ${concept.direction}` : "",
     ].filter(Boolean).join(". ");
 
     const spec = PART_SPEC[kind];
 
+    // Reference images from the concept — Gemini will use these to copy the
+    // exact shape, proportions, vents, fasteners, and surface treatment of
+    // the user's car. Without these, it invents a generic part.
+    const referenceUrls = [
+      concept.render_front_url,
+      concept.render_side_url,
+      concept.render_rear34_url,
+      concept.render_rear_url,
+    ].filter((u): u is string => !!u);
+
+    // Pre-fetch reference images and inline them as data URLs so Gemini
+    // definitely receives them as image content.
+    const referenceImages = await Promise.all(
+      referenceUrls.map(async (u) => {
+        try {
+          const r = await fetch(u);
+          if (!r.ok) return null;
+          const buf = new Uint8Array(await r.arrayBuffer());
+          const mime = r.headers.get("content-type") ?? "image/png";
+          const b64 = bytesToBase64(buf);
+          return `data:${mime};base64,${b64}`;
+        } catch (e) {
+          console.warn("ref image fetch failed:", u, e);
+          return null;
+        }
+      }),
+    );
+    const refDataUrls = referenceImages.filter((x): x is string => !!x);
+    console.log(`render-isolated-part: loaded ${refDataUrls.length}/${referenceUrls.length} reference images for ${kind}`);
+
     const renders: Array<{ angle: string; url: string }> = [];
 
     for (const angle of ANGLES) {
-      const prompt = [
-        `Studio product photograph of ${spec.what}.`,
-        `Shape: ${spec.shape}.`,
-        `${spec.not}`,
+      const promptText = [
+        `Look at the attached reference images of a customised car concept (${refDataUrls.length} angles).`,
         `${styleHint}.`,
-        `This is an isolated aftermarket aero part shown alone, like a photo on an aero-parts e-commerce page (think APR, Voltex, Liberty Walk, Pandem catalogue).`,
-        `Pure white seamless background. Soft even studio lighting. The part is centred and fills ~60% of the frame, with empty white space around it.`,
-        `Camera: ${angle.label}.`,
-        `Material: glossy black carbon-fibre weave with subtle highlights and visible weave pattern.`,
-        `Photorealistic, sharp focus, 4k product render. No text, no watermarks, no other objects.`,
-      ].join(" ");
+        ``,
+        `TASK: Re-draw ONLY the ${spec.what} that appears on this concept, isolated by itself on a clean white background.`,
+        `Match the EXACT styling, proportions, vents, louvres, fasteners, surface curvature and overall design language of the part as it appears in the concept renders. Do not invent a generic version.`,
+        `Shape reminder: ${spec.shape}.`,
+        `${spec.not}`,
+        ``,
+        `Output requirements:`,
+        `- Pure white seamless background.`,
+        `- Soft even studio lighting, gentle ground shadow.`,
+        `- The part is centred and fills ~60% of the frame.`,
+        `- Camera angle: ${angle.label}.`,
+        `- Material/finish: match what the concept shows (carbon weave, painted, primer, etc.). If unclear, use glossy black carbon-fibre.`,
+        `- Photorealistic 4k product photo, like an aftermarket aero catalogue (APR, Voltex, Liberty Walk, Pandem).`,
+        `- No car, no wheels, no fenders around it. No text, no watermarks.`,
+      ].join("\n");
+
+      const userContent: Array<any> = [
+        { type: "text", text: promptText },
+        ...refDataUrls.map((url) => ({ type: "image_url", image_url: { url } })),
+      ];
 
       const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -148,7 +190,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           model: "google/gemini-2.5-flash-image",
-          messages: [{ role: "user", content: prompt }],
+          messages: [{ role: "user", content: userContent }],
           modalities: ["image", "text"],
         }),
       });
