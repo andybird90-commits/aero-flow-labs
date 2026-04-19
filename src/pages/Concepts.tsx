@@ -43,10 +43,18 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
     }
     setGenerating(true);
 
-    // Capture a viewer screenshot if a mesh is loaded
-    let snapshot: string | null = null;
+    // Capture multiple viewer angles for a stronger reference set + future turntable.
+    let snapshots: Record<string, string | null> = {};
     try {
-      snapshot = viewerRef.current?.captureFrame() ?? null;
+      const v = viewerRef.current;
+      if (v) {
+        snapshots = {
+          front_three_quarter: v.captureAngle("front_three_quarter"),
+          side: v.captureAngle("side"),
+          rear_three_quarter: v.captureAngle("rear_three_quarter"),
+          rear: v.captureAngle("rear_three_quarter"), // same preset but model will re-render rear
+        };
+      }
     } catch {}
 
     try {
@@ -54,7 +62,9 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
         body: {
           project_id: projectId,
           brief_id: brief.id,
-          snapshot_data_url: snapshot,
+          // Keep legacy field for backward-compat in the edge function
+          snapshot_data_url: snapshots.front_three_quarter ?? null,
+          snapshots,
         },
       });
       if (error) throw error;
