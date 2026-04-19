@@ -230,6 +230,19 @@ function ConceptCard({
       : concept.status === "favourited"
         ? "preview"
         : "neutral";
+
+  // Build the ordered angle list for the turntable (front → side → rear-3/4 → rear).
+  const angles = [
+    { key: "front", label: "Front 3/4", url: concept.render_front_url },
+    { key: "side", label: "Side", url: concept.render_side_url },
+    { key: "rear34", label: "Rear 3/4", url: (concept as any).render_rear34_url as string | null },
+    { key: "rear", label: "Rear", url: concept.render_rear_url },
+  ].filter((a) => !!a.url) as Array<{ key: string; label: string; url: string }>;
+
+  const [angleIdx, setAngleIdx] = useState(0);
+  const current = angles[angleIdx];
+  const hasMultiple = angles.length > 1;
+
   return (
     <div className={cn(
       "glass rounded-xl overflow-hidden flex flex-col transition-colors",
@@ -237,8 +250,13 @@ function ConceptCard({
       concept.status === "rejected" && "opacity-50",
     )}>
       <div className="relative aspect-[4/3] bg-surface-2 grid-bg-fine">
-        {concept.render_front_url ? (
-          <img src={concept.render_front_url} alt={concept.title} className="absolute inset-0 h-full w-full object-cover" />
+        {current ? (
+          <img
+            key={current.url}
+            src={current.url}
+            alt={`${concept.title} — ${current.label}`}
+            className="absolute inset-0 h-full w-full object-cover animate-fade-in"
+          />
         ) : (
           <div className="absolute inset-0 grid place-items-center text-muted-foreground">
             <Sparkles className="h-8 w-8" />
@@ -247,6 +265,26 @@ function ConceptCard({
         <div className="absolute top-2 right-2">
           <StatusChip tone={tone as any} size="sm">{concept.status}</StatusChip>
         </div>
+
+        {hasMultiple && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-surface-0/80 backdrop-blur px-1.5 py-1 border border-border">
+            {angles.map((a, i) => (
+              <button
+                key={a.key}
+                onClick={() => setAngleIdx(i)}
+                className={cn(
+                  "px-2.5 py-0.5 rounded-full text-[10px] text-mono uppercase tracking-widest transition-colors",
+                  i === angleIdx
+                    ? "bg-primary/20 text-primary"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                title={a.label}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="p-3 flex-1">
         <div className="text-sm font-semibold tracking-tight truncate">{concept.title}</div>
