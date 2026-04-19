@@ -293,6 +293,8 @@ function BuildContent({ buildId }: { buildId: string }) {
   const { toast } = useToast();
   const { data: variants = [], isLoading } = useVariants(buildId);
   const { data: geometry } = useGeometry(buildId);
+  const { data: build } = useBuild(buildId);
+  const template = (build as any)?.car?.template ?? null;
   const duplicate = useDuplicateVariant();
   const del = useDeleteVariant();
   const create = useCreateVariant();
