@@ -110,19 +110,31 @@ export function ExtractedPartPreview({
   };
 
   // Run the AI render. Pass `force` to bypass cache and always regenerate.
-  const runRender = async (signal?: { cancelled: boolean }, force = false) => {
+  // Pass `overrideSourceUrl` (typically a pre-trimmed crop) to push only that
+  // image to Gemini as the sole reference.
+  const runRender = async (
+    signal?: { cancelled: boolean },
+    force = false,
+    overrideSourceUrl?: string,
+  ) => {
     setStage("rendering");
     setImages([]);
     setGlbUrl(null);
     setError(null);
     try {
-      if (!force) {
+      // Trimmed renders bypass the cache — they're a different input.
+      if (!force && !overrideSourceUrl) {
         const hit = await loadFromCache(signal);
         if (hit) return;
         if (signal?.cancelled) return;
       }
       const { data, error } = await supabase.functions.invoke("render-isolated-part", {
-        body: { concept_id: conceptId, part_kind: kind, label },
+        body: {
+          concept_id: conceptId,
+          part_kind: kind,
+          label,
+          ...(overrideSourceUrl ? { source_image_url: overrideSourceUrl } : {}),
+        },
       });
       if (signal?.cancelled) return;
       if (error) throw error;
@@ -139,13 +151,17 @@ export function ExtractedPartPreview({
     }
   };
 
+  // Auto-run the AI render only when there's no source image to pre-trim.
+  // When sourceImageUrl is supplied we land on the "pretrim" stage and wait
+  // for the user to either skip or finish trimming.
   useEffect(() => {
     if (!open) return;
+    if (sourceImageUrl) return; // user drives the flow from pretrim
     const signal = { cancelled: false };
     runRender(signal);
     return () => { signal.cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, conceptId, kind, label]);
+  }, [open, conceptId, kind, label, sourceImageUrl]);
 
   const [meshProgress, setMeshProgress] = useState<number>(0);
 
