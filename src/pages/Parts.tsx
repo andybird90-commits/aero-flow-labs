@@ -64,6 +64,41 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
     return () => clearInterval(t);
   }, [meshStatus, projectId, qc]);
 
+  /* Poll fitted_parts while any per-part AI mesh job is running. */
+  const anyPartGenerating = parts.some((p) => (p as any).ai_mesh_status === "generating");
+  useEffect(() => {
+    if (!anyPartGenerating || !conceptSet?.id) return;
+    const t = setInterval(() => {
+      qc.invalidateQueries({ queryKey: ["fitted_parts", conceptSet.id] });
+    }, 4000);
+    return () => clearInterval(t);
+  }, [anyPartGenerating, conceptSet?.id, qc]);
+
+  const generatePartMesh = async (partId: string, kind: string) => {
+    setGeneratingPartId(partId);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-part-mesh", {
+        body: { fitted_part_id: partId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      qc.invalidateQueries({ queryKey: ["fitted_parts", conceptSet?.id] });
+      toast({
+        title: "AI mesh generation started",
+        description: `Generating a custom 3D ${kind} — this takes 1–3 minutes.`,
+      });
+    } catch (e: any) {
+      toast({
+        title: "AI mesh generation failed",
+        description: String(e.message ?? e),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingPartId(null);
+    }
+  };
+
+
   const togglePart = async (kind: string) => {
     if (!user || !conceptSet) return;
     const existing = partByKind(kind);
