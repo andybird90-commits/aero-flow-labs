@@ -276,6 +276,9 @@ export function ExtractedPartPreview({
           controls.update();
         } catch (err) {
           console.error("STL load failed", err);
+          purgeCachedMesh().catch((purgeErr) => console.error("Failed to purge cached mesh", purgeErr));
+          setError("Cached STL failed to load. Cache cleared — regenerate the part mesh.");
+          setStage("error");
         }
       })();
 
