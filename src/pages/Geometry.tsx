@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useGeometry, useUpdateGeometry, type Geometry } from "@/lib/repo";
 import { MeshUpload } from "@/components/MeshUpload";
+import { MeshOrientationControls } from "@/components/MeshOrientation";
 import { cn } from "@/lib/utils";
 
 type UnderbodyModel = "simplified" | "detailed";
@@ -140,6 +141,7 @@ function GeometryContent({ buildId }: { buildId: string }) {
         <div className="lg:col-span-2 space-y-4">
           <GeometryViewer form={form} />
           <MeshUpload geometry={geometry} />
+          <MeshOrientationControls geometry={geometry} />
           <SourceFooter geometry={geometry} />
         </div>
 
