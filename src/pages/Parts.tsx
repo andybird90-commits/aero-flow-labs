@@ -46,6 +46,10 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
   const upsert = useUpsertFittedPart();
   const [suggesting, setSuggesting] = useState(false);
   const [generatingMesh, setGeneratingMesh] = useState(false);
+  const [generatingPartId, setGeneratingPartId] = useState<string | null>(null);
+
+  // Kinds we support per-part AI mesh generation for (prototype scope).
+  const AI_PART_SUPPORTED = new Set(["wing", "splitter", "diffuser"]);
 
   const partByKind = (k: string) => parts.find((p) => p.kind === k);
 
