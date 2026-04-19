@@ -127,8 +127,6 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
     setPreview(null);
   };
 
-  if (!active) return null;
-
   return (
     <>
       {active && (
