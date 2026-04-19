@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/sidebar";
 import {
   LayoutGrid,
-  Upload as UploadIcon,
   FileText,
   Sparkles,
   Wrench,
@@ -28,7 +27,6 @@ import {
 const projectsNav = [{ title: "Projects", url: "/projects", icon: LayoutGrid }];
 
 const studioNav = [
-  { title: "Upload Model", url: "/upload", icon: UploadIcon },
   { title: "Design Brief", url: "/brief", icon: FileText },
   { title: "Concepts", url: "/concepts", icon: Sparkles },
   { title: "Fitted Parts", url: "/parts", icon: Wrench },
