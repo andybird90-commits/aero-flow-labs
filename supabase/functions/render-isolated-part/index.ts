@@ -79,11 +79,12 @@ const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
   },
 };
 
-// We only generate ONE hero shot now. The user reviews it; if they like it
-// we send that single image to Meshy's image-to-3d. Generating 4 angles led
-// to inconsistencies and generic-looking parts.
+// Three angles: hero front-3/4 generated first, then side and rear-3/4 lock
+// onto the hero as ground truth so all three depict the same physical part.
 const ANGLES = [
   { key: "front34", label: "front 3/4 view, slightly above, hero product shot" },
+  { key: "side",    label: "pure side profile view, camera level with the part" },
+  { key: "rear34",  label: "rear 3/4 view, slightly above" },
 ] as const;
 
 Deno.serve(async (req) => {
