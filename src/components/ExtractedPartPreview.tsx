@@ -18,9 +18,10 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Wand2, Box, Download, X, RotateCcw } from "lucide-react";
+import { Loader2, Wand2, Box, Download, X, RotateCcw, Scissors, MousePointerClick, Lasso, Undo2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { PartLasso, type LassoMode, type LassoClick, type LassoPoint } from "@/components/PartLasso";
 
 interface Props {
   open: boolean;
