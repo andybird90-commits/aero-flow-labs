@@ -228,10 +228,20 @@ export function ExtractedPartPreview({
       controls.autoRotateSpeed = 0.8;
 
       const loader = new STLLoader();
-      loader.load(
-        glbUrl,
-        (geometry) => {
+      (async () => {
+        try {
+          const resp = await fetch(glbUrl);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const buf = await resp.arrayBuffer();
           if (cancelled) return;
+          // STLLoader's auto-detect can misread ASCII as binary. Sniff the
+          // first ~1KB: if it starts with "solid" AND contains "facet", it's
+          // ASCII — feed it as a string. Otherwise treat as binary.
+          const head = new TextDecoder().decode(buf.slice(0, 1024)).trim().toLowerCase();
+          const isAscii = head.startsWith("solid") && head.includes("facet");
+          const geometry = isAscii
+            ? loader.parse(new TextDecoder().decode(buf))
+            : loader.parse(buf);
           geometry.computeVertexNormals();
           const material = new THREE.MeshStandardMaterial({
             color: 0xb8c2cc,
@@ -249,10 +259,10 @@ export function ExtractedPartPreview({
           camera.position.set(center.x + dist * 0.7, center.y + dist * 0.55, center.z + dist * 0.9);
           controls.target.copy(center);
           controls.update();
-        },
-        undefined,
-        (err) => console.error("STL load failed", err),
-      );
+        } catch (err) {
+          console.error("STL load failed", err);
+        }
+      })();
 
       let raf = 0;
       const tick = () => {
