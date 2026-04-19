@@ -6,8 +6,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Wind, ArrowRight, Loader2 } from "lucide-react";
+
+const REMEMBER_KEY = "aerolab.remember_me";
 
 const emailSchema = z.string().trim().email("Invalid email").max(255);
 const passwordSchema = z.string().min(8, "Password must be at least 8 characters").max(72);
@@ -24,6 +27,10 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [remember, setRemember] = useState(() => {
+    const stored = localStorage.getItem(REMEMBER_KEY);
+    return stored === null ? true : stored === "true";
+  });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -53,6 +60,9 @@ const Auth = () => {
     e.preventDefault();
     if (!validate()) return;
     setSubmitting(true);
+
+    // Persist preference so the AuthProvider can clear the session on tab close when off.
+    localStorage.setItem(REMEMBER_KEY, String(remember));
 
     try {
       if (mode === "signup") {
@@ -161,6 +171,20 @@ const Auth = () => {
                 />
                 {errors.password && <p className="text-xs text-destructive">{errors.password}</p>}
               </div>
+
+              {mode === "signin" && (
+                <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
+                  <Checkbox
+                    id="remember"
+                    checked={remember}
+                    onCheckedChange={(v) => setRemember(v === true)}
+                    className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Remember me on this device
+                  </span>
+                </label>
+              )}
 
               <Button type="submit" variant="hero" className="w-full" disabled={submitting}>
                 {submitting ? (

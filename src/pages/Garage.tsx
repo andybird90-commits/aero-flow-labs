@@ -1,19 +1,15 @@
 import { Link } from "react-router-dom";
-import { useMemo, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/StatCard";
 import { StatusChip } from "@/components/StatusChip";
-import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { EmptyState } from "@/components/EmptyState";
-import { FeaturedDemoBuild } from "@/components/FeaturedDemoBuild";
 import { LoadingState } from "@/components/LoadingState";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { useBuilds, useCarTemplates, useUserJobs, useSeedDemo } from "@/lib/repo";
+import { useBuilds, useCarTemplates, useUserJobs } from "@/lib/repo";
 import {
-  Plus, Filter, ArrowRight, Wind, Lock, PlayCircle,
+  Plus, Filter, ArrowRight, Wind, PlayCircle,
   Layers, Clock, Star, Sparkles, MoreHorizontal,
   ChevronRight, Target, Zap, Activity,
 } from "lucide-react";
@@ -178,25 +174,9 @@ function RecentSimulations({ jobs }: { jobs: any[] }) {
 const Garage = () => {
   const { user } = useAuth();
   const userId = user?.id;
-  const { toast } = useToast();
   const { data: builds = [], isLoading: buildsLoading } = useBuilds(userId);
   const { data: jobs = [] } = useUserJobs(userId, 6);
   const { data: templates = [] } = useCarTemplates();
-  const seedDemo = useSeedDemo();
-
-  const hasDemoBuild = useMemo(
-    () => builds.some((b: any) => b.name === "GR86 Time-Attack Pack"),
-    [builds],
-  );
-
-  const handleSeedDemo = async () => {
-    try {
-      await seedDemo.mutateAsync();
-      toast({ title: "Demo build ready", description: "GR86 Time-Attack Pack with 5 variants seeded." });
-    } catch (err: any) {
-      toast({ title: "Couldn't seed demo", description: err.message, variant: "destructive" });
-    }
-  };
 
   return (
     <AppLayout>
@@ -207,18 +187,6 @@ const Garage = () => {
           description="Manage your vehicles, builds and simulation runs. Open a build to enter its workspace."
           actions={
             <>
-              {!hasDemoBuild && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                  onClick={handleSeedDemo}
-                  disabled={seedDemo.isPending}
-                >
-                  <Sparkles className="mr-2 h-3.5 w-3.5" />
-                  {seedDemo.isPending ? "Seeding…" : "Load demo build"}
-                </Button>
-              )}
               <Button variant="outline" size="sm" className="border-border bg-surface-1">
                 <Filter className="mr-2 h-3.5 w-3.5" /> Filter
               </Button>
@@ -236,13 +204,6 @@ const Garage = () => {
           <StatCard label="VEHICLES"      value={String(new Set(builds.map((b: any) => b.car_id)).size)} hint="in garage" />
           <StatCard label="SUPPORTED"     value={String(templates.filter((t: any) => t.supported).length)} hint="car templates" />
         </div>
-
-        {/* Featured demo (only if user has it) */}
-        {hasDemoBuild && (
-          <div className="mt-6">
-            <FeaturedDemoBuild />
-          </div>
-        )}
 
         {/* Main grid */}
         <div className="mt-6 grid gap-6 xl:grid-cols-12">
@@ -262,17 +223,11 @@ const Garage = () => {
               <EmptyState
                 icon={<Wind className="h-5 w-5 text-primary" />}
                 title="No builds yet"
-                description="Start with the GR86 demo build to explore a complete workflow, or create your own from a supported vehicle."
+                description="Create your first build from a supported vehicle template to get started."
                 action={
-                  <div className="flex items-center gap-2">
-                    <Button variant="hero" size="sm" onClick={handleSeedDemo} disabled={seedDemo.isPending}>
-                      <Sparkles className="mr-2 h-3.5 w-3.5" />
-                      {seedDemo.isPending ? "Seeding…" : "Load GR86 demo"}
-                    </Button>
-                    <Button variant="glass" size="sm" asChild>
-                      <Link to="/build"><Plus className="mr-2 h-3.5 w-3.5" /> Create build</Link>
-                    </Button>
-                  </div>
+                  <Button variant="hero" size="sm" asChild>
+                    <Link to="/build"><Plus className="mr-2 h-3.5 w-3.5" /> Create build</Link>
+                  </Button>
                 }
               />
             ) : (

@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
+const REMEMBER_KEY = "aerolab.remember_me";
+
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
@@ -31,6 +33,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  // "Remember me" enforcement: if the user opted out, clear the persisted auth
+  // token when the tab/window closes so the session does not survive a restart.
+  useEffect(() => {
+    const handler = () => {
+      const remember = localStorage.getItem(REMEMBER_KEY);
+      if (remember === "false") {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith("sb-") && k.endsWith("-auth-token"))
+          .forEach((k) => localStorage.removeItem(k));
+      }
+    };
+    window.addEventListener("pagehide", handler);
+    return () => window.removeEventListener("pagehide", handler);
   }, []);
 
   const signOut = async () => {
