@@ -181,8 +181,9 @@ Deno.serve(async (req) => {
     const union = new Uint8Array(W * H);
     for (const s of keep) {
       const m = maskBufs[s.idx];
-      for (let i = 0, j = 3; i < union.length; i++, j += 4) {
-        if (m[j] > 127) union[i] = 255;
+      for (let i = 0, j = 0; i < union.length; i++, j += 4) {
+        // Grayscale mask → value in R; RGBA mask → value in A. Take max.
+        if (Math.max(m[j], m[j + 3]) > 127) union[i] = 255;
       }
     }
 
