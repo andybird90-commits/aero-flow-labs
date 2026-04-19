@@ -261,6 +261,7 @@ function ConceptCard({
           projectId={projectId}
           conceptId={concept.id}
           conceptTitle={concept.title}
+          sourceImageUrl={current.url}
         />
       )}
 
