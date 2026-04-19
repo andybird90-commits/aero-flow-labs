@@ -300,7 +300,9 @@ export function ExtractedPartPreview({
             {stage === "meshing" && (
               <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
                 <Box className="h-6 w-6 text-primary animate-pulse" />
-                <span className="text-xs font-mono uppercase tracking-widest text-primary">Meshing…</span>
+                <span className="text-xs font-mono uppercase tracking-widest text-primary">
+                  Meshing… {meshProgress}%
+                </span>
               </div>
             )}
           </div>
