@@ -19,7 +19,21 @@ import * as THREE from "three";
 import { STLLoader, OBJLoader } from "three-stdlib";
 import type { CarTemplate, FittedPart, Geometry } from "@/lib/repo";
 import { useSignedMeshUrl, meshExtension } from "@/lib/mesh-url";
-import { readOrientation } from "@/components/MeshOrientation";
+// MeshOrientation was removed with the Upload step. Mesh orientation
+// metadata may still exist on legacy geometry rows, so we keep a tiny
+// in-file reader for backward compatibility.
+type UpAxis = "y" | "z" | "x";
+interface MeshOrientation { upAxis: UpAxis; yawDeg: number; flipForward: boolean }
+const DEFAULT_ORIENTATION: MeshOrientation = { upAxis: "y", yawDeg: 0, flipForward: false };
+function readOrientation(geometry: Geometry | null | undefined): MeshOrientation {
+  const raw = (geometry?.metadata as any)?.mesh_orientation;
+  if (!raw || typeof raw !== "object") return DEFAULT_ORIENTATION;
+  return {
+    upAxis: (raw.upAxis as UpAxis) ?? "y",
+    yawDeg: typeof raw.yawDeg === "number" ? raw.yawDeg : 0,
+    flipForward: !!raw.flipForward,
+  };
+}
 import { computeAnchors, readNudge, nudged, type AeroAnchors, type MeshBounds } from "@/lib/aero-anchors";
 
 export type CameraPreset = "free" | "front_three_quarter" | "rear_three_quarter" | "side" | "top";
