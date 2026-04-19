@@ -129,12 +129,17 @@ Deno.serve(async (req) => {
     // Reference images from the concept — Gemini will use these to copy the
     // exact shape, proportions, vents, fasteners, and surface treatment of
     // the user's car. Without these, it invents a generic part.
-    const referenceUrls = [
-      concept.render_front_url,
-      concept.render_side_url,
-      concept.render_rear34_url,
-      concept.render_rear_url,
-    ].filter((u): u is string => !!u);
+    // If the caller supplied a `source_image_url` (e.g. a user-trimmed crop
+    // showing only the part), prefer it as the SOLE reference so Gemini
+    // ignores the surrounding bodywork entirely.
+    const referenceUrls = source_image_url
+      ? [source_image_url]
+      : [
+          concept.render_front_url,
+          concept.render_side_url,
+          concept.render_rear34_url,
+          concept.render_rear_url,
+        ].filter((u): u is string => !!u);
 
     // Pre-fetch reference images and inline them as data URLs so Gemini
     // definitely receives them as image content.
