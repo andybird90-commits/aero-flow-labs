@@ -23,7 +23,7 @@ const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const REPLICATE_MODEL = "tencent/hunyuan-3d-3.1";
+const REPLICATE_MODEL = "tencent/hunyuan3d-2";
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_MS = 5 * 60 * 1000; // 5 minutes
 
