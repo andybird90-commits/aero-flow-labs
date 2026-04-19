@@ -144,6 +144,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
             {concepts.map((c) => (
               <ConceptCard
                 key={c.id}
+                projectId={projectId}
                 concept={c}
                 onApprove={() => updateConcept.mutate({ id: c.id, patch: { status: "approved" } })}
                 onReject={() => updateConcept.mutate({ id: c.id, patch: { status: "rejected" } })}
