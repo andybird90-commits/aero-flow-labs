@@ -132,7 +132,7 @@ export function MeshUpload({ geometry }: Props) {
         {geometry.stl_path ? (
           <StatusChip tone="success" size="sm">Uploaded</StatusChip>
         ) : (
-          <StatusChip tone="muted" size="sm">Template baseline</StatusChip>
+          <StatusChip tone="neutral" size="sm">Template baseline</StatusChip>
         )}
       </div>
 
