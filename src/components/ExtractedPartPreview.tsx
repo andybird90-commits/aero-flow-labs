@@ -642,6 +642,25 @@ export function ExtractedPartPreview({
             <X className="h-4 w-4 mr-1" /> Close
           </Button>
 
+          {stage === "pretrim" && (
+            <>
+              {preMaskedUrl ? (
+                <>
+                  <Button variant="ghost" onClick={() => setPreMaskedUrl(null)}>
+                    <Undo2 className="h-4 w-4 mr-1" /> Re-mark
+                  </Button>
+                  <Button onClick={() => continueFromPretrim(true)}>
+                    <Wand2 className="h-4 w-4 mr-1" /> Render with this crop
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" onClick={() => continueFromPretrim(false)}>
+                  Skip trim & render full view
+                </Button>
+              )}
+            </>
+          )}
+
           {stage === "review" && (
             <>
               <Button variant="outline" onClick={() => runRender(undefined, true)}>
