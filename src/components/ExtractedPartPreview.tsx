@@ -234,7 +234,14 @@ export function ExtractedPartPreview({
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const buf = await resp.arrayBuffer();
           if (cancelled) return;
-          const geometry = loader.parse(buf);
+          // STLLoader's auto-detect can misread ASCII as binary. Sniff the
+          // first ~1KB: if it starts with "solid" AND contains "facet", it's
+          // ASCII — feed it as a string. Otherwise treat as binary.
+          const head = new TextDecoder().decode(buf.slice(0, 1024)).trim().toLowerCase();
+          const isAscii = head.startsWith("solid") && head.includes("facet");
+          const geometry = isAscii
+            ? loader.parse(new TextDecoder().decode(buf))
+            : loader.parse(buf);
           geometry.computeVertexNormals();
           const material = new THREE.MeshStandardMaterial({
             color: 0xb8c2cc,
