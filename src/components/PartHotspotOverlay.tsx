@@ -35,6 +35,9 @@ interface Props {
   projectId: string;
   conceptId: string;
   conceptTitle: string;
+  /** URL of the currently displayed concept render. Powers the optional
+   *  pre-render lasso trim inside the part preview modal. */
+  sourceImageUrl?: string;
 }
 
 interface Preview {
@@ -43,7 +46,7 @@ interface Preview {
   filenameBase: string;
 }
 
-export function PartHotspotOverlay({ active, view, projectId, conceptId, conceptTitle }: Props) {
+export function PartHotspotOverlay({ active, view, projectId, conceptId, conceptTitle, sourceImageUrl }: Props) {
   const { toast } = useToast();
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -176,6 +179,7 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
           kind={preview.kind}
           label={preview.label}
           filenameBase={preview.filenameBase}
+          sourceImageUrl={sourceImageUrl}
         />
       )}
     </>

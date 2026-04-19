@@ -30,23 +30,34 @@ interface Props {
   kind: string;
   label: string;
   filenameBase: string;
+  /** The on-screen concept render the user clicked from. Used to power the
+   *  optional pre-render trim step so we can isolate the part BEFORE Gemini
+   *  draws it. */
+  sourceImageUrl?: string;
 }
 
-type Stage = "rendering" | "review" | "meshing" | "ready" | "error";
+type Stage = "pretrim" | "rendering" | "review" | "meshing" | "ready" | "error";
 
 interface RenderImage { angle: string; url: string }
 
 export function ExtractedPartPreview({
-  open, onClose, conceptId, kind, label, filenameBase,
+  open, onClose, conceptId, kind, label, filenameBase, sourceImageUrl,
 }: Props) {
   const { toast } = useToast();
-  const [stage, setStage] = useState<Stage>("rendering");
+  const [stage, setStage] = useState<Stage>(sourceImageUrl ? "pretrim" : "rendering");
   const [images, setImages] = useState<RenderImage[]>([]);
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Trim / edge-snap state
+  // Pre-render trim state (lasso on the original concept image)
+  const [preLassoMode, setPreLassoMode] = useState<LassoMode>("lasso");
+  const [prePoints, setPrePoints] = useState<LassoClick[]>([]);
+  const [preLasso, setPreLasso] = useState<LassoPoint[]>([]);
+  const [preMaskedUrl, setPreMaskedUrl] = useState<string | null>(null);
+  const [preSnapping, setPreSnapping] = useState(false);
+
+  // Post-render trim / edge-snap state (lasso on the AI-drawn render)
   const [trimOpen, setTrimOpen] = useState(false);
   const [lassoMode, setLassoMode] = useState<LassoMode>("lasso");
   const [trimPoints, setTrimPoints] = useState<LassoClick[]>([]);
@@ -56,11 +67,16 @@ export function ExtractedPartPreview({
 
   // Reset trim state whenever the dialog opens or the underlying render changes.
   useEffect(() => {
+    if (!open) return;
+    setStage(sourceImageUrl ? "pretrim" : "rendering");
     setTrimOpen(false);
     setTrimPoints([]);
     setTrimLasso([]);
     setMaskedUrl(null);
-  }, [open, conceptId, kind]);
+    setPrePoints([]);
+    setPreLasso([]);
+    setPreMaskedUrl(null);
+  }, [open, conceptId, kind, sourceImageUrl]);
 
   const purgeCachedMesh = async () => {
     const { error } = await supabase
@@ -96,19 +112,31 @@ export function ExtractedPartPreview({
   };
 
   // Run the AI render. Pass `force` to bypass cache and always regenerate.
-  const runRender = async (signal?: { cancelled: boolean }, force = false) => {
+  // Pass `overrideSourceUrl` (typically a pre-trimmed crop) to push only that
+  // image to Gemini as the sole reference.
+  const runRender = async (
+    signal?: { cancelled: boolean },
+    force = false,
+    overrideSourceUrl?: string,
+  ) => {
     setStage("rendering");
     setImages([]);
     setGlbUrl(null);
     setError(null);
     try {
-      if (!force) {
+      // Trimmed renders bypass the cache — they're a different input.
+      if (!force && !overrideSourceUrl) {
         const hit = await loadFromCache(signal);
         if (hit) return;
         if (signal?.cancelled) return;
       }
       const { data, error } = await supabase.functions.invoke("render-isolated-part", {
-        body: { concept_id: conceptId, part_kind: kind, label },
+        body: {
+          concept_id: conceptId,
+          part_kind: kind,
+          label,
+          ...(overrideSourceUrl ? { source_image_url: overrideSourceUrl } : {}),
+        },
       });
       if (signal?.cancelled) return;
       if (error) throw error;
@@ -125,13 +153,17 @@ export function ExtractedPartPreview({
     }
   };
 
+  // Auto-run the AI render only when there's no source image to pre-trim.
+  // When sourceImageUrl is supplied we land on the "pretrim" stage and wait
+  // for the user to either skip or finish trimming.
   useEffect(() => {
     if (!open) return;
+    if (sourceImageUrl) return; // user drives the flow from pretrim
     const signal = { cancelled: false };
     runRender(signal);
     return () => { signal.cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, conceptId, kind, label]);
+  }, [open, conceptId, kind, label, sourceImageUrl]);
 
   const [meshProgress, setMeshProgress] = useState<number>(0);
 
@@ -256,6 +288,51 @@ export function ExtractedPartPreview({
 
   const resetTrim = () => { setTrimPoints([]); setTrimLasso([]); };
   const clearMask = () => { setMaskedUrl(null); resetTrim(); };
+
+  const resetPreTrim = () => { setPrePoints([]); setPreLasso([]); };
+
+  // PRE-RENDER trim — runs SAM on the original concept image so Gemini only
+  // sees the isolated part, not the whole car.
+  const onPreSnap = async () => {
+    if (!sourceImageUrl) return;
+    if (prePoints.length === 0 && preLasso.length < 3) {
+      toast({
+        title: "Mark the part first",
+        description: "Click on the part or draw a rough outline around it.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPreSnapping(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("segment-part", {
+        body: {
+          image_url: sourceImageUrl,
+          points: prePoints,
+          lasso: preLasso,
+          concept_id: conceptId,
+          part_kind: `${kind}-pretrim`,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const url = (data as any).masked_url as string;
+      if (!url) throw new Error("No masked image returned");
+      setPreMaskedUrl(url);
+      toast({ title: "Trimmed", description: "Click 'Render with this crop' to send it to the AI." });
+    } catch (e: any) {
+      toast({ title: "Snap failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setPreSnapping(false);
+    }
+  };
+
+  // Continue from pretrim into the AI render. If `useTrim` is true, push the
+  // SAM-masked crop as the override source.
+  const continueFromPretrim = (useTrim: boolean) => {
+    const signal = { cancelled: false };
+    runRender(signal, true, useTrim ? preMaskedUrl ?? undefined : undefined);
+  };
 
   // GLB viewer (only when stage === "ready")
   useEffect(() => {
@@ -395,6 +472,7 @@ export function ExtractedPartPreview({
         <DialogHeader>
           {titleLine}
           <DialogDescription>
+            {stage === "pretrim"   && "Optional: lasso the part on the original image so the AI only sees that crop. Or skip and render the full view."}
             {stage === "rendering" && "Drawing the part on a clean white background…"}
             {stage === "review"    && "Review the render. Regenerate if it looks generic, or turn it into a 3D model."}
             {stage === "meshing"   && "Building 3D mesh — usually 1-3 minutes."}
@@ -402,6 +480,69 @@ export function ExtractedPartPreview({
             {stage === "error"     && "Something went wrong. See details below."}
           </DialogDescription>
         </DialogHeader>
+
+        {/* PRETRIM: lasso on the original concept image, before AI render */}
+        {stage === "pretrim" && sourceImageUrl && (
+          <div className="space-y-2">
+            <div className="flex justify-center">
+              <div className="relative aspect-square w-full max-w-md rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
+                {preMaskedUrl ? (
+                  <>
+                    <img
+                      src={preMaskedUrl}
+                      alt="Trimmed crop"
+                      className="w-full h-full object-contain"
+                    />
+                    <span className="absolute bottom-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1 py-0.5 rounded">
+                      trimmed crop
+                    </span>
+                  </>
+                ) : (
+                  <PartLasso
+                    imageUrl={sourceImageUrl}
+                    mode={preLassoMode}
+                    points={prePoints}
+                    lasso={preLasso}
+                    onChange={({ points, lasso }) => { setPrePoints(points); setPreLasso(lasso); }}
+                    className="w-full h-full"
+                  />
+                )}
+              </div>
+            </div>
+
+            {!preMaskedUrl && (
+              <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
+                <div className="inline-flex rounded-md border border-border overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setPreLassoMode("lasso")}
+                    className={`px-2 py-1 inline-flex items-center gap-1 ${preLassoMode === "lasso" ? "bg-primary text-primary-foreground" : "bg-surface-1 text-muted-foreground"}`}
+                  >
+                    <Lasso className="h-3 w-3" /> Lasso
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreLassoMode("click")}
+                    className={`px-2 py-1 inline-flex items-center gap-1 ${preLassoMode === "click" ? "bg-primary text-primary-foreground" : "bg-surface-1 text-muted-foreground"}`}
+                  >
+                    <MousePointerClick className="h-3 w-3" /> Click
+                  </button>
+                </div>
+                <span className="text-muted-foreground font-mono uppercase tracking-widest">
+                  {preLassoMode === "click" ? "click on the part · shift-click = exclude" : "drag a loose outline around the part"}
+                </span>
+                <Button size="xs" variant="outline" onClick={resetPreTrim}>
+                  <Undo2 className="h-3 w-3 mr-1" /> Reset marks
+                </Button>
+                <Button size="xs" onClick={onPreSnap} disabled={preSnapping}>
+                  {preSnapping
+                    ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Snapping…</>
+                    : <><Scissors className="h-3 w-3 mr-1" /> Snap to part</>}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* RENDERING / REVIEW: single hero render — or the lasso/click trim
             tool when the user opens "Trim". Mask, once produced, replaces the
@@ -502,6 +643,25 @@ export function ExtractedPartPreview({
           <Button variant="ghost" onClick={onClose}>
             <X className="h-4 w-4 mr-1" /> Close
           </Button>
+
+          {stage === "pretrim" && (
+            <>
+              {preMaskedUrl ? (
+                <>
+                  <Button variant="ghost" onClick={() => setPreMaskedUrl(null)}>
+                    <Undo2 className="h-4 w-4 mr-1" /> Re-mark
+                  </Button>
+                  <Button onClick={() => continueFromPretrim(true)}>
+                    <Wand2 className="h-4 w-4 mr-1" /> Render with this crop
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" onClick={() => continueFromPretrim(false)}>
+                  Skip trim & render full view
+                </Button>
+              )}
+            </>
+          )}
 
           {stage === "review" && (
             <>
