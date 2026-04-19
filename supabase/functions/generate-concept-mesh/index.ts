@@ -1,10 +1,19 @@
 /**
  * generate-concept-mesh
  *
- * Turn an approved concept render into a 3D GLB using the Meshy
- * Image-to-3D API (their top-tier `meshy-5` model). Far better
- * geometry quality on hard-surface subjects (cars) than open-source
- * Replicate models.
+ * Turn an approved concept into a 3D GLB using Meshy's Multi-Image-to-3D
+ * endpoint. We feed all 4 angles (front 3/4, side, rear 3/4, rear) so Meshy
+ * has proper multi-view coverage instead of guessing the back of the car
+ * from a single front shot.
+ *
+ * Pipeline:
+ *   1. Fetch the 4 concept render URLs from the `concepts` row.
+ *   2. Background-remove each one via Replicate (851-labs/background-remover)
+ *      so Meshy gets a clean silhouette on a transparent / white backdrop.
+ *      Concept renders we show in the UI keep their dramatic studio backdrop —
+ *      these cleaned versions are only used as Meshy input.
+ *   3. POST to Meshy `multi-image-to-3d` with `meshy-6` + quad topology.
+ *   4. Poll until done, download GLB, re-host in our `concept-renders` bucket.
  *
  * Body: { concept_id: string }
  * Returns: { status: "generating", concept_id } (202) — job runs in background.
@@ -19,20 +28,20 @@ const corsHeaders = {
 };
 
 const MESHY_API_KEY = Deno.env.get("MESHY_API_KEY")!;
+const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const MESHY_BASE = "https://api.meshy.ai/openapi/v1/image-to-3d";
+const MESHY_MULTI_BASE = "https://api.meshy.ai/openapi/v1/multi-image-to-3d";
 const POLL_INTERVAL_MS = 4000;
-const MAX_POLL_MS = 8 * 60 * 1000; // 8 minutes — Meshy can take a few mins on top model
+const MAX_POLL_MS = 10 * 60 * 1000; // 10 minutes — multi-image can take longer
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    if (!MESHY_API_KEY) {
-      return json({ error: "MESHY_API_KEY is not configured" }, 500);
-    }
+    if (!MESHY_API_KEY) return json({ error: "MESHY_API_KEY is not configured" }, 500);
+    if (!REPLICATE_API_TOKEN) return json({ error: "REPLICATE_API_TOKEN is not configured" }, 500);
 
     const { concept_id } = await req.json();
     if (!concept_id || typeof concept_id !== "string") {
@@ -50,17 +59,27 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    // Load concept (verify ownership)
+    // Load concept (verify ownership) — pull all 4 angle URLs
     const { data: concept, error: cErr } = await admin
       .from("concepts")
-      .select("id, user_id, project_id, render_front_url")
+      .select("id, user_id, project_id, render_front_url, render_side_url, render_rear34_url, render_rear_url")
       .eq("id", concept_id)
       .eq("user_id", userId)
       .maybeSingle();
     if (cErr || !concept) return json({ error: "Concept not found" }, 404);
 
-    const frontImage = concept.render_front_url;
-    if (!frontImage) return json({ error: "Concept has no front render" }, 400);
+    // Build the ordered angle list. Front is required; others are best-effort.
+    // Meshy's multi-image endpoint accepts up to ~4 images.
+    const angleUrls = [
+      concept.render_front_url,
+      concept.render_side_url,
+      concept.render_rear34_url,
+      concept.render_rear_url,
+    ].filter((u): u is string => !!u);
+
+    if (angleUrls.length === 0 || !concept.render_front_url) {
+      return json({ error: "Concept has no front render" }, 400);
+    }
 
     // Mark generating
     await admin
@@ -68,18 +87,15 @@ Deno.serve(async (req) => {
       .update({ preview_mesh_status: "generating", preview_mesh_error: null })
       .eq("id", concept_id);
 
-    console.log("generate-concept-mesh: starting Meshy job for concept", concept_id);
+    console.log("generate-concept-mesh: starting Meshy multi-image job for concept", concept_id, "with", angleUrls.length, "angles");
 
-    // Run the long Meshy job in the background so we don't hit the 150s
-    // edge-runtime idle timeout. The client polls `preview_mesh_status` on
-    // the concept row to know when it's done.
     // @ts-ignore - EdgeRuntime is available in Supabase edge runtime
     EdgeRuntime.waitUntil(runMeshyJob({
       admin,
       concept_id,
       userId,
       projectId: concept.project_id,
-      imageUrl: frontImage,
+      angleUrls,
     }));
 
     return json({ status: "generating", concept_id }, 202);
@@ -89,28 +105,93 @@ Deno.serve(async (req) => {
   }
 });
 
+/**
+ * Background-remove a single image via Replicate's 851-labs/background-remover.
+ * Returns a public URL (Replicate-hosted) of the cleaned PNG, or null on failure.
+ *
+ * We deliberately don't re-upload to our own bucket here because Meshy fetches
+ * the URL directly within seconds and Replicate URLs are valid for 24h.
+ */
+async function removeBackground(imageUrl: string): Promise<string | null> {
+  try {
+    const createResp = await fetch("https://api.replicate.com/v1/predictions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
+        "Content-Type": "application/json",
+        Prefer: "wait", // synchronous response when fast enough
+      },
+      body: JSON.stringify({
+        // 851-labs/background-remover — fast, reliable, ~$0.001/image
+        version: "a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc",
+        input: { image: imageUrl, format: "png" },
+      }),
+    });
+
+    if (!createResp.ok) {
+      const t = await createResp.text();
+      console.warn("Replicate bg-remove create failed:", createResp.status, t.slice(0, 200));
+      return null;
+    }
+
+    let pred = await createResp.json();
+    // Poll until done if Prefer:wait didn't finish it.
+    const start = Date.now();
+    while (pred.status !== "succeeded" && pred.status !== "failed" && pred.status !== "canceled") {
+      if (Date.now() - start > 60_000) {
+        console.warn("bg-remove timed out");
+        return null;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+      const pollResp = await fetch(pred.urls.get, {
+        headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}` },
+      });
+      pred = await pollResp.json();
+    }
+
+    if (pred.status !== "succeeded") {
+      console.warn("bg-remove failed:", pred.error);
+      return null;
+    }
+
+    const out = typeof pred.output === "string" ? pred.output : pred.output?.[0];
+    return typeof out === "string" ? out : null;
+  } catch (e) {
+    console.warn("removeBackground error:", e);
+    return null;
+  }
+}
+
 async function runMeshyJob({
-  admin, concept_id, userId, projectId, imageUrl,
+  admin, concept_id, userId, projectId, angleUrls,
 }: {
   admin: ReturnType<typeof createClient>;
   concept_id: string;
   userId: string;
   projectId: string;
-  imageUrl: string;
+  angleUrls: string[];
 }) {
   try {
-    // 1) Create the Image-to-3D task using Meshy's top model.
-    // Docs: https://docs.meshy.ai/api/image-to-3d
-    const createResp = await fetch(MESHY_BASE, {
+    // 1) Background-remove all angles in parallel so Meshy gets clean silhouettes.
+    console.log("Background-removing", angleUrls.length, "angles...");
+    const cleaned = await Promise.all(angleUrls.map((u) => removeBackground(u)));
+    const meshyImages = cleaned
+      .map((c, i) => c ?? angleUrls[i]) // fall back to original if bg-remove failed
+      .filter(Boolean);
+    console.log("Cleaned images ready:", meshyImages.length, "of", angleUrls.length, "succeeded");
+
+    // 2) Create the Multi-Image-to-3D task.
+    // Docs: https://docs.meshy.ai/api/multi-image-to-3d
+    const createResp = await fetch(MESHY_MULTI_BASE, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${MESHY_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        image_url: imageUrl,
-        ai_model: "meshy-6",        // top-tier model
-        topology: "quad",            // cleaner geometry for hard surfaces
+        image_urls: meshyImages,
+        ai_model: "meshy-6",
+        topology: "quad",
         target_polycount: 50000,
         should_remesh: true,
         should_texture: true,
@@ -139,21 +220,21 @@ async function runMeshyJob({
       }).eq("id", concept_id);
       return;
     }
-    console.log("Meshy task created:", taskId);
+    console.log("Meshy multi-image task created:", taskId);
 
-    // 2) Poll until it succeeds, fails, or times out.
+    // 3) Poll until it succeeds, fails, or times out.
     const start = Date.now();
     let task: any = null;
     while (true) {
       if (Date.now() - start > MAX_POLL_MS) {
         await admin.from("concepts").update({
           preview_mesh_status: "failed",
-          preview_mesh_error: "Generation timed out after 8 minutes",
+          preview_mesh_error: "Generation timed out after 10 minutes",
         }).eq("id", concept_id);
         return;
       }
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      const pollResp = await fetch(`${MESHY_BASE}/${taskId}`, {
+      const pollResp = await fetch(`${MESHY_MULTI_BASE}/${taskId}`, {
         headers: { Authorization: `Bearer ${MESHY_API_KEY}` },
       });
       if (!pollResp.ok) {
@@ -187,7 +268,7 @@ async function runMeshyJob({
     }
     console.log("Meshy output GLB:", glbUrl);
 
-    // 3) Download and re-host in our public bucket so we control caching/expiry.
+    // 4) Download and re-host in our public bucket so we control caching/expiry.
     const glbResp = await fetch(glbUrl);
     if (!glbResp.ok) {
       await admin.from("concepts").update({
