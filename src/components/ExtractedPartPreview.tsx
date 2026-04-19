@@ -47,118 +47,139 @@ export function ExtractedPartPreview({
   }, [params]);
 
   useEffect(() => {
-    if (!open || !mountRef.current) return;
-    const mount = mountRef.current;
-    const width = mount.clientWidth || 480;
-    const height = mount.clientHeight || 360;
+    if (!open) return;
+    let cancelled = false;
+    let cleanup: (() => void) | null = null;
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b0d10);
-
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.01, 100);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(width, height);
-    mount.appendChild(renderer.domElement);
-
-    // Lighting
-    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-    const key = new THREE.DirectionalLight(0xffffff, 1.0);
-    key.position.set(2, 3, 2);
-    scene.add(key);
-    const rim = new THREE.DirectionalLight(0x88aaff, 0.4);
-    rim.position.set(-2, 1, -2);
-    scene.add(rim);
-
-    // Subtle ground grid for scale reference
-    const grid = new THREE.GridHelper(2, 20, 0x222831, 0x1a1d22);
-    (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.5;
-    scene.add(grid);
-
-    // Build the part — same geometry as STL export
-    const part = buildPartMesh(kind, params);
-
-    // Override material with a brighter, edge-lit look so users can read shape
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xd6dae0,
-      roughness: 0.45,
-      metalness: 0.15,
-    });
-    part.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = material;
-    });
-    scene.add(part);
-
-    // Wireframe overlay so internal sub-parts (fences, strakes, stands) are legible
-    const edgesGroup = new THREE.Group();
-    part.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh && m.geometry) {
-        const eg = new THREE.EdgesGeometry(m.geometry, 25);
-        const line = new THREE.LineSegments(
-          eg,
-          new THREE.LineBasicMaterial({ color: 0x0a0a0a, transparent: true, opacity: 0.55 }),
-        );
-        // Match world transform of source mesh
-        m.updateWorldMatrix(true, false);
-        line.applyMatrix4(m.matrixWorld);
-        edgesGroup.add(line);
+    // Wait until the dialog has actually laid out the mount with non-zero size.
+    // Radix animates content in, so first frame is often 0×0.
+    const waitForMount = () => {
+      if (cancelled) return;
+      const mount = mountRef.current;
+      const w = mount?.clientWidth ?? 0;
+      const h = mount?.clientHeight ?? 0;
+      if (!mount || w < 20 || h < 20) {
+        requestAnimationFrame(waitForMount);
+        return;
       }
-    });
-    scene.add(edgesGroup);
-
-    // Frame the camera around the part
-    const box = new THREE.Box3().setFromObject(part);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z, 0.1);
-    const dist = maxDim * 2.6;
-    camera.position.set(center.x + dist * 0.7, center.y + dist * 0.55, center.z + dist * 0.9);
-    camera.lookAt(center);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.copy(center);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.1;
-    controls.update();
-
-    // Auto-rotate gently for visual interest
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.8;
-
-    let raf = 0;
-    const tick = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
+      cleanup = init(mount, w, h);
     };
-    tick();
 
-    const onResize = () => {
-      if (!mount) return;
-      const w = mount.clientWidth, h = mount.clientHeight;
-      if (!w || !h) return;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-    };
-    const ro = new ResizeObserver(onResize);
-    ro.observe(mount);
+    const init = (mount: HTMLDivElement, width: number, height: number) => {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0b0d10);
 
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      controls.dispose();
-      renderer.dispose();
-      scene.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.geometry) m.geometry.dispose();
-        const mat = (m as any).material;
-        if (Array.isArray(mat)) mat.forEach((x: any) => x?.dispose?.());
-        else mat?.dispose?.();
+      // Camera works in millimetres so distances stay in nice human numbers.
+      const camera = new THREE.PerspectiveCamera(40, width / height, 1, 20000);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(width, height);
+      mount.appendChild(renderer.domElement);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+      const key = new THREE.DirectionalLight(0xffffff, 1.0);
+      key.position.set(2000, 3000, 2000);
+      scene.add(key);
+      const rim = new THREE.DirectionalLight(0x88aaff, 0.4);
+      rim.position.set(-2000, 1000, -2000);
+      scene.add(rim);
+
+      // Build part (metres) and scale to mm so it matches the STL + bbox readout.
+      const part = buildPartMesh(kind, params);
+      part.scale.setScalar(1000);
+      part.updateMatrixWorld(true);
+
+      const material = new THREE.MeshStandardMaterial({
+        color: 0xd6dae0,
+        roughness: 0.45,
+        metalness: 0.15,
       });
-      if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
+      part.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = material;
+      });
+      scene.add(part);
+
+      // Wireframe overlay so internal sub-parts (fences, strakes, stands) are legible.
+      const edgesGroup = new THREE.Group();
+      part.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && m.geometry) {
+          const eg = new THREE.EdgesGeometry(m.geometry, 25);
+          const line = new THREE.LineSegments(
+            eg,
+            new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 }),
+          );
+          m.updateWorldMatrix(true, false);
+          line.applyMatrix4(m.matrixWorld);
+          edgesGroup.add(line);
+        }
+      });
+      scene.add(edgesGroup);
+
+      // Frame camera around the part bbox.
+      const box = new THREE.Box3().setFromObject(part);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z, 100);
+
+      // Grid sized to part, in mm.
+      const gridSize = Math.ceil((maxDim * 3) / 100) * 100;
+      const grid = new THREE.GridHelper(gridSize, 20, 0x2a313a, 0x1a1d22);
+      grid.position.y = box.min.y - 5;
+      (grid.material as THREE.Material).transparent = true;
+      (grid.material as THREE.Material).opacity = 0.6;
+      scene.add(grid);
+
+      const dist = maxDim * 2.4;
+      camera.position.set(center.x + dist * 0.7, center.y + dist * 0.55, center.z + dist * 0.9);
+      camera.lookAt(center);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.copy(center);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.1;
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.8;
+      controls.update();
+
+      let raf = 0;
+      const tick = () => {
+        controls.update();
+        renderer.render(scene, camera);
+        raf = requestAnimationFrame(tick);
+      };
+      tick();
+
+      const onResize = () => {
+        const w = mount.clientWidth, h = mount.clientHeight;
+        if (!w || !h) return;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      };
+      const ro = new ResizeObserver(onResize);
+      ro.observe(mount);
+
+      return () => {
+        cancelAnimationFrame(raf);
+        ro.disconnect();
+        controls.dispose();
+        renderer.dispose();
+        scene.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.geometry) m.geometry.dispose();
+          const mat = (m as any).material;
+          if (Array.isArray(mat)) mat.forEach((x: any) => x?.dispose?.());
+          else mat?.dispose?.();
+        });
+        if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
+      };
+    };
+
+    waitForMount();
+    return () => {
+      cancelled = true;
+      cleanup?.();
     };
   }, [open, kind, params]);
 
