@@ -31,6 +31,7 @@ import type { AeroEstimate } from "@/lib/aero-estimator";
 import type { PackageMode } from "@/lib/aero-package-modes";
 import { getPackageMode } from "@/lib/aero-package-modes";
 import { useSignedMeshUrl, meshExtension } from "@/lib/mesh-url";
+import { readOrientation } from "@/components/MeshOrientation";
 
 export type ViewerMode = "flow" | "pressure" | "wake" | "forces" | "compare";
 
@@ -92,23 +93,43 @@ function UserMesh({
       2 /
       1000;
 
+    const orientation = readOrientation(geometry);
+
     const fit = (obj: THREE.Object3D) => {
-      const box = new THREE.Box3().setFromObject(obj);
+      // 1) Apply user-chosen up-axis correction by wrapping in a parent group.
+      //    Three.js is Y-up; many CAD/STL exports are Z-up or X-up.
+      const wrapper = new THREE.Group();
+      if (orientation.upAxis === "z") {
+        // Z-up → Y-up: rotate -90° around X
+        obj.rotation.x = -Math.PI / 2;
+      } else if (orientation.upAxis === "x") {
+        // X-up → Y-up: rotate +90° around Z
+        obj.rotation.z = Math.PI / 2;
+      }
+      wrapper.add(obj);
+
+      // 2) Apply yaw (around world Y) and optional 180° flip on the wrapper.
+      wrapper.rotation.y =
+        (orientation.yawDeg * Math.PI) / 180 +
+        (orientation.flipForward ? Math.PI : 0);
+
+      // 3) Now fit the rotated wrapper.
+      const box = new THREE.Box3().setFromObject(wrapper);
       const size = new THREE.Vector3();
       box.getSize(size);
       const longest = Math.max(size.x, size.y, size.z);
-      if (!isFinite(longest) || longest === 0) return obj;
+      if (!isFinite(longest) || longest === 0) return wrapper;
       const scale = targetLength / longest;
-      obj.scale.setScalar(scale);
+      wrapper.scale.setScalar(scale);
       // recentre & rest on ground
-      box.setFromObject(obj);
+      box.setFromObject(wrapper);
       const center = new THREE.Vector3();
       box.getCenter(center);
-      obj.position.sub(center);
-      box.setFromObject(obj);
-      obj.position.y -= box.min.y;
-      obj.position.y += ride;
-      obj.traverse((c) => {
+      wrapper.position.sub(center);
+      box.setFromObject(wrapper);
+      wrapper.position.y -= box.min.y;
+      wrapper.position.y += ride;
+      wrapper.traverse((c) => {
         const m = c as THREE.Mesh;
         if (m.isMesh) {
           m.castShadow = true;
@@ -125,7 +146,7 @@ function UserMesh({
           }
         }
       });
-      return obj;
+      return wrapper;
     };
 
     if (ext === "stl") {
