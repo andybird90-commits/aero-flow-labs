@@ -23,8 +23,9 @@ const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// tencent/hunyuan3d-2mv — multi-view variant, much better geometry when fed multiple angles
-const REPLICATE_VERSION = "71798fbc3c9f7b7097e3bb85496e5a797d8b8f616b550692e7c3e176a8e9e5db";
+// firtoz/trellis — Microsoft TRELLIS, best open-source image-to-3D for hard surfaces (cars, mech).
+// Single image in, GLB out. Much cleaner topology than Hunyuan.
+const REPLICATE_VERSION = "e8f6c45206993f297372f5436b90350817bd9b4a0d52d2a76df50c1c8afa2b3c";
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_MS = 5 * 60 * 1000; // 5 minutes
 
