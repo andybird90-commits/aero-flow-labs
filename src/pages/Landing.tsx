@@ -196,7 +196,7 @@ function Hero() {
                 <Link to="/garage">Start a build <ArrowRight className="ml-2 h-4 w-4" /></Link>
               </Button>
               <Button variant="glass" size="lg" asChild>
-                <Link to="/results"><PlayCircle className="mr-2 h-4 w-4" /> View demo run</Link>
+                <Link to="/auth"><PlayCircle className="mr-2 h-4 w-4" /> Sign in</Link>
               </Button>
             </div>
 
@@ -611,7 +611,7 @@ function OutputsPreview() {
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Button variant="hero" size="lg" asChild>
-            <Link to="/results">Open a sample run <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            <Link to="/garage">Start a build <ArrowRight className="ml-2 h-4 w-4" /></Link>
           </Button>
           <Button variant="glass" size="lg" asChild>
             <Link to="/design-system">View design system</Link>
@@ -745,7 +745,7 @@ function FinalCTA() {
             <Link to="/garage">Start a build <ArrowRight className="ml-2 h-4 w-4" /></Link>
           </Button>
           <Button variant="glass" size="lg" asChild>
-            <Link to="/results"><PlayCircle className="mr-2 h-4 w-4" /> View demo</Link>
+            <Link to="/auth"><PlayCircle className="mr-2 h-4 w-4" /> Sign in</Link>
           </Button>
         </div>
       </div>
