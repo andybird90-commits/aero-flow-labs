@@ -231,35 +231,48 @@ type SamRunOptions = {
   crop_n_layers: number;
 };
 
+class SamThrottledError extends Error {
+  constructor(message: string, public retryAfter: number) {
+    super(message);
+  }
+}
+
 async function runSamEverything(imageUrl: string, options: SamRunOptions): Promise<{ maskUrls: string[] }> {
-  const samResp = await fetch("https://api.replicate.com/v1/predictions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${REPLICATE_API_TOKEN}`,
-      "Content-Type": "application/json",
-      "Prefer": "wait=60",
-    },
-    body: JSON.stringify({
-      version: SAM_VERSION,
-      input: {
-        image: imageUrl,
-        ...options,
+  // Retry on 429 throttling, up to 3 times with backoff using retry_after.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const samResp = await fetch("https://api.replicate.com/v1/predictions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${REPLICATE_API_TOKEN}`,
+        "Content-Type": "application/json",
+        "Prefer": "wait=60",
       },
-    }),
-  });
+      body: JSON.stringify({
+        version: SAM_VERSION,
+        input: { image: imageUrl, ...options },
+      }),
+    });
 
-  const samJson = await samResp.json();
-  if (!samResp.ok) {
-    console.error("[segment-part] SAM error", samJson);
-    throw new Error(`SAM call failed: ${samJson?.detail || samResp.statusText}`);
+    const samJson = await samResp.json();
+    if (samResp.status === 429) {
+      const retryAfter = Number(samJson?.retry_after ?? samResp.headers.get("retry-after") ?? 8);
+      console.warn(`[segment-part] SAM throttled (attempt ${attempt + 1}), waiting ${retryAfter}s`);
+      if (attempt === 2) {
+        throw new SamThrottledError(samJson?.detail || "Throttled", retryAfter);
+      }
+      await new Promise(r => setTimeout(r, (retryAfter + 1) * 1000));
+      continue;
+    }
+    if (!samResp.ok) {
+      console.error("[segment-part] SAM error", samJson);
+      throw new Error(`SAM call failed: ${samJson?.detail || samResp.statusText}`);
+    }
+    if (samJson.status === "failed") {
+      throw new Error(`SAM failed: ${samJson.error}`);
+    }
+    return { maskUrls: (samJson.output?.individual_masks ?? []) as string[] };
   }
-  if (samJson.status === "failed") {
-    throw new Error(`SAM failed: ${samJson.error}`);
-  }
-
-  return {
-    maskUrls: (samJson.output?.individual_masks ?? []) as string[],
-  };
+  return { maskUrls: [] };
 }
 
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
