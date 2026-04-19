@@ -30,10 +30,15 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+type AngleKey = "front_three_quarter" | "side" | "rear_three_quarter" | "rear";
+
 interface Body {
   project_id: string;
   brief_id: string;
+  /** Legacy single snapshot (front 3/4). Kept for backward compatibility. */
   snapshot_data_url?: string | null;
+  /** Map of camera preset -> data URL. Preferred input. */
+  snapshots?: Partial<Record<AngleKey, string | null>>;
 }
 
 const VARIATIONS: Array<{ title: string; direction: string; modifier: string }> = [
