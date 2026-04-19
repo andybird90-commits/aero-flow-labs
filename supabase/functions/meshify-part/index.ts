@@ -73,24 +73,38 @@ Deno.serve(async (req) => {
       if (!Array.isArray(image_urls) || image_urls.length === 0) {
         return json({ error: "image_urls required" }, 400);
       }
-      const inputUrl = image_urls[0];
+      // Use multi-image-to-3d when we have >1 angle, else single.
+      const useMulti = image_urls.length > 1;
+      const endpoint = useMulti ? MESHY_MULTI : MESHY_SINGLE;
+      const payload = useMulti
+        ? {
+            image_urls,
+            ai_model: "meshy-6",
+            topology: "triangle",
+            target_polycount: 30000,
+            should_remesh: true,
+            should_texture: true,
+            enable_pbr: true,
+            symmetry_mode: "auto",
+          }
+        : {
+            image_url: image_urls[0],
+            ai_model: "meshy-6",
+            topology: "triangle",
+            target_polycount: 30000,
+            should_remesh: true,
+            should_texture: true,
+            enable_pbr: true,
+            symmetry_mode: "auto",
+          };
 
-      const createResp = await fetch(MESHY_SINGLE, {
+      const createResp = await fetch(endpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${MESHY_API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          image_url: inputUrl,
-          ai_model: "meshy-6",
-          topology: "triangle",
-          target_polycount: 30000,
-          should_remesh: true,
-          should_texture: true,
-          enable_pbr: true,
-          symmetry_mode: "auto",
-        }),
+        body: JSON.stringify(payload),
       });
       if (!createResp.ok) {
         const t = await createResp.text();
