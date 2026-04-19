@@ -59,6 +59,118 @@ function findComponent(components: AeroComponent[] = [], kind: string) {
   return components.find((c) => c.kind === kind && c.enabled);
 }
 
+/* ─── User-uploaded mesh (STL / OBJ) ───────────────────── */
+/**
+ * Loads a signed-URL STL/OBJ and auto-fits it to the template's wheelbase
+ * so it occupies roughly the same volume as the procedural body.
+ * Falls back silently to nothing on error — caller renders the procedural
+ * body when this returns null via the `loaded` callback.
+ */
+function UserMesh({
+  url,
+  ext,
+  template,
+  geometry,
+  onLoaded,
+}: {
+  url: string;
+  ext: "stl" | "obj";
+  template?: CarTemplate | null;
+  geometry?: Geometry | null;
+  onLoaded?: (ok: boolean) => void;
+}) {
+  const [object, setObject] = useState<THREE.Object3D | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const finish = (ok: boolean) => onLoaded?.(ok);
+
+    const targetLength = ((template?.wheelbase_mm ?? 2575) / 1000) + 1.45;
+    const ride =
+      ((geometry?.ride_height_front_mm ?? 130) +
+        (geometry?.ride_height_rear_mm ?? 135)) /
+      2 /
+      1000;
+
+    const fit = (obj: THREE.Object3D) => {
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const longest = Math.max(size.x, size.y, size.z);
+      if (!isFinite(longest) || longest === 0) return obj;
+      const scale = targetLength / longest;
+      obj.scale.setScalar(scale);
+      // recentre & rest on ground
+      box.setFromObject(obj);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      obj.position.sub(center);
+      box.setFromObject(obj);
+      obj.position.y -= box.min.y;
+      obj.position.y += ride;
+      obj.traverse((c) => {
+        const m = c as THREE.Mesh;
+        if (m.isMesh) {
+          m.castShadow = true;
+          m.receiveShadow = true;
+          if (!Array.isArray(m.material)) {
+            m.material = new THREE.MeshPhysicalMaterial({
+              color: "#0a1622",
+              metalness: 0.85,
+              roughness: 0.32,
+              clearcoat: 1.0,
+              clearcoatRoughness: 0.18,
+              envMapIntensity: 1.4,
+            });
+          }
+        }
+      });
+      return obj;
+    };
+
+    if (ext === "stl") {
+      const loader = new STLLoader();
+      loader.load(
+        url,
+        (geo) => {
+          if (cancelled) return;
+          geo.computeVertexNormals();
+          const mesh = new THREE.Mesh(geo);
+          const obj = fit(mesh);
+          setObject(obj);
+          finish(true);
+        },
+        undefined,
+        () => {
+          if (!cancelled) finish(false);
+        },
+      );
+    } else {
+      const loader = new OBJLoader();
+      loader.load(
+        url,
+        (group) => {
+          if (cancelled) return;
+          const obj = fit(group);
+          setObject(obj);
+          finish(true);
+        },
+        undefined,
+        () => {
+          if (!cancelled) finish(false);
+        },
+      );
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url, ext, template?.wheelbase_mm, template?.track_front_mm, template?.frontal_area_m2, geometry?.ride_height_front_mm, geometry?.ride_height_rear_mm, onLoaded]);
+
+  if (!object) return null;
+  return <primitive object={object} />;
+}
+
 /* ─── Procedural car geometry ──────────────────────────── */
 /**
  * Builds a stylised low-poly coupe whose proportions are driven by the
