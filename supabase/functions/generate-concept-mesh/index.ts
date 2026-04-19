@@ -109,7 +109,7 @@ async function runMeshyJob({
       },
       body: JSON.stringify({
         image_url: imageUrl,
-        ai_model: "meshy-5",        // top-tier model
+        ai_model: "meshy-6",        // top-tier model
         topology: "quad",            // cleaner geometry for hard surfaces
         target_polycount: 50000,
         should_remesh: true,
