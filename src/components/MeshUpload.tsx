@@ -16,7 +16,7 @@ import { useUpdateGeometry, type Geometry } from "@/lib/repo";
 import { Upload, FileBox, Trash2, CheckCircle2, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
 const ACCEPTED = [".stl", ".obj"];
 
 interface Props {
@@ -49,7 +49,7 @@ export function MeshUpload({ geometry }: Props) {
     if (file.size > MAX_BYTES) {
       toast({
         title: "File too large",
-        description: `Maximum 50 MB. This file is ${(file.size / 1024 / 1024).toFixed(1)} MB.`,
+        description: `Maximum 100 MB. This file is ${(file.size / 1024 / 1024).toFixed(1)} MB.`,
         variant: "destructive",
       });
       return;
@@ -185,7 +185,7 @@ export function MeshUpload({ geometry }: Props) {
               {busy ? `Uploading… ${progress}%` : "Drop STL or OBJ"}
             </div>
             <div className="text-mono text-[10px] text-muted-foreground mt-1">
-              Up to 50 MB · used as visual reference in the 3D viewer
+              Up to 100 MB · used as visual reference in the 3D viewer
             </div>
           </button>
         )}
