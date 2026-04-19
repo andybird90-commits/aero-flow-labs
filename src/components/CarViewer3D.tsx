@@ -784,7 +784,7 @@ function Scene({
 
       <Bounds fit clip observe margin={1.4}>
         <Float speed={0.3} rotationIntensity={0} floatIntensity={0.05}>
-          <CarBody template={template} geometry={geometry} />
+          <CarShell template={template} geometry={geometry} />
           <AeroParts template={template} components={components} packageMode={packageMode} />
           {compareGhost && (
             <group position={[0, 0, 0]}>
