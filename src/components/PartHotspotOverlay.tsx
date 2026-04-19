@@ -46,7 +46,7 @@ interface Preview {
   filenameBase: string;
 }
 
-export function PartHotspotOverlay({ active, view, projectId, conceptId, conceptTitle }: Props) {
+export function PartHotspotOverlay({ active, view, projectId, conceptId, conceptTitle, sourceImageUrl }: Props) {
   const { toast } = useToast();
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
