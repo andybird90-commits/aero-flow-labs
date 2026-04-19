@@ -704,6 +704,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      decrement_credits: {
+        Args: { _amount: number; _user_id: string }
+        Returns: number
+      }
+      duplicate_build: { Args: { _build_id: string }; Returns: string }
+      duplicate_variant: { Args: { _variant_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
