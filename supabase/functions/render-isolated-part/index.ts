@@ -30,16 +30,53 @@ const ALLOWED_KINDS = [
 ] as const;
 type Kind = typeof ALLOWED_KINDS[number];
 
-/** Per-part description fed to Gemini so it knows exactly what to draw. */
-const PART_DESCRIPTION: Record<Kind, string> = {
-  splitter:   "a carbon-fibre front splitter — a flat horizontal aerodynamic blade that mounts under the front bumper, with two short vertical side fences",
-  lip:        "a carbon-fibre front lip spoiler — a thin curved extension that mounts to the bottom of a front bumper",
-  canard:     "a pair of carbon-fibre canards (dive planes) — small angled aerodynamic fins that mount to the front bumper corners",
-  side_skirt: "a carbon-fibre side skirt — a long aerodynamic blade that mounts along the rocker panel between the wheels",
-  wide_arch:  "a carbon-fibre wide-body fender flare / wheel arch extension — a curved bolt-on panel that flares out around a wheel opening",
-  diffuser:   "a carbon-fibre rear diffuser — an angled underbody panel with multiple vertical strakes/fins, mounts under the rear bumper",
-  ducktail:   "a carbon-fibre ducktail spoiler — a small lip that rises off the rear deck/trunk lid",
-  wing:       "a carbon-fibre rear wing — a single-element aerofoil with two swan-neck stands and two vertical end plates",
+/**
+ * Per-part spec fed to Gemini. We split into:
+ *  - what:   exactly what the bolt-on aftermarket part IS
+ *  - shape:  the silhouette / topology so it draws the right thing
+ *  - not:    explicit negatives so it stops drawing the surrounding car body
+ */
+const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
+  splitter: {
+    what:  "a single bolt-on carbon-fibre front splitter blade",
+    shape: "one flat horizontal plate roughly 1500-1900mm wide and 80-150mm deep, with two small vertical side fences at the outer ends. Looks like a thin floating shelf",
+    not:   "Do NOT draw any bumper, grille, headlights, fender, hood, or any part of a car body. Just the standalone splitter plate, like a part on a parts-shop catalogue page.",
+  },
+  lip: {
+    what:  "a single thin carbon-fibre front lip extension",
+    shape: "a long, narrow, curved sliver about 1500mm wide, 30-60mm tall, banana-shaped in profile. Like a thick smile of carbon",
+    not:   "Do NOT draw a bumper, splitter, or any car body. Just the lip strip alone, no fender, no grille.",
+  },
+  canard: {
+    what:  "a single pair of carbon-fibre canards (dive planes)",
+    shape: "two small mirrored triangular fins, each about 200x150mm, with a slight curved sweep. Shown side by side, not on a car",
+    not:   "Do NOT draw a bumper, fender, headlights, or any car body. Just the two small fins floating alone.",
+  },
+  side_skirt: {
+    what:  "a single bolt-on carbon-fibre side skirt blade",
+    shape: "one long, low, blade-like panel about 1800-2200mm long, 150-250mm tall, with a slight outward flare at the bottom. Looks like a long thin surfboard",
+    not:   "Do NOT draw a door, rocker panel, wheels, fenders, or any car body. Just the standalone skirt blade, like a parts-catalogue product photo.",
+  },
+  wide_arch: {
+    what:  "a single bolt-on carbon-fibre wheel arch flare (one piece, like an over-fender)",
+    shape: "a curved arc-shaped strip that follows roughly half a wheel-well opening, about 800-1000mm long along the curve, 80-150mm wide, 30-50mm thick. Looks like a thick rainbow / horseshoe of carbon with mounting tabs",
+    not:   "Do NOT draw a fender, bumper, door, headlights, wheel, tyre, or any car body. Just the standalone arc-shaped flare, like a Liberty Walk or Pandem fender flare on a white shop background. NO wheel, NO tyre, NO door.",
+  },
+  diffuser: {
+    what:  "a single bolt-on carbon-fibre rear diffuser panel",
+    shape: "one angled rectangular underbody panel about 1400mm wide, 400-600mm deep, with 3-7 vertical fins/strakes running front-to-back along its underside",
+    not:   "Do NOT draw a bumper, exhaust, taillights, or any car body. Just the standalone diffuser panel with its strakes, like a product shot.",
+  },
+  ducktail: {
+    what:  "a single bolt-on carbon-fibre ducktail spoiler lip",
+    shape: "one curved trunk-mounted lip spoiler, about 1200-1400mm wide, 40-80mm tall, that gently rises and kicks up at the back. Like a duck's tail seen on its own",
+    not:   "Do NOT draw a trunk, rear window, taillights, bumper, or any car body. Just the standalone ducktail piece on a white background.",
+  },
+  wing: {
+    what:  "a single complete bolt-on carbon-fibre rear wing assembly",
+    shape: "one straight aerofoil blade about 1500mm wide and 250-350mm chord, mounted on TWO swan-neck stands rising from below, with TWO flat vertical end plates at each tip. Optional small gurney lip on the trailing edge",
+    not:   "Do NOT draw a trunk, rear window, taillights, bumper, or any car body. Just the standalone wing + stands + end plates floating, like a GT-wing product photo.",
+  },
 };
 
 const ANGLES = [
@@ -64,7 +101,6 @@ Deno.serve(async (req) => {
     }
     const kind = part_kind as Kind;
 
-    // Auth
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
@@ -83,24 +119,25 @@ Deno.serve(async (req) => {
     if (!concept) return json({ error: "Concept not found" }, 404);
 
     const styleHint = [
-      `Style match: ${concept.title}`,
+      `Style match the concept "${concept.title}"`,
       concept.direction ? `Direction: ${concept.direction}` : "",
     ].filter(Boolean).join(". ");
 
-    const partDesc = PART_DESCRIPTION[kind];
+    const spec = PART_SPEC[kind];
 
-    // Render each angle with a tight, focused prompt.
     const renders: Array<{ angle: string; url: string }> = [];
 
     for (const angle of ANGLES) {
       const prompt = [
-        `Studio product photograph of ${partDesc}.`,
+        `Studio product photograph of ${spec.what}.`,
+        `Shape: ${spec.shape}.`,
+        `${spec.not}`,
         `${styleHint}.`,
-        `Show ONLY the part itself — no car, no background, no people, no shadows behind it.`,
-        `Pure white seamless background. Soft even studio lighting. The part is centred and fills ~70% of the frame.`,
+        `This is an isolated aftermarket aero part shown alone, like a photo on an aero-parts e-commerce page (think APR, Voltex, Liberty Walk, Pandem catalogue).`,
+        `Pure white seamless background. Soft even studio lighting. The part is centred and fills ~60% of the frame, with empty white space around it.`,
         `Camera: ${angle.label}.`,
-        `Material: glossy black carbon-fibre weave with subtle highlights.`,
-        `Photorealistic, sharp focus, 4k product render. No text, no watermarks.`,
+        `Material: glossy black carbon-fibre weave with subtle highlights and visible weave pattern.`,
+        `Photorealistic, sharp focus, 4k product render. No text, no watermarks, no other objects.`,
       ].join(" ");
 
       const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
