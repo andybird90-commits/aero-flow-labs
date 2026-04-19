@@ -1,0 +1,1 @@
+ALTER TABLE public.concepts ADD COLUMN IF NOT EXISTS render_rear34_url text;

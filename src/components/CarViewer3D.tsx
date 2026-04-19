@@ -40,6 +40,11 @@ interface CarViewer3DProps {
 export interface CarViewer3DHandle {
   /** Capture the current frame as a base64 data URL. */
   captureFrame: () => string | null;
+  /**
+   * Capture a specific camera preset by temporarily moving the camera, rendering,
+   * grabbing the pixels, then restoring the camera. Returns a JPEG data URL.
+   */
+  captureAngle: (preset: CameraPreset) => string | null;
 }
 
 /* ─── helpers ──────────────────────────────────────────── */
@@ -515,6 +520,15 @@ export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(funct
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.Camera | null>(null);
 
+  // Camera presets used by captureAngle (mirrors CameraRig defaults).
+  const PRESET_POSITIONS: Record<CameraPreset, [number, number, number]> = {
+    free: [4.5, 1.8, 4.2],
+    front_three_quarter: [4.5, 1.6, 3.5],
+    rear_three_quarter: [-4.5, 1.6, -3.5],
+    side: [0, 1.4, 5],
+    top: [0, 5.5, 0.01],
+  };
+
   useImperativeHandle(ref, () => ({
     captureFrame: () => {
       const gl = glRef.current;
@@ -522,11 +536,33 @@ export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(funct
       const camera = cameraRef.current;
       if (!gl || !scene || !camera) return null;
       try {
-        // Force a fresh render so the drawing buffer is populated right now,
-        // then read it back. Without this, toDataURL often returns a blank
-        // image because the buffer has been cleared since the last paint.
         gl.render(scene, camera);
         return gl.domElement.toDataURL("image/jpeg", 0.92);
+      } catch {
+        return null;
+      }
+    },
+    captureAngle: (presetName: CameraPreset) => {
+      const gl = glRef.current;
+      const scene = sceneRef.current;
+      const camera = cameraRef.current as THREE.PerspectiveCamera | null;
+      if (!gl || !scene || !camera) return null;
+      try {
+        const target = new THREE.Vector3(0, 0.7, 0);
+        const prevPos = camera.position.clone();
+        const prevQuat = camera.quaternion.clone();
+        const dest = new THREE.Vector3(...PRESET_POSITIONS[presetName]);
+        camera.position.copy(dest);
+        camera.lookAt(target);
+        camera.updateMatrixWorld(true);
+        gl.render(scene, camera);
+        const url = gl.domElement.toDataURL("image/jpeg", 0.92);
+        // restore so live orbit isn't disturbed
+        camera.position.copy(prevPos);
+        camera.quaternion.copy(prevQuat);
+        camera.updateMatrixWorld(true);
+        gl.render(scene, camera);
+        return url;
       } catch {
         return null;
       }
