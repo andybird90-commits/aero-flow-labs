@@ -192,7 +192,7 @@ Deno.serve(async (req) => {
 
     // 7) Composite: keep original where mask=255, white where mask=0, blended where partial.
     const out = new Uint8Array(W * H * 4);
-    const src = decoded.image;
+    const src = srcRGBA;
     for (let i = 0, j = 0; i < W * H; i++, j += 4) {
       const a = feathered[i] / 255; // 0..1
       out[j]     = Math.round(src[j]     * a + 255 * (1 - a));
@@ -226,6 +226,31 @@ function json(obj: unknown, status = 200) {
 }
 
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+
+// Normalize decoded PNG pixels to RGBA. The `pngs` lib returns 3 bytes per
+// pixel for RGB images, 4 for RGBA, 1 for grayscale, 2 for grayscale+alpha.
+function toRGBA(pixels: Uint8Array, w: number, h: number): Uint8Array {
+  const n = w * h;
+  const channels = pixels.length / n;
+  if (channels === 4) return pixels;
+  const out = new Uint8Array(n * 4);
+  if (channels === 3) {
+    for (let i = 0, s = 0, d = 0; i < n; i++, s += 3, d += 4) {
+      out[d] = pixels[s]; out[d + 1] = pixels[s + 1]; out[d + 2] = pixels[s + 2]; out[d + 3] = 255;
+    }
+  } else if (channels === 1) {
+    for (let i = 0, d = 0; i < n; i++, d += 4) {
+      const v = pixels[i]; out[d] = v; out[d + 1] = v; out[d + 2] = v; out[d + 3] = 255;
+    }
+  } else if (channels === 2) {
+    for (let i = 0, s = 0, d = 0; i < n; i++, s += 2, d += 4) {
+      const v = pixels[s]; out[d] = v; out[d + 1] = v; out[d + 2] = v; out[d + 3] = pixels[s + 1];
+    }
+  } else {
+    throw new Error(`Unsupported channel count: ${channels} (length=${pixels.length}, ${w}x${h})`);
+  }
+  return out;
+}
 
 function alphaAt(rgba: Uint8Array, w: number, x: number, y: number): number {
   return rgba[(y * w + x) * 4 + 3];
