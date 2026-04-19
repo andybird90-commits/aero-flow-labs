@@ -372,7 +372,7 @@ export function ExtractedPartPreview({
 
           {stage === "review" && (
             <>
-              <Button variant="outline" onClick={() => runRender()}>
+              <Button variant="outline" onClick={() => runRender(undefined, true)}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Regenerate
               </Button>
               <Button onClick={onMakeMesh}>
