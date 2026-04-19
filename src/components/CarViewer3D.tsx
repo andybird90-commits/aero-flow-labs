@@ -186,7 +186,7 @@ function UserMesh({
     return () => {
       cancelled = true;
     };
-  }, [url, ext, template?.wheelbase_mm, template?.track_front_mm, template?.frontal_area_m2, geometry?.ride_height_front_mm, geometry?.ride_height_rear_mm, onLoaded]);
+  }, [url, ext, template?.wheelbase_mm, template?.track_front_mm, template?.frontal_area_m2, geometry?.ride_height_front_mm, geometry?.ride_height_rear_mm, (geometry?.metadata as any)?.mesh_orientation?.upAxis, (geometry?.metadata as any)?.mesh_orientation?.yawDeg, (geometry?.metadata as any)?.mesh_orientation?.flipForward, onLoaded]);
 
   if (!object) return null;
   return <primitive object={object} />;
