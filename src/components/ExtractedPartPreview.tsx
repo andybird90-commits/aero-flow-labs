@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, Wand2, Box, Download, X, RotateCcw } from "lucide-react";
@@ -148,8 +148,8 @@ export function ExtractedPartPreview({
 
         if (typeof pollData?.progress === "number") setMeshProgress(pollData.progress);
 
-        if (pollData?.status === "SUCCEEDED" && pollData?.glb_url) {
-          setGlbUrl(pollData.glb_url as string);
+        if (pollData?.status === "SUCCEEDED" && (pollData?.stl_url || pollData?.glb_url)) {
+          setGlbUrl((pollData.stl_url ?? pollData.glb_url) as string);
           setStage("ready");
           return;
         }
@@ -174,12 +174,12 @@ export function ExtractedPartPreview({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${filenameBase}.glb`;
+      a.download = `${filenameBase}.stl`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast({ title: `${label} downloaded`, description: `${filenameBase}.glb` });
+      toast({ title: `${label} downloaded`, description: `${filenameBase}.stl` });
     } catch (e: any) {
       toast({ title: "Download failed", description: String(e.message ?? e), variant: "destructive" });
     }
@@ -227,12 +227,18 @@ export function ExtractedPartPreview({
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.8;
 
-      const loader = new GLTFLoader();
+      const loader = new STLLoader();
       loader.load(
         glbUrl,
-        (gltf) => {
+        (geometry) => {
           if (cancelled) return;
-          const model = gltf.scene;
+          geometry.computeVertexNormals();
+          const material = new THREE.MeshStandardMaterial({
+            color: 0xb8c2cc,
+            metalness: 0.2,
+            roughness: 0.6,
+          });
+          const model = new THREE.Mesh(geometry, material);
           scene.add(model);
 
           const box = new THREE.Box3().setFromObject(model);
@@ -245,7 +251,7 @@ export function ExtractedPartPreview({
           controls.update();
         },
         undefined,
-        (err) => console.error("GLB load failed", err),
+        (err) => console.error("STL load failed", err),
       );
 
       let raf = 0;
@@ -381,7 +387,7 @@ export function ExtractedPartPreview({
 
           {stage === "ready" && (
             <Button onClick={onDownload}>
-              <Download className="h-4 w-4 mr-1" /> Download GLB
+              <Download className="h-4 w-4 mr-1" /> Download STL
             </Button>
           )}
 
