@@ -92,37 +92,34 @@ Deno.serve(async (req) => {
     // 2) Call SAM-2 everything-mode via Replicate (sync via Prefer: wait).
     console.log(`[segment-part] running SAM on ${W}x${H} image`);
     const samStart = Date.now();
-    const samResp = await fetch("https://api.replicate.com/v1/predictions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${REPLICATE_API_TOKEN}`,
-        "Content-Type": "application/json",
-        "Prefer": "wait=60",
-      },
-      body: JSON.stringify({
-        version: SAM_VERSION,
-        input: {
-          image: body.image_url,
-          // Modest mask budget keeps latency down and is plenty for one part.
-          mask_limit: 24,
-          points_per_side: 32,
-          pred_iou_thresh: 0.8,
-          min_mask_region_area: 200,
-          crop_n_layers: 0,
-        },
-      }),
+    const samPrimary = await runSamEverything(body.image_url, {
+      mask_limit: 24,
+      points_per_side: 32,
+      pred_iou_thresh: 0.8,
+      min_mask_region_area: 200,
+      crop_n_layers: 0,
     });
-    const samJson = await samResp.json();
-    if (!samResp.ok) {
-      console.error("[segment-part] SAM error", samJson);
-      return json({ error: `SAM call failed: ${samJson?.detail || samResp.statusText}` }, 502);
+
+    let maskUrls: string[] = samPrimary.maskUrls;
+    if (maskUrls.length === 0) {
+      console.warn("[segment-part] SAM returned no masks on primary settings, retrying with relaxed params");
+      const samRetry = await runSamEverything(body.image_url, {
+        mask_limit: 32,
+        points_per_side: 48,
+        pred_iou_thresh: 0.7,
+        min_mask_region_area: 64,
+        crop_n_layers: 1,
+      });
+      maskUrls = samRetry.maskUrls;
     }
-    if (samJson.status === "failed") {
-      return json({ error: `SAM failed: ${samJson.error}` }, 502);
+
+    console.log(`[segment-part] SAM returned ${maskUrls.length} masks in ${Date.now() - samStart}ms`);
+    if (maskUrls.length === 0) {
+      return json({
+        error: "SAM could not detect a usable part boundary from this selection. Try a tighter lasso or add a few click points on the part.",
+        fallback: true,
+      });
     }
-    const maskUrls: string[] = (samJson.output?.individual_masks ?? []) as string[];
-    console.log(`[segment-part] SAM returned ${maskUrls.length} masks in ${Date.now()-samStart}ms`);
-    if (maskUrls.length === 0) return json({ error: "SAM returned no masks" }, 502);
 
     // 3) Build the prompt sample set.
     //    - foreground: explicit fg points + dense samples inside the lasso polygon
