@@ -148,8 +148,8 @@ export function ExtractedPartPreview({
 
         if (typeof pollData?.progress === "number") setMeshProgress(pollData.progress);
 
-        if (pollData?.status === "SUCCEEDED" && pollData?.glb_url) {
-          setGlbUrl(pollData.glb_url as string);
+        if (pollData?.status === "SUCCEEDED" && (pollData?.stl_url || pollData?.glb_url)) {
+          setGlbUrl((pollData.stl_url ?? pollData.glb_url) as string);
           setStage("ready");
           return;
         }
@@ -174,12 +174,12 @@ export function ExtractedPartPreview({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${filenameBase}.glb`;
+      a.download = `${filenameBase}.stl`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast({ title: `${label} downloaded`, description: `${filenameBase}.glb` });
+      toast({ title: `${label} downloaded`, description: `${filenameBase}.stl` });
     } catch (e: any) {
       toast({ title: "Download failed", description: String(e.message ?? e), variant: "destructive" });
     }
