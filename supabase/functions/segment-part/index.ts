@@ -252,8 +252,11 @@ function toRGBA(pixels: Uint8Array, w: number, h: number): Uint8Array {
   return out;
 }
 
+// SAM masks may be grayscale (value in R) or RGBA (value in A). Take the max
+// so either layout works after toRGBA normalisation.
 function alphaAt(rgba: Uint8Array, w: number, x: number, y: number): number {
-  return rgba[(y * w + x) * 4 + 3];
+  const i = (y * w + x) * 4;
+  return Math.max(rgba[i], rgba[i + 3]);
 }
 
 function pointInPolygon(x: number, y: number, poly: { x: number; y: number }[]): boolean {
