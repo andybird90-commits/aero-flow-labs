@@ -425,8 +425,17 @@ export function ExtractedPartPreview({
           )}
 
           {stage === "error" && (
-            <Button onClick={() => runRender()}>
-              <RotateCcw className="h-4 w-4 mr-1" /> Retry
+            <Button
+              onClick={async () => {
+                try {
+                  await purgeCachedMesh();
+                  await runRender(undefined, true);
+                } catch (e: any) {
+                  toast({ title: "Cache clear failed", description: String(e.message ?? e), variant: "destructive" });
+                }
+              }}
+            >
+              <RotateCcw className="h-4 w-4 mr-1" /> Clear cache & retry
             </Button>
           )}
         </DialogFooter>
