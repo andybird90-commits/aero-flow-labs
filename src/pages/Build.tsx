@@ -27,23 +27,37 @@ import {
 import { estimateAero, aeroFromResult, aeroDelta } from "@/lib/aero-estimator";
 import { cn } from "@/lib/utils";
 
-/* ─── 3D viewer (visual scenery, kept as-is) ─────────────────── */
-type ViewMode = "geometry" | "pressure" | "velocity" | "wake";
+/* ─── 3D viewer (premium real-time, geometry-aware) ─────────── */
+import { CarViewer3D, type ViewerMode } from "@/components/CarViewer3D";
+import { PackageModePicker } from "@/components/PackageModePicker";
+import { type PackageMode } from "@/lib/aero-package-modes";
+import type { CarTemplate } from "@/lib/repo";
 
-function HeroViewer({ variantName, runStatus }: { variantName: string; runStatus: string }) {
-  const [mode, setMode] = useState<ViewMode>("velocity");
-  const [showLabels, setShowLabels] = useState(true);
+function HeroViewer({
+  variantName, runStatus, template, geometry, components, estimate, baselineEstimate,
+}: {
+  variantName: string;
+  runStatus: string;
+  template?: CarTemplate | null;
+  geometry?: any;
+  components?: any[];
+  estimate: ReturnType<typeof estimateAero>;
+  baselineEstimate: ReturnType<typeof estimateAero>;
+}) {
+  const [mode, setMode] = useState<ViewerMode>("flow");
+  const [pkg, setPkg] = useState<PackageMode>("track");
 
-  const modes: { id: ViewMode; label: string; sub: string }[] = [
-    { id: "geometry", label: "Geometry",    sub: "Surface mesh" },
-    { id: "pressure", label: "Pressure",    sub: "Cp field" },
-    { id: "velocity", label: "Velocity",    sub: "Streamlines" },
-    { id: "wake",     label: "Wake",        sub: "Q-criterion" },
+  const modes: { id: ViewerMode; label: string }[] = [
+    { id: "flow",     label: "Flow" },
+    { id: "pressure", label: "Pressure" },
+    { id: "wake",     label: "Wake" },
+    { id: "forces",   label: "Forces" },
+    { id: "compare",  label: "Compare" },
   ];
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-surface-0 shadow-elevated">
-      <div className="relative z-10 flex items-center justify-between border-b border-border bg-surface-0/80 px-3 py-2 backdrop-blur">
+      <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-0/85 px-3 py-2 backdrop-blur">
         <div className="flex items-center gap-1 rounded-md border border-border bg-surface-1 p-0.5">
           {modes.map((m) => (
             <button
@@ -58,65 +72,24 @@ function HeroViewer({ variantName, runStatus }: { variantName: string; runStatus
             </button>
           ))}
         </div>
-
-        <div className="flex items-center gap-2">
-          <span className="hidden md:inline text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            {modes.find((m) => m.id === mode)?.sub}
-          </span>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowLabels((v) => !v)}>
-            {showLabels ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground"><RotateCcw className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground"><Settings2 className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground"><Maximize2 className="h-3.5 w-3.5" /></Button>
-        </div>
+        <PackageModePicker value={pkg} onChange={setPkg} compact />
       </div>
 
-      <div className="relative h-[420px]">
-        <div className="absolute inset-0 grid-bg opacity-40" />
-        <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_45%,hsl(188_95%_55%/0.12),transparent_70%)]" />
-
-        <svg viewBox="0 0 1000 480" className="absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMid meet">
-          <defs>
-            <linearGradient id="bvBody" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="hsl(188 95% 55%)" stopOpacity="0.42" />
-              <stop offset="100%" stopColor="hsl(220 70% 25%)" stopOpacity="0.05" />
-            </linearGradient>
-            <linearGradient id="bvFlow" x1="0" x2="1">
-              <stop offset="0%" stopColor="hsl(188 95% 55%)" stopOpacity="0" />
-              <stop offset="50%" stopColor="hsl(188 95% 55%)" stopOpacity="0.7" />
-              <stop offset="100%" stopColor="hsl(188 95% 55%)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          {(mode === "velocity" || mode === "wake") && [...Array(28)].map((_, i) => (
-            <path key={i}
-              d={`M0,${40 + i * 14} C220,${30 + i * 13} 440,${160 + i * 8} 700,${130 + i * 10} S1000,${150 + i * 9} 1000,${150 + i * 9}`}
-              stroke="url(#bvFlow)" strokeWidth="1" fill="none" opacity={0.7 - i * 0.018} />
-          ))}
-          <g transform="translate(0, 30)">
-            <path d="M180,330 L260,290 L420,260 L580,255 L720,275 L820,300 L880,330 L180,330 Z"
-              fill={mode === "geometry" ? "hsl(188 95% 55% / 0.06)" : "url(#bvBody)"}
-              stroke="hsl(188 95% 55%)" strokeWidth="1.2" />
-            <path d="M380,260 L500,232 L620,238 L700,260 Z" fill="hsl(220 24% 10%)" stroke="hsl(188 95% 55%)" strokeWidth="1" opacity="0.85" />
-            <path d="M180,330 L260,330 L260,335 L180,335 Z" fill="hsl(188 95% 55%)" opacity="0.55" />
-            <path d="M740,235 L860,240 L860,247 L740,245 Z" fill="hsl(188 95% 55%)" opacity="0.6" />
-            <circle cx="290" cy="335" r="30" fill="hsl(220 26% 5%)" stroke="hsl(188 95% 55%)" strokeWidth="1" opacity="0.7" />
-            <circle cx="780" cy="335" r="30" fill="hsl(220 26% 5%)" stroke="hsl(188 95% 55%)" strokeWidth="1" opacity="0.7" />
-          </g>
-          {showLabels && (
-            <g style={{ font: "10px 'JetBrains Mono', monospace" }}>
-              <text x="60" y="438" fill="hsl(188 95% 55%)" opacity="0.9">{variantName.toUpperCase()}</text>
-              <text x="780" y="170" fill="hsl(188 95% 55%)" opacity="0.9">{mode.toUpperCase()}</text>
-            </g>
-          )}
-        </svg>
-
-        <div className="absolute top-3 left-3 flex items-center gap-2">
+      <div className="relative h-[460px] bg-[radial-gradient(60%_60%_at_50%_45%,hsl(188_95%_55%/0.08),transparent_70%)]">
+        <div className="absolute inset-0 grid-bg opacity-30 pointer-events-none" />
+        <CarViewer3D
+          template={template}
+          geometry={geometry}
+          components={components}
+          estimate={estimate}
+          baselineEstimate={baselineEstimate}
+          mode={mode}
+          packageMode={pkg}
+          compareGhost={mode === "compare"}
+        />
+        <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
           <StatusChip tone="simulating" size="sm">{runStatus}</StatusChip>
-        </div>
-        <div className="absolute top-3 right-3 flex items-center gap-3 rounded-md border border-border bg-surface-1/80 px-3 py-1.5 backdrop-blur text-mono text-[10px]">
-          <div><span className="text-muted-foreground">U∞ </span><span className="text-foreground">200 km/h</span></div>
-          <div><span className="text-muted-foreground">ρ </span><span className="text-foreground">1.225</span></div>
+          <span className="text-mono text-[10px] uppercase tracking-widest text-primary/80">{variantName}</span>
         </div>
       </div>
     </div>
