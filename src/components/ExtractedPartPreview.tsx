@@ -45,6 +45,16 @@ export function ExtractedPartPreview({
   const [error, setError] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
+  const purgeCachedMesh = async () => {
+    const { error } = await supabase
+      .from("concept_parts")
+      .update({ glb_url: null })
+      .eq("concept_id", conceptId)
+      .eq("kind", kind);
+    if (error) throw error;
+    setGlbUrl(null);
+  };
+
   // Look up cached renders/mesh for this concept+kind. Returns true if we
   // hydrated from the cache (so the caller skips regeneration).
   const loadFromCache = async (signal?: { cancelled: boolean }) => {
@@ -266,6 +276,9 @@ export function ExtractedPartPreview({
           controls.update();
         } catch (err) {
           console.error("STL load failed", err);
+          purgeCachedMesh().catch((purgeErr) => console.error("Failed to purge cached mesh", purgeErr));
+          setError("Cached STL failed to load. Cache cleared — regenerate the part mesh.");
+          setStage("error");
         }
       })();
 
@@ -412,8 +425,17 @@ export function ExtractedPartPreview({
           )}
 
           {stage === "error" && (
-            <Button onClick={() => runRender()}>
-              <RotateCcw className="h-4 w-4 mr-1" /> Retry
+            <Button
+              onClick={async () => {
+                try {
+                  await purgeCachedMesh();
+                  await runRender(undefined, true);
+                } catch (e: any) {
+                  toast({ title: "Cache clear failed", description: String(e.message ?? e), variant: "destructive" });
+                }
+              }}
+            >
+              <RotateCcw className="h-4 w-4 mr-1" /> Clear cache & retry
             </Button>
           )}
         </DialogFooter>
