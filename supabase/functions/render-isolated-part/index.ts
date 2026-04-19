@@ -91,8 +91,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { concept_id, part_kind, label } = await req.json() as {
-      concept_id?: string; part_kind?: string; label?: string;
+    const { concept_id, part_kind, label, source_image_url } = await req.json() as {
+      concept_id?: string; part_kind?: string; label?: string; source_image_url?: string;
     };
     if (!concept_id || !part_kind) {
       return json({ error: "concept_id and part_kind are required" }, 400);
