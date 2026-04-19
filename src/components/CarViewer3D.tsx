@@ -408,13 +408,11 @@ function Streamlines({
               }
             }}
           />
-          <lineDashedMaterial
+          <lineBasicMaterial
             attach="material"
             color="#22d3ee"
             transparent
-            opacity={0.55 - (i % 8) * 0.04}
-            dashSize={0.18}
-            gapSize={0.12}
+            opacity={0.45 - (i % 8) * 0.04}
             linewidth={1}
           />
         </line>
