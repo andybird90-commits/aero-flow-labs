@@ -317,7 +317,7 @@ export function ExtractedPartPreview({
           )}
 
           {stage === "error" && (
-            <Button onClick={() => { setStage("rendering"); setImages([]); }}>
+            <Button onClick={() => runRender()}>
               <RotateCcw className="h-4 w-4 mr-1" /> Retry
             </Button>
           )}
