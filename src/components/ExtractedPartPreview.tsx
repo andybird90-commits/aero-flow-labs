@@ -46,6 +46,22 @@ export function ExtractedPartPreview({
   const [error, setError] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
+  // Trim / edge-snap state
+  const [trimOpen, setTrimOpen] = useState(false);
+  const [lassoMode, setLassoMode] = useState<LassoMode>("lasso");
+  const [trimPoints, setTrimPoints] = useState<LassoClick[]>([]);
+  const [trimLasso, setTrimLasso] = useState<LassoPoint[]>([]);
+  const [maskedUrl, setMaskedUrl] = useState<string | null>(null);
+  const [snapping, setSnapping] = useState(false);
+
+  // Reset trim state whenever the dialog opens or the underlying render changes.
+  useEffect(() => {
+    setTrimOpen(false);
+    setTrimPoints([]);
+    setTrimLasso([]);
+    setMaskedUrl(null);
+  }, [open, conceptId, kind]);
+
   const purgeCachedMesh = async () => {
     const { error } = await supabase
       .from("concept_parts")
