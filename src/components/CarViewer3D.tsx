@@ -537,6 +537,7 @@ export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(funct
       <Canvas
         shadows
         dpr={[1, 2]}
+        gl={{ preserveDrawingBuffer: true, antialias: true }}
         camera={{ position: [4.5, 1.8, 4.2], fov: 35 }}
         onCreated={({ gl }) => {
           glRef.current = gl;
@@ -545,6 +546,7 @@ export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(funct
           gl.toneMappingExposure = 0.95;
         }}
       >
+        <SceneCapturer sceneRef={sceneRef} cameraRef={cameraRef} />
         <color attach="background" args={["#06080c"]} />
         <fog attach="fog" args={["#06080c", 14, 28]} />
         <ambientLight intensity={0.25} />
