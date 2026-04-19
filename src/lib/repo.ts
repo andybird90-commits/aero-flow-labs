@@ -502,17 +502,3 @@ export async function downloadExport(filePath: string, filename: string) {
   a.remove();
 }
 
-/* ─── SEED DEMO BUILD (calls edge function) ────────────────── */
-export function useSeedDemo() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("seed-demo-build");
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries();
-    },
-  });
-}
