@@ -214,6 +214,7 @@ export type Database = {
           concept_set_id: string | null
           created_at: string
           direction: string | null
+          hotspots: Json
           id: string
           locked_features: Json
           preview_mesh_error: string | null
@@ -234,6 +235,7 @@ export type Database = {
           concept_set_id?: string | null
           created_at?: string
           direction?: string | null
+          hotspots?: Json
           id?: string
           locked_features?: Json
           preview_mesh_error?: string | null
@@ -254,6 +256,7 @@ export type Database = {
           concept_set_id?: string | null
           created_at?: string
           direction?: string | null
+          hotspots?: Json
           id?: string
           locked_features?: Json
           preview_mesh_error?: string | null
