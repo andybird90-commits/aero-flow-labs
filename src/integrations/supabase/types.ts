@@ -177,6 +177,9 @@ export type Database = {
           direction: string | null
           id: string
           locked_features: Json
+          preview_mesh_error: string | null
+          preview_mesh_status: string
+          preview_mesh_url: string | null
           project_id: string
           render_front_url: string | null
           render_rear_url: string | null
@@ -194,6 +197,9 @@ export type Database = {
           direction?: string | null
           id?: string
           locked_features?: Json
+          preview_mesh_error?: string | null
+          preview_mesh_status?: string
+          preview_mesh_url?: string | null
           project_id: string
           render_front_url?: string | null
           render_rear_url?: string | null
@@ -211,6 +217,9 @@ export type Database = {
           direction?: string | null
           id?: string
           locked_features?: Json
+          preview_mesh_error?: string | null
+          preview_mesh_status?: string
+          preview_mesh_url?: string | null
           project_id?: string
           render_front_url?: string | null
           render_rear_url?: string | null
