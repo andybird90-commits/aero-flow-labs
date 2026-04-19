@@ -273,6 +273,9 @@ export function ExtractedPartPreview({
         },
       });
       if (error) throw error;
+      if ((data as any)?.fallback) {
+        throw new Error((data as any)?.error || "Could not snap to the part from that selection.");
+      }
       if ((data as any)?.error) throw new Error((data as any).error);
       const url = (data as any).masked_url as string;
       if (!url) throw new Error("No masked image returned");
@@ -315,6 +318,9 @@ export function ExtractedPartPreview({
         },
       });
       if (error) throw error;
+      if ((data as any)?.fallback) {
+        throw new Error((data as any)?.error || "Could not snap to the part from that selection.");
+      }
       if ((data as any)?.error) throw new Error((data as any).error);
       const url = (data as any).masked_url as string;
       if (!url) throw new Error("No masked image returned");
