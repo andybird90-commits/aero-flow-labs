@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
     }
     const points = body.points ?? [];
     const lasso  = body.lasso  ?? [];
+    const normalizedLasso = lasso.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
     if (points.length === 0 && lasso.length < 3) {
       return json({ error: "Provide at least one click point or a 3-point lasso" }, 400);
     }
@@ -139,7 +140,7 @@ Deno.serve(async (req) => {
     //    - background: explicit bg points
     const fgPts: { x: number; y: number }[] = [];
     const bgPts: { x: number; y: number }[] = [];
-    const normalizedLasso = lasso.map((p) => ({
+    const clampedLasso = normalizedLasso.map((p) => ({
       x: clamp(Math.round(p.x), 0, W - 1),
       y: clamp(Math.round(p.y), 0, H - 1),
     }));
@@ -147,9 +148,9 @@ Deno.serve(async (req) => {
       const t = { x: clamp(Math.round(p.x), 0, W - 1), y: clamp(Math.round(p.y), 0, H - 1) };
       if (p.label === 0) bgPts.push(t); else fgPts.push(t);
     }
-    if (normalizedLasso.length >= 3) {
+    if (clampedLasso.length >= 3) {
       // Sample the polygon's bounding box on a coarse grid, keep points inside.
-      const xs = normalizedLasso.map(p => p.x), ys = normalizedLasso.map(p => p.y);
+      const xs = clampedLasso.map(p => p.x), ys = clampedLasso.map(p => p.y);
       const x0 = Math.max(0, Math.floor(Math.min(...xs)));
       const x1 = Math.min(W - 1, Math.ceil(Math.max(...xs)));
       const y0 = Math.max(0, Math.floor(Math.min(...ys)));
@@ -157,7 +158,7 @@ Deno.serve(async (req) => {
       const step = Math.max(4, Math.round(Math.min(x1 - x0, y1 - y0) / 24));
       for (let y = y0; y <= y1; y += step) {
         for (let x = x0; x <= x1; x += step) {
-          if (pointInPolygon(x, y, normalizedLasso)) fgPts.push({ x, y });
+          if (pointInPolygon(x, y, clampedLasso)) fgPts.push({ x, y });
         }
       }
     }
