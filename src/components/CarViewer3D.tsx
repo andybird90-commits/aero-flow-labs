@@ -333,21 +333,25 @@ function Wheel({ position, ghost }: { position: [number, number, number]; ghost?
   );
 }
 
-/* ─── Aero parts (parametric add-ons) ─────────────────────────── */
+/* ─── Aero parts (parametric add-ons, anchored to car) ───── */
+/**
+ * Parts attach to **anchors** computed from either the uploaded mesh's
+ * bounding box or the procedural template — so when a real STL is loaded
+ * the splitter sticks to the actual nose, the wing sits behind the actual
+ * tail, etc. Each component can also store a manual `nudge_x/y/z` offset
+ * in its params for fine adjustment.
+ */
 function AeroParts({
-  template,
   components = [],
   packageMode,
+  anchors,
 }: {
-  template?: CarTemplate | null;
   components?: AeroComponent[];
   packageMode?: PackageMode;
+  anchors: AeroAnchors;
 }) {
-  const wheelbase = (template?.wheelbase_mm ?? 2575) / 1000;
-  const length = wheelbase + 1.45;
-  const fa = template?.frontal_area_m2 ?? 2.04;
-  const width = Math.max((template?.track_front_mm ?? 1520) / 1000 + 0.05, 1.7);
-  const height = Math.max(0.45, fa / Math.max(width, 1.4) * 0.85);
+  const { length, width, height } = anchors;
+  const a = anchors.anchors;
 
   const partMat = useMemo(
     () =>
@@ -384,111 +388,147 @@ function AeroParts({
 
   return (
     <group>
-      {/* SPLITTER */}
-      {splitter && (
-        <mesh
-          position={[length / 2 - 0.05 + paramN(splitter.params, "splProtrusion", 60) / 2000, 0.085, 0]}
-          material={partMat}
-          castShadow
-        >
-          <boxGeometry
-            args={[
-              paramN(splitter.params, "splProtrusion", 60) / 1000,
-              0.02,
-              width * 0.95,
-            ]}
-          />
-        </mesh>
-      )}
-
-      {/* CANARDS */}
-      {canards &&
-        [-1, 1].map((side) => (
+      {/* SPLITTER — protrudes forward from the front anchor */}
+      {splitter && (() => {
+        const n = readNudge(splitter.params);
+        const protr = paramN(splitter.params, "splProtrusion", 60) / 1000;
+        const p = nudged(a.splitter, n);
+        return (
           <mesh
-            key={side}
-            position={[length / 2 - 0.45, 0.32, (width / 2 - 0.06) * side]}
-            rotation={[0, 0, paramN(canards.params, "canAngle", 12) * Math.PI / 180 * -side]}
-            material={accentMat}
-            castShadow
-          >
-            <boxGeometry args={[0.18, 0.012, 0.16]} />
-          </mesh>
-        ))}
-
-      {/* SIDE SKIRTS */}
-      {skirts &&
-        [-1, 1].map((side) => (
-          <mesh
-            key={side}
-            position={[0, 0.1, (width / 2 + 0.005) * side]}
+            position={[p.x + protr / 2, p.y, p.z]}
             material={partMat}
             castShadow
           >
-            <boxGeometry args={[length * 0.55, paramN(skirts.params, "skDepth", 70) / 1000, 0.04]} />
+            <boxGeometry args={[protr, 0.02, width * 0.95]} />
           </mesh>
-        ))}
+        );
+      })()}
 
-      {/* DUCKTAIL */}
-      {ducktail && (
-        <mesh
-          position={[-length / 2 + 0.15, 0.1 + height * 0.95, 0]}
-          rotation={[0, 0, 0.25]}
-          material={partMat}
-          castShadow
-        >
-          <boxGeometry args={[0.22, paramN(ducktail.params, "duckHeight", 38) / 1000, width * 0.85]} />
-        </mesh>
-      )}
-
-      {/* REAR WING */}
-      {wing && (
-        <group position={[-length / 2 + 0.12, 0.1 + height + 0.18 + intensity * 0.05, 0]}>
-          {/* uprights */}
-          {[-1, 1].map((side) => (
-            <mesh key={side} position={[0, -0.1, (width * 0.32) * side]} material={partMat} castShadow>
-              <boxGeometry args={[0.04, 0.22, 0.04]} />
-            </mesh>
-          ))}
-          {/* main plane */}
-          <mesh
-            rotation={[0, 0, -paramN(wing.params, "aoa", 8) * Math.PI / 180]}
-            material={partMat}
-            castShadow
-          >
-            <boxGeometry args={[paramN(wing.params, "chord", 280) / 1000, 0.025, width * 0.78]} />
-          </mesh>
-          {/* gurney lip */}
-          <mesh
-            position={[-paramN(wing.params, "chord", 280) / 2000, 0.012 + paramN(wing.params, "gurney", 12) / 2000, 0]}
-            material={accentMat}
-          >
-            <boxGeometry args={[0.012, paramN(wing.params, "gurney", 12) / 1000, width * 0.78]} />
-          </mesh>
-          {/* second element if applicable */}
-          {paramN(wing.params, "elements", 2) > 1 && (
+      {/* CANARDS — one per side, anchored to front fenders */}
+      {canards && (() => {
+        const n = readNudge(canards.params);
+        const angle = paramN(canards.params, "canAngle", 12) * Math.PI / 180;
+        return [
+          { side: -1, anchor: a.canardsLeft },
+          { side: 1, anchor: a.canardsRight },
+        ].map(({ side, anchor }) => {
+          const p = nudged(anchor, n);
+          return (
             <mesh
-              position={[paramN(wing.params, "chord", 280) / 2500, 0.06, 0]}
-              rotation={[0, 0, -paramN(wing.params, "aoa", 8) * Math.PI / 180 * 1.2]}
+              key={side}
+              position={[p.x, p.y, p.z * (side === 1 ? 1 : 1)]}
+              rotation={[0, 0, angle * -side]}
+              material={accentMat}
+              castShadow
+            >
+              <boxGeometry args={[0.18, 0.012, 0.16]} />
+            </mesh>
+          );
+        });
+      })()}
+
+      {/* SIDE SKIRTS — left/right anchors */}
+      {skirts && (() => {
+        const n = readNudge(skirts.params);
+        const depth = paramN(skirts.params, "skDepth", 70) / 1000;
+        return [
+          { side: -1, anchor: a.skirtsLeft },
+          { side: 1, anchor: a.skirtsRight },
+        ].map(({ side, anchor }) => {
+          const p = nudged(anchor, n);
+          return (
+            <mesh
+              key={side}
+              position={[p.x, p.y, p.z]}
               material={partMat}
               castShadow
             >
-              <boxGeometry args={[paramN(wing.params, "chord", 280) / 1500, 0.02, width * 0.74]} />
+              <boxGeometry args={[length * 0.55, depth, 0.04]} />
             </mesh>
-          )}
-        </group>
-      )}
+          );
+        });
+      })()}
 
-      {/* DIFFUSER */}
-      {diffuser && (
-        <mesh
-          position={[-length / 2 + 0.08, 0.06, 0]}
-          rotation={[0, 0, paramN(diffuser.params, "diffAngle", 11) * Math.PI / 180]}
-          material={partMat}
-          castShadow
-        >
-          <boxGeometry args={[paramN(diffuser.params, "diffLength", 780) / 1500, 0.018, width * 0.85]} />
-        </mesh>
-      )}
+      {/* DUCKTAIL — sits on the rear deck */}
+      {ducktail && (() => {
+        const n = readNudge(ducktail.params);
+        const h = paramN(ducktail.params, "duckHeight", 38) / 1000;
+        const p = nudged(a.ducktail, n);
+        return (
+          <mesh
+            position={[p.x, p.y, p.z]}
+            rotation={[0, 0, 0.25]}
+            material={partMat}
+            castShadow
+          >
+            <boxGeometry args={[0.22, h, width * 0.85]} />
+          </mesh>
+        );
+      })()}
+
+      {/* REAR WING — anchored above tail, lifts with package intensity */}
+      {wing && (() => {
+        const n = readNudge(wing.params);
+        const aoa = paramN(wing.params, "aoa", 8) * Math.PI / 180;
+        const chord = paramN(wing.params, "chord", 280) / 1000;
+        const gurney = paramN(wing.params, "gurney", 12) / 1000;
+        const elements = paramN(wing.params, "elements", 2);
+        const p = nudged(a.wing, n);
+        return (
+          <group position={[p.x, p.y + intensity * 0.05, p.z]}>
+            {/* uprights */}
+            {[-1, 1].map((side) => (
+              <mesh key={side} position={[0, -0.1, (width * 0.32) * side]} material={partMat} castShadow>
+                <boxGeometry args={[0.04, 0.22, 0.04]} />
+              </mesh>
+            ))}
+            {/* main plane */}
+            <mesh
+              rotation={[0, 0, -aoa]}
+              material={partMat}
+              castShadow
+            >
+              <boxGeometry args={[chord, 0.025, width * 0.78]} />
+            </mesh>
+            {/* gurney lip */}
+            <mesh
+              position={[-chord / 2, 0.012 + gurney / 2, 0]}
+              material={accentMat}
+            >
+              <boxGeometry args={[0.012, gurney, width * 0.78]} />
+            </mesh>
+            {/* second element */}
+            {elements > 1 && (
+              <mesh
+                position={[chord / 2.5, 0.06, 0]}
+                rotation={[0, 0, -aoa * 1.2]}
+                material={partMat}
+                castShadow
+              >
+                <boxGeometry args={[chord / 1.5, 0.02, width * 0.74]} />
+              </mesh>
+            )}
+          </group>
+        );
+      })()}
+
+      {/* DIFFUSER — tucks under the rear */}
+      {diffuser && (() => {
+        const n = readNudge(diffuser.params);
+        const angle = paramN(diffuser.params, "diffAngle", 11) * Math.PI / 180;
+        const len = paramN(diffuser.params, "diffLength", 780) / 1500;
+        const p = nudged(a.diffuser, n);
+        return (
+          <mesh
+            position={[p.x, p.y, p.z]}
+            rotation={[0, 0, angle]}
+            material={partMat}
+            castShadow
+          >
+            <boxGeometry args={[len, 0.018, width * 0.85]} />
+          </mesh>
+        );
+      })()}
     </group>
   );
 }
