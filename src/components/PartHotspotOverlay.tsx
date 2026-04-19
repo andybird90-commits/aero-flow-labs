@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { downloadStl, partToStlString } from "@/lib/part-stl";
 import { cn } from "@/lib/utils";
+import { ExtractedPartPreview } from "@/components/ExtractedPartPreview";
 
 type ViewKey = "front" | "side" | "rear34" | "rear";
 type PartKind =
@@ -66,10 +67,19 @@ interface Props {
   conceptTitle: string;
 }
 
+interface Preview {
+  kind: PartKind;
+  label: string;
+  params: Record<string, number>;
+  reasoning: string;
+  filename: string;
+}
+
 export function PartHotspotOverlay({ active, view, projectId, conceptId, conceptTitle }: Props) {
   const { toast } = useToast();
   const [busyKind, setBusyKind] = useState<string | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
 
   const zones = ZONES[view] ?? [];
 
@@ -88,14 +98,16 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
       const reasoning = (data as any).reasoning as string;
       const present = !!(data as any).present;
 
-      const stl = partToStlString(zone.kind, params);
       const safeTitle = conceptTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "concept";
       const filename = `${safeTitle}__${zone.kind}.stl`;
-      downloadStl(filename, stl);
 
-      toast({
-        title: present ? `${zone.label} extracted` : `${zone.label} extracted (defaulted)`,
-        description: reasoning ? reasoning.slice(0, 180) : `Saved as ${filename}`,
+      // Show preview modal — user confirms download from there
+      setPreview({
+        kind: zone.kind,
+        label: zone.label,
+        params,
+        reasoning: present ? reasoning : `${reasoning ?? ""} (Part not clearly visible — using sensible defaults.)`.trim(),
+        filename,
       });
     } catch (e: any) {
       const msg = String(e.message ?? e);
@@ -105,6 +117,14 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
     } finally {
       setBusyKind(null);
     }
+  };
+
+  const confirmDownload = () => {
+    if (!preview) return;
+    const stl = partToStlString(preview.kind, preview.params);
+    downloadStl(preview.filename, stl);
+    toast({ title: `${preview.label} downloaded`, description: preview.filename });
+    setPreview(null);
   };
 
   if (!active) return null;
