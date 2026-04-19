@@ -397,8 +397,15 @@ export function useJobRealtime(userId: string | undefined) {
   const qc = useQueryClient();
   useEffect(() => {
     if (!userId) return;
-    const ch = supabase.channel(`jobs-${userId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "simulation_jobs", filter: `user_id=eq.${userId}` },
+    const channelName = `jobs-${userId}`;
+    // Reuse-or-create: avoid re-binding .on() on an already-subscribed channel
+    // (happens under React StrictMode double-mount).
+    const existing = supabase.getChannels().find((c) => c.topic === `realtime:${channelName}`);
+    if (existing) {
+      supabase.removeChannel(existing);
+    }
+    const ch = supabase.channel(channelName);
+    ch.on("postgres_changes", { event: "*", schema: "public", table: "simulation_jobs", filter: `user_id=eq.${userId}` },
         () => {
           qc.invalidateQueries({ queryKey: ["jobs"] });
           qc.invalidateQueries({ queryKey: ["variant_jobs"] });
