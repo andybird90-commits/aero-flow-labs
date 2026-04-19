@@ -832,9 +832,11 @@ function StudioFloor() {
 function CarShell({
   template,
   geometry,
+  onMeshBounds,
 }: {
   template?: CarTemplate | null;
   geometry?: Geometry | null;
+  onMeshBounds: (b: MeshBounds | null) => void;
 }) {
   const { url } = useSignedMeshUrl(geometry?.stl_path);
   const ext = meshExtension(geometry?.stl_path);
@@ -843,7 +845,8 @@ function CarShell({
   // Reset when path changes
   useEffect(() => {
     setLoaded(false);
-  }, [geometry?.stl_path]);
+    onMeshBounds(null);
+  }, [geometry?.stl_path, onMeshBounds]);
 
   const showProcedural = !url || !ext || !loaded;
 
@@ -856,6 +859,7 @@ function CarShell({
           template={template}
           geometry={geometry}
           onLoaded={setLoaded}
+          onBounds={onMeshBounds}
         />
       )}
       {showProcedural && <CarBody template={template} geometry={geometry} />}
@@ -874,6 +878,17 @@ function Scene({
   packageMode,
   compareGhost,
 }: Omit<CarViewer3DProps, "className">) {
+  const [meshBounds, setMeshBounds] = useState<MeshBounds | null>(null);
+
+  const anchors = useMemo(
+    () =>
+      computeAnchors(template, meshBounds, {
+        front_mm: geometry?.ride_height_front_mm,
+        rear_mm: geometry?.ride_height_rear_mm,
+      }),
+    [template, meshBounds, geometry?.ride_height_front_mm, geometry?.ride_height_rear_mm],
+  );
+
   return (
     <>
       {/* Lighting */}
@@ -897,8 +912,8 @@ function Scene({
 
       <Bounds fit clip observe margin={1.4}>
         <Float speed={0.3} rotationIntensity={0} floatIntensity={0.05}>
-          <CarShell template={template} geometry={geometry} />
-          <AeroParts template={template} components={components} packageMode={packageMode} />
+          <CarShell template={template} geometry={geometry} onMeshBounds={setMeshBounds} />
+          <AeroParts components={components} packageMode={packageMode} anchors={anchors} />
           {compareGhost && (
             <group position={[0, 0, 0]}>
               <CarBody template={template} geometry={geometry} ghost />
