@@ -124,13 +124,12 @@ async function runReplicateJob({
         preview_mesh_status: "failed",
         preview_mesh_error: `Replicate ${createResp.status}: ${t.slice(0, 200)}`,
       }).eq("id", concept_id);
-      return json({ error: `Replicate error (${createResp.status})` }, 500);
+      return;
     }
 
     let prediction = await createResp.json();
     console.log("Replicate prediction created:", prediction.id, "status:", prediction.status);
 
-    // Poll until terminal state
     const start = Date.now();
     while (
       prediction.status !== "succeeded" &&
@@ -142,7 +141,7 @@ async function runReplicateJob({
           preview_mesh_status: "failed",
           preview_mesh_error: "Generation timed out after 5 minutes",
         }).eq("id", concept_id);
-        return json({ error: "Generation timed out" }, 504);
+        return;
       }
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       const pollResp = await fetch(prediction.urls.get, {
@@ -162,14 +161,13 @@ async function runReplicateJob({
         preview_mesh_status: "failed",
         preview_mesh_error: String(errMsg).slice(0, 500),
       }).eq("id", concept_id);
-      return json({ error: errMsg }, 500);
+      return;
     }
 
-    // Output is typically { mesh: "https://..." } or a string URL or array
     let glbUrl: string | undefined;
     const out = prediction.output;
     if (typeof out === "string") glbUrl = out;
-    else if (Array.isArray(out)) glbUrl = out.find((u) => typeof u === "string" && /\.(glb|gltf)$/i.test(u)) ?? out[0];
+    else if (Array.isArray(out)) glbUrl = out.find((u: unknown) => typeof u === "string" && /\.(glb|gltf)$/i.test(u as string)) ?? out[0];
     else if (out && typeof out === "object") {
       glbUrl = out.mesh || out.glb || out.model || Object.values(out).find((v) => typeof v === "string") as string | undefined;
     }
@@ -179,22 +177,21 @@ async function runReplicateJob({
         preview_mesh_status: "failed",
         preview_mesh_error: "Replicate returned no mesh URL",
       }).eq("id", concept_id);
-      return json({ error: "No mesh URL in Replicate output" }, 500);
+      return;
     }
 
     console.log("Replicate output GLB:", glbUrl);
 
-    // Download GLB and re-host in our bucket so it survives Replicate's expiry
     const glbResp = await fetch(glbUrl);
     if (!glbResp.ok) {
       await admin.from("concepts").update({
         preview_mesh_status: "failed",
         preview_mesh_error: `Failed to download GLB: ${glbResp.status}`,
       }).eq("id", concept_id);
-      return json({ error: `Failed to download GLB (${glbResp.status})` }, 500);
+      return;
     }
     const glbBytes = new Uint8Array(await glbResp.arrayBuffer());
-    const path = `${userId}/${concept.project_id}/preview-mesh-${concept_id}.glb`;
+    const path = `${userId}/${projectId}/preview-mesh-${concept_id}.glb`;
     const { error: upErr } = await admin.storage
       .from("concept-renders")
       .upload(path, glbBytes, { contentType: "model/gltf-binary", upsert: true });
@@ -204,7 +201,7 @@ async function runReplicateJob({
         preview_mesh_status: "failed",
         preview_mesh_error: `Upload failed: ${upErr.message}`,
       }).eq("id", concept_id);
-      return json({ error: "Failed to upload mesh" }, 500);
+      return;
     }
 
     const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
@@ -216,12 +213,14 @@ async function runReplicateJob({
     }).eq("id", concept_id);
 
     console.log("generate-concept-mesh: success", publicUrl);
-    return json({ mesh_url: publicUrl });
   } catch (e) {
-    console.error("generate-concept-mesh error:", e);
-    return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
+    console.error("runReplicateJob error:", e);
+    await admin.from("concepts").update({
+      preview_mesh_status: "failed",
+      preview_mesh_error: e instanceof Error ? e.message.slice(0, 500) : "Unknown error",
+    }).eq("id", concept_id);
   }
-});
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
