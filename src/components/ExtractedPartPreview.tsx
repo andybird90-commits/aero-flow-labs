@@ -18,9 +18,10 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Wand2, Box, Download, X, RotateCcw } from "lucide-react";
+import { Loader2, Wand2, Box, Download, X, RotateCcw, Scissors, MousePointerClick, Lasso, Undo2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { PartLasso, type LassoMode, type LassoClick, type LassoPoint } from "@/components/PartLasso";
 
 interface Props {
   open: boolean;
@@ -44,6 +45,22 @@ export function ExtractedPartPreview({
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
+
+  // Trim / edge-snap state
+  const [trimOpen, setTrimOpen] = useState(false);
+  const [lassoMode, setLassoMode] = useState<LassoMode>("lasso");
+  const [trimPoints, setTrimPoints] = useState<LassoClick[]>([]);
+  const [trimLasso, setTrimLasso] = useState<LassoPoint[]>([]);
+  const [maskedUrl, setMaskedUrl] = useState<string | null>(null);
+  const [snapping, setSnapping] = useState(false);
+
+  // Reset trim state whenever the dialog opens or the underlying render changes.
+  useEffect(() => {
+    setTrimOpen(false);
+    setTrimPoints([]);
+    setTrimLasso([]);
+    setMaskedUrl(null);
+  }, [open, conceptId, kind]);
 
   const purgeCachedMesh = async () => {
     const { error } = await supabase
@@ -124,12 +141,16 @@ export function ExtractedPartPreview({
     setMeshProgress(0);
     try {
       // 1) Start the Meshy job → get a task_id
+      // If the user trimmed the render with the lasso/click tool, send the
+      // masked image to Meshy instead of the raw render — the mesher only
+      // ever sees the cleaned silhouette.
+      const meshImages = maskedUrl ? [maskedUrl] : images.map((i) => i.url);
       const startRes = await supabase.functions.invoke("meshify-part", {
         body: {
           action: "start",
           concept_id: conceptId,
           part_kind: kind,
-          image_urls: images.map((i) => i.url),
+          image_urls: meshImages,
         },
       });
       if (startRes.error) throw startRes.error;
@@ -194,6 +215,47 @@ export function ExtractedPartPreview({
       toast({ title: "Download failed", description: String(e.message ?? e), variant: "destructive" });
     }
   };
+
+  // Send the user's lasso/click marks to the SAM-backed segment-part edge
+  // function and replace the hero render with the masked output.
+  const onSnap = async () => {
+    const sourceUrl = images[0]?.url;
+    if (!sourceUrl) return;
+    if (trimPoints.length === 0 && trimLasso.length < 3) {
+      toast({
+        title: "Mark the part first",
+        description: "Click on the part or draw a rough outline around it.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSnapping(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("segment-part", {
+        body: {
+          image_url: sourceUrl,
+          points: trimPoints,
+          lasso: trimLasso,
+          concept_id: conceptId,
+          part_kind: kind,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const url = (data as any).masked_url as string;
+      if (!url) throw new Error("No masked image returned");
+      setMaskedUrl(url);
+      setTrimOpen(false);
+      toast({ title: "Trimmed", description: "Masked render is ready to mesh." });
+    } catch (e: any) {
+      toast({ title: "Snap failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setSnapping(false);
+    }
+  };
+
+  const resetTrim = () => { setTrimPoints([]); setTrimLasso([]); };
+  const clearMask = () => { setMaskedUrl(null); resetTrim(); };
 
   // GLB viewer (only when stage === "ready")
   useEffect(() => {
@@ -341,20 +403,31 @@ export function ExtractedPartPreview({
           </DialogDescription>
         </DialogHeader>
 
-        {/* RENDERING / REVIEW: single hero render */}
+        {/* RENDERING / REVIEW: single hero render — or the lasso/click trim
+            tool when the user opens "Trim". Mask, once produced, replaces the
+            hero image so the user can see what they're about to mesh. */}
         {(stage === "rendering" || stage === "review" || stage === "meshing") && (
           <div className="relative">
             <div className="flex justify-center">
               <div className="relative aspect-square w-full max-w-md rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
-                {images[0] ? (
+                {trimOpen && images[0] ? (
+                  <PartLasso
+                    imageUrl={maskedUrl ?? images[0].url}
+                    mode={lassoMode}
+                    points={trimPoints}
+                    lasso={trimLasso}
+                    onChange={({ points, lasso }) => { setTrimPoints(points); setTrimLasso(lasso); }}
+                    className="w-full h-full"
+                  />
+                ) : (maskedUrl || images[0]) ? (
                   <>
                     <img
-                      src={images[0].url}
-                      alt={`${label} ${images[0].angle}`}
+                      src={maskedUrl ?? images[0].url}
+                      alt={`${label} ${images[0]?.angle ?? ""}`}
                       className="w-full h-full object-contain"
                     />
                     <span className="absolute bottom-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1 py-0.5 rounded">
-                      {images[0].angle}
+                      {maskedUrl ? "trimmed" : images[0]?.angle}
                     </span>
                   </>
                 ) : (
@@ -365,6 +438,40 @@ export function ExtractedPartPreview({
                 )}
               </div>
             </div>
+
+            {/* Trim toolbar — only meaningful in review stage */}
+            {stage === "review" && trimOpen && (
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-xs">
+                <div className="inline-flex rounded-md border border-border overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setLassoMode("lasso")}
+                    className={`px-2 py-1 inline-flex items-center gap-1 ${lassoMode === "lasso" ? "bg-primary text-primary-foreground" : "bg-surface-1 text-muted-foreground"}`}
+                  >
+                    <Lasso className="h-3 w-3" /> Lasso
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLassoMode("click")}
+                    className={`px-2 py-1 inline-flex items-center gap-1 ${lassoMode === "click" ? "bg-primary text-primary-foreground" : "bg-surface-1 text-muted-foreground"}`}
+                  >
+                    <MousePointerClick className="h-3 w-3" /> Click
+                  </button>
+                </div>
+                <span className="text-muted-foreground font-mono uppercase tracking-widest">
+                  {lassoMode === "click" ? "click on the part · shift-click = exclude" : "drag a loose outline around the part"}
+                </span>
+                <Button size="xs" variant="outline" onClick={resetTrim}>
+                  <Undo2 className="h-3 w-3 mr-1" /> Reset marks
+                </Button>
+                <Button size="xs" onClick={onSnap} disabled={snapping}>
+                  {snapping
+                    ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Snapping…</>
+                    : <><Scissors className="h-3 w-3 mr-1" /> Snap to part</>}
+                </Button>
+              </div>
+            )}
+
             {stage === "meshing" && (
               <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2 rounded-md">
                 <Box className="h-6 w-6 text-primary animate-pulse" />
@@ -401,6 +508,20 @@ export function ExtractedPartPreview({
               <Button variant="outline" onClick={() => runRender(undefined, true)}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Regenerate
               </Button>
+              {!trimOpen ? (
+                <Button variant="outline" onClick={() => setTrimOpen(true)}>
+                  <Scissors className="h-4 w-4 mr-1" /> {maskedUrl ? "Re-trim" : "Trim"}
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => setTrimOpen(false)}>
+                  <X className="h-4 w-4 mr-1" /> Done trimming
+                </Button>
+              )}
+              {maskedUrl && !trimOpen && (
+                <Button variant="ghost" onClick={clearMask}>
+                  <Undo2 className="h-4 w-4 mr-1" /> Use original
+                </Button>
+              )}
               <Button onClick={onMakeMesh}>
                 <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
               </Button>
