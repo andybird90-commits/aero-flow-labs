@@ -22,7 +22,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import {
   useVariants, useComponents, useGeometry, useDuplicateVariant, useDeleteVariant,
-  useCreateVariant, type Variant, type SimResult,
+  useCreateVariant, useBuild, type Variant, type SimResult,
 } from "@/lib/repo";
 import { estimateAero, aeroFromResult, aeroDelta } from "@/lib/aero-estimator";
 import { cn } from "@/lib/utils";
