@@ -41,16 +41,23 @@ type Stage = "pretrim" | "rendering" | "review" | "meshing" | "ready" | "error";
 interface RenderImage { angle: string; url: string }
 
 export function ExtractedPartPreview({
-  open, onClose, conceptId, kind, label, filenameBase,
+  open, onClose, conceptId, kind, label, filenameBase, sourceImageUrl,
 }: Props) {
   const { toast } = useToast();
-  const [stage, setStage] = useState<Stage>("rendering");
+  const [stage, setStage] = useState<Stage>(sourceImageUrl ? "pretrim" : "rendering");
   const [images, setImages] = useState<RenderImage[]>([]);
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Trim / edge-snap state
+  // Pre-render trim state (lasso on the original concept image)
+  const [preLassoMode, setPreLassoMode] = useState<LassoMode>("lasso");
+  const [prePoints, setPrePoints] = useState<LassoClick[]>([]);
+  const [preLasso, setPreLasso] = useState<LassoPoint[]>([]);
+  const [preMaskedUrl, setPreMaskedUrl] = useState<string | null>(null);
+  const [preSnapping, setPreSnapping] = useState(false);
+
+  // Post-render trim / edge-snap state (lasso on the AI-drawn render)
   const [trimOpen, setTrimOpen] = useState(false);
   const [lassoMode, setLassoMode] = useState<LassoMode>("lasso");
   const [trimPoints, setTrimPoints] = useState<LassoClick[]>([]);
@@ -64,6 +71,9 @@ export function ExtractedPartPreview({
     setTrimPoints([]);
     setTrimLasso([]);
     setMaskedUrl(null);
+    setPrePoints([]);
+    setPreLasso([]);
+    setPreMaskedUrl(null);
   }, [open, conceptId, kind]);
 
   const purgeCachedMesh = async () => {
