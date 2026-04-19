@@ -10,10 +10,7 @@
  * Coordinates are normalised (0-1) so the same zones work on any aspect ratio.
  */
 import { useState } from "react";
-import { Loader2, Wand2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import { downloadStl, partToStlString } from "@/lib/part-stl";
+import { Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExtractedPartPreview } from "@/components/ExtractedPartPreview";
 
@@ -70,61 +67,23 @@ interface Props {
 interface Preview {
   kind: PartKind;
   label: string;
-  params: Record<string, number>;
-  reasoning: string;
-  filename: string;
+  filenameBase: string;
 }
 
 export function PartHotspotOverlay({ active, view, projectId, conceptId, conceptTitle }: Props) {
-  const { toast } = useToast();
-  const [busyKind, setBusyKind] = useState<string | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
 
   const zones = ZONES[view] ?? [];
 
-  const onPick = async (zone: Zone) => {
-    if (busyKind) return;
-    const busyKey = `${zone.kind}:${zone.label}`;
-    setBusyKind(busyKey);
-    try {
-      const { data, error } = await supabase.functions.invoke("extract-part-from-concept", {
-        body: { project_id: projectId, concept_id: conceptId, part_kind: zone.kind },
-      });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-
-      const params = (data as any).params as Record<string, number>;
-      const reasoning = (data as any).reasoning as string;
-      const present = !!(data as any).present;
-
-      const safeTitle = conceptTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "concept";
-      const filename = `${safeTitle}__${zone.kind}.stl`;
-
-      // Show preview modal — user confirms download from there
-      setPreview({
-        kind: zone.kind,
-        label: zone.label,
-        params,
-        reasoning: present ? reasoning : `${reasoning ?? ""} (Part not clearly visible — using sensible defaults.)`.trim(),
-        filename,
-      });
-    } catch (e: any) {
-      const msg = String(e.message ?? e);
-      if (msg.includes("429")) toast({ title: "Rate limit reached", variant: "destructive" });
-      else if (msg.includes("402")) toast({ title: "AI credits exhausted", variant: "destructive" });
-      else toast({ title: "Extraction failed", description: msg, variant: "destructive" });
-    } finally {
-      setBusyKind(null);
-    }
-  };
-
-  const confirmDownload = () => {
-    if (!preview) return;
-    const stl = partToStlString(preview.kind, preview.params);
-    downloadStl(preview.filename, stl);
-    toast({ title: `${preview.label} downloaded`, description: preview.filename });
-    setPreview(null);
+  const onPick = (zone: Zone) => {
+    const safeTitle = conceptTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "concept";
+    const safeLabel = zone.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    setPreview({
+      kind: zone.kind,
+      label: zone.label,
+      filenameBase: `${safeTitle}__${safeLabel || zone.kind}`,
+    });
   };
 
   return (
@@ -135,9 +94,6 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
           <div className="absolute inset-0 bg-background/20" />
 
           {zones.map((z, i) => {
-            const busyKey = `${z.kind}:${z.label}`;
-            const busy = busyKind === busyKey;
-            const dim = busyKind && !busy;
             return (
               <button
                 key={`${z.kind}-${i}`}
@@ -145,7 +101,6 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
                 onClick={(e) => { e.stopPropagation(); onPick(z); }}
                 onMouseEnter={() => setHoverIdx(i)}
                 onMouseLeave={() => setHoverIdx((h) => (h === i ? null : h))}
-                disabled={!!busyKind}
                 style={{
                   left:   `${z.x * 100}%`,
                   top:    `${z.y * 100}%`,
@@ -155,16 +110,13 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
                 className={cn(
                   "absolute pointer-events-auto rounded-md border-2 border-dashed transition-all",
                   "flex items-center justify-center text-[10px] text-mono uppercase tracking-widest",
-                  busy
-                    ? "border-primary bg-primary/30 text-primary-foreground"
-                    : hoverIdx === i
-                      ? "border-primary bg-primary/20 text-primary cursor-pointer scale-[1.02]"
-                      : "border-primary/50 bg-primary/5 text-primary/90 hover:bg-primary/10",
-                  dim && "opacity-40",
+                  hoverIdx === i
+                    ? "border-primary bg-primary/20 text-primary cursor-pointer scale-[1.02]"
+                    : "border-primary/50 bg-primary/5 text-primary/90 hover:bg-primary/10",
                 )}
               >
                 <span className="rounded bg-surface-0/85 backdrop-blur px-1.5 py-0.5 border border-border inline-flex items-center gap-1 shadow-sm">
-                  {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Wand2 className="h-2.5 w-2.5" />}
+                  <Wand2 className="h-2.5 w-2.5" />
                   {z.label}
                 </span>
               </button>
@@ -177,12 +129,10 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
         <ExtractedPartPreview
           open={!!preview}
           onClose={() => setPreview(null)}
-          onDownload={confirmDownload}
+          conceptId={conceptId}
           kind={preview.kind}
           label={preview.label}
-          params={preview.params}
-          reasoning={preview.reasoning}
-          filename={preview.filename}
+          filenameBase={preview.filenameBase}
         />
       )}
     </>

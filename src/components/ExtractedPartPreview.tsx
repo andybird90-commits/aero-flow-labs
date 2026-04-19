@@ -1,58 +1,132 @@
 /**
- * ExtractedPartPreview
+ * ExtractedPartPreview — new flow
  *
- * After clicking a hotspot on a concept render, this modal shows the part
- * we measured rendered in 3D *off the car* — same geometry that the STL
- * download will contain. Lets the user inspect it, tweak nothing for now,
- * and confirm download.
+ * Step 1 (renders):  Click hotspot → call `render-isolated-part` to have
+ *                    Gemini draw the chosen part on a clean white backdrop
+ *                    from 4 angles. Show those images in a grid.
+ * Step 2 (approve):  User reviews the renders. If they look right, click
+ *                    "Make 3D model" → call `meshify-part` (Meshy).
+ * Step 3 (mesh):     Show the resulting GLB in a Three.js viewer with
+ *                    auto-rotate, plus a "Download GLB" button.
  *
- * Uses the same `buildPartMesh` builders as `part-stl.ts`, so what you see
- * here is byte-identical to what gets exported.
+ * The whole thing happens inside one modal so the user can see each stage
+ * without losing context.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, X } from "lucide-react";
-import { buildPartMesh } from "@/lib/part-geometry";
+import { Loader2, Wand2, Box, Download, X, RotateCcw } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onDownload: () => void;
+  conceptId: string;
   kind: string;
   label: string;
-  params: Record<string, number>;
-  reasoning?: string;
-  filename: string;
+  filenameBase: string;
 }
 
+type Stage = "rendering" | "review" | "meshing" | "ready" | "error";
+
+interface RenderImage { angle: string; url: string }
+
 export function ExtractedPartPreview({
-  open, onClose, onDownload, kind, label, params, reasoning, filename,
+  open, onClose, conceptId, kind, label, filenameBase,
 }: Props) {
+  const { toast } = useToast();
+  const [stage, setStage] = useState<Stage>("rendering");
+  const [images, setImages] = useState<RenderImage[]>([]);
+  const [glbUrl, setGlbUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Friendly param list (mm / deg) for the side panel.
-  const paramRows = useMemo(() => {
-    return Object.entries(params).map(([k, v]) => {
-      const num = typeof v === "number" ? v : Number(v);
-      const unit = /angle|kick|aoa/i.test(k)
-        ? "°"
-        : /count|pct|percent/i.test(k)
-          ? ""
-          : "mm";
-      return { k, value: Number.isFinite(num) ? num.toFixed(unit === "" ? 0 : 1) : String(v), unit };
-    });
-  }, [params]);
-
+  // Kick off render generation when the modal opens
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    setStage("rendering");
+    setImages([]);
+    setGlbUrl(null);
+    setError(null);
+
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("render-isolated-part", {
+          body: { concept_id: conceptId, part_kind: kind, label },
+        });
+        if (cancelled) return;
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+        const renders = (data as any).renders as RenderImage[];
+        if (!renders?.length) throw new Error("No renders returned");
+        setImages(renders);
+        setStage("review");
+      } catch (e: any) {
+        if (cancelled) return;
+        const msg = String(e.message ?? e);
+        setError(msg);
+        setStage("error");
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [open, conceptId, kind, label]);
+
+  const onMakeMesh = async () => {
+    setStage("meshing");
+    setError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("meshify-part", {
+        body: {
+          concept_id: conceptId,
+          part_kind: kind,
+          image_urls: images.map((i) => i.url),
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const url = (data as any).glb_url as string;
+      if (!url) throw new Error("No mesh returned");
+      setGlbUrl(url);
+      setStage("ready");
+    } catch (e: any) {
+      const msg = String(e.message ?? e);
+      setError(msg);
+      setStage("error");
+      toast({ title: "Mesh generation failed", description: msg, variant: "destructive" });
+    }
+  };
+
+  const onDownload = async () => {
+    if (!glbUrl) return;
+    try {
+      const resp = await fetch(glbUrl);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${filenameBase}.glb`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast({ title: `${label} downloaded`, description: `${filenameBase}.glb` });
+    } catch (e: any) {
+      toast({ title: "Download failed", description: String(e.message ?? e), variant: "destructive" });
+    }
+  };
+
+  // GLB viewer (only when stage === "ready")
+  useEffect(() => {
+    if (stage !== "ready" || !glbUrl) return;
+    let cancelled = false;
     let cleanup: (() => void) | null = null;
 
-    // Wait until the dialog has actually laid out the mount with non-zero size.
-    // Radix animates content in, so first frame is often 0×0.
     const waitForMount = () => {
       if (cancelled) return;
       const mount = mountRef.current;
@@ -69,78 +143,46 @@ export function ExtractedPartPreview({
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x0b0d10);
 
-      // Camera works in millimetres so distances stay in nice human numbers.
-      const camera = new THREE.PerspectiveCamera(40, width / height, 1, 20000);
+      const camera = new THREE.PerspectiveCamera(40, width / height, 0.01, 100);
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(width, height);
       mount.appendChild(renderer.domElement);
 
-      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
       const key = new THREE.DirectionalLight(0xffffff, 1.0);
-      key.position.set(2000, 3000, 2000);
+      key.position.set(3, 4, 3);
       scene.add(key);
       const rim = new THREE.DirectionalLight(0x88aaff, 0.4);
-      rim.position.set(-2000, 1000, -2000);
+      rim.position.set(-3, 2, -3);
       scene.add(rim);
 
-      // Build part (metres) and scale to mm so it matches the STL + bbox readout.
-      const part = buildPartMesh(kind, params);
-      part.scale.setScalar(1000);
-      part.updateMatrixWorld(true);
-
-      const material = new THREE.MeshStandardMaterial({
-        color: 0xd6dae0,
-        roughness: 0.45,
-        metalness: 0.15,
-      });
-      part.traverse((o) => {
-        if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = material;
-      });
-      scene.add(part);
-
-      // Wireframe overlay so internal sub-parts (fences, strakes, stands) are legible.
-      const edgesGroup = new THREE.Group();
-      part.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh && m.geometry) {
-          const eg = new THREE.EdgesGeometry(m.geometry, 25);
-          const line = new THREE.LineSegments(
-            eg,
-            new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 }),
-          );
-          m.updateWorldMatrix(true, false);
-          line.applyMatrix4(m.matrixWorld);
-          edgesGroup.add(line);
-        }
-      });
-      scene.add(edgesGroup);
-
-      // Frame camera around the part bbox.
-      const box = new THREE.Box3().setFromObject(part);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      const maxDim = Math.max(size.x, size.y, size.z, 100);
-
-      // Grid sized to part, in mm.
-      const gridSize = Math.ceil((maxDim * 3) / 100) * 100;
-      const grid = new THREE.GridHelper(gridSize, 20, 0x2a313a, 0x1a1d22);
-      grid.position.y = box.min.y - 5;
-      (grid.material as THREE.Material).transparent = true;
-      (grid.material as THREE.Material).opacity = 0.6;
-      scene.add(grid);
-
-      const dist = maxDim * 2.4;
-      camera.position.set(center.x + dist * 0.7, center.y + dist * 0.55, center.z + dist * 0.9);
-      camera.lookAt(center);
-
       const controls = new OrbitControls(camera, renderer.domElement);
-      controls.target.copy(center);
       controls.enableDamping = true;
       controls.dampingFactor = 0.1;
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.8;
-      controls.update();
+
+      const loader = new GLTFLoader();
+      loader.load(
+        glbUrl,
+        (gltf) => {
+          if (cancelled) return;
+          const model = gltf.scene;
+          scene.add(model);
+
+          const box = new THREE.Box3().setFromObject(model);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          const dist = maxDim * 2.4;
+          camera.position.set(center.x + dist * 0.7, center.y + dist * 0.55, center.z + dist * 0.9);
+          controls.target.copy(center);
+          controls.update();
+        },
+        undefined,
+        (err) => console.error("GLB load failed", err),
+      );
 
       let raf = 0;
       const tick = () => {
@@ -177,73 +219,104 @@ export function ExtractedPartPreview({
     };
 
     waitForMount();
-    return () => {
-      cancelled = true;
-      cleanup?.();
-    };
-  }, [open, kind, params]);
+    return () => { cancelled = true; cleanup?.(); };
+  }, [stage, glbUrl]);
 
-  // Approx bounding-box dims (mm) for the info panel
-  const dimsMm = useMemo(() => {
-    if (!open) return null;
-    const part = buildPartMesh(kind, params);
-    part.scale.setScalar(1000); // metres → mm
-    part.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(part);
-    const s = box.getSize(new THREE.Vector3());
-    return { x: Math.round(s.x), y: Math.round(s.y), z: Math.round(s.z) };
-  }, [open, kind, params]);
+  const titleLine = (
+    <DialogTitle className="flex items-center gap-2">
+      {label}
+      <span className="text-xs uppercase tracking-widest text-muted-foreground font-mono">{kind}</span>
+    </DialogTitle>
+  );
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {label}
-            <span className="text-xs uppercase tracking-widest text-muted-foreground font-mono">{kind}</span>
-          </DialogTitle>
+          {titleLine}
           <DialogDescription>
-            {reasoning || "Measured from the concept render. Preview below matches the STL exactly."}
+            {stage === "rendering" && "Drawing the part from 4 angles…"}
+            {stage === "review"    && "Review the renders. If the part looks right, turn it into a 3D model."}
+            {stage === "meshing"   && "Building 3D mesh — usually 1-3 minutes."}
+            {stage === "ready"     && "Mesh ready. Spin it around, then download."}
+            {stage === "error"     && "Something went wrong. See details below."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_220px] gap-4">
+        {/* RENDERING / REVIEW: image grid */}
+        {(stage === "rendering" || stage === "review" || stage === "meshing") && (
+          <div className="grid grid-cols-2 gap-2">
+            {Array.from({ length: 4 }).map((_, i) => {
+              const img = images[i];
+              return (
+                <div
+                  key={i}
+                  className="aspect-square rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center relative"
+                >
+                  {img ? (
+                    <>
+                      <img src={img.url} alt={`${label} ${img.angle}`} className="w-full h-full object-contain" />
+                      <span className="absolute bottom-1 left-1 text-[10px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+                        {img.angle}
+                      </span>
+                    </>
+                  ) : (
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  )}
+                  {stage === "meshing" && (
+                    <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex items-center justify-center">
+                      <Box className="h-5 w-5 text-primary animate-pulse" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* READY: GLB viewer */}
+        {stage === "ready" && (
           <div
             ref={mountRef}
             className="w-full aspect-[4/3] rounded-md border border-border bg-surface-0 overflow-hidden"
           />
+        )}
 
-          <div className="space-y-3 text-xs">
-            <div>
-              <div className="uppercase tracking-widest text-muted-foreground mb-1">Bounding box</div>
-              <div className="font-mono text-foreground">
-                {dimsMm ? `${dimsMm.x} × ${dimsMm.y} × ${dimsMm.z} mm` : "—"}
-              </div>
-            </div>
-            <div>
-              <div className="uppercase tracking-widest text-muted-foreground mb-1">Parameters</div>
-              <ul className="space-y-1 font-mono">
-                {paramRows.map((r) => (
-                  <li key={r.k} className="flex items-center justify-between gap-2 text-foreground">
-                    <span className="text-muted-foreground">{r.k}</span>
-                    <span>{r.value}{r.unit}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="text-[10px] text-muted-foreground leading-relaxed pt-2 border-t border-border">
-              File: <span className="font-mono text-foreground">{filename}</span>
-            </div>
+        {/* ERROR */}
+        {stage === "error" && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 text-destructive text-xs p-3 font-mono whitespace-pre-wrap">
+            {error}
           </div>
-        </div>
+        )}
 
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onClose}>
-            <X className="h-4 w-4 mr-1" /> Cancel
+            <X className="h-4 w-4 mr-1" /> Close
           </Button>
-          <Button onClick={onDownload}>
-            <Download className="h-4 w-4 mr-1" /> Download STL
-          </Button>
+
+          {stage === "review" && (
+            <Button onClick={onMakeMesh}>
+              <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
+            </Button>
+          )}
+
+          {stage === "meshing" && (
+            <Button disabled>
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Meshing…
+            </Button>
+          )}
+
+          {stage === "ready" && (
+            <Button onClick={onDownload}>
+              <Download className="h-4 w-4 mr-1" /> Download GLB
+            </Button>
+          )}
+
+          {stage === "error" && (
+            <Button onClick={() => { setStage("rendering"); setImages([]); }}>
+              <RotateCcw className="h-4 w-4 mr-1" /> Retry
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
