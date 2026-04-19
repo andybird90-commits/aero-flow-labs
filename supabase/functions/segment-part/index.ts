@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
     }
     const points = body.points ?? [];
     const lasso  = body.lasso  ?? [];
+    const normalizedLasso = lasso.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
     if (points.length === 0 && lasso.length < 3) {
       return json({ error: "Provide at least one click point or a 3-point lasso" }, 400);
     }
@@ -88,6 +89,10 @@ Deno.serve(async (req) => {
     const W = decoded.width, H = decoded.height;
     // Normalize to RGBA — pngs lib returns 3 channels for RGB pngs, 4 for RGBA.
     const srcRGBA = toRGBA(decoded.image, W, H);
+    const clampedLasso = normalizedLasso.map((p) => ({
+      x: clamp(Math.round(p.x), 0, W - 1),
+      y: clamp(Math.round(p.y), 0, H - 1),
+    }));
 
     // 2) Call SAM-2 everything-mode via Replicate (sync via Prefer: wait).
     console.log(`[segment-part] running SAM on ${W}x${H} image`);
@@ -115,6 +120,19 @@ Deno.serve(async (req) => {
 
     console.log(`[segment-part] SAM returned ${maskUrls.length} masks in ${Date.now() - samStart}ms`);
     if (maskUrls.length === 0) {
+      if (clampedLasso.length >= 3) {
+        console.warn("[segment-part] SAM returned no masks, falling back to the user lasso");
+        return await uploadMaskedSelection(
+          admin,
+          userId,
+          body.concept_id,
+          body.part_kind,
+          srcRGBA,
+          rasterizePolygonMask(clampedLasso, W, H),
+          W,
+          H,
+        );
+      }
       return json({
         error: "SAM could not detect a usable part boundary from this selection. Try a tighter lasso or add a few click points on the part.",
         fallback: true,
@@ -130,9 +148,9 @@ Deno.serve(async (req) => {
       const t = { x: clamp(Math.round(p.x), 0, W - 1), y: clamp(Math.round(p.y), 0, H - 1) };
       if (p.label === 0) bgPts.push(t); else fgPts.push(t);
     }
-    if (lasso.length >= 3) {
+    if (clampedLasso.length >= 3) {
       // Sample the polygon's bounding box on a coarse grid, keep points inside.
-      const xs = lasso.map(p => p.x), ys = lasso.map(p => p.y);
+      const xs = clampedLasso.map(p => p.x), ys = clampedLasso.map(p => p.y);
       const x0 = Math.max(0, Math.floor(Math.min(...xs)));
       const x1 = Math.min(W - 1, Math.ceil(Math.max(...xs)));
       const y0 = Math.max(0, Math.floor(Math.min(...ys)));
@@ -140,7 +158,7 @@ Deno.serve(async (req) => {
       const step = Math.max(4, Math.round(Math.min(x1 - x0, y1 - y0) / 24));
       for (let y = y0; y <= y1; y += step) {
         for (let x = x0; x <= x1; x += step) {
-          if (pointInPolygon(x, y, lasso)) fgPts.push({ x, y });
+          if (pointInPolygon(x, y, clampedLasso)) fgPts.push({ x, y });
         }
       }
     }
@@ -168,6 +186,19 @@ Deno.serve(async (req) => {
 
     const keep = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score);
     if (keep.length === 0) {
+      if (clampedLasso.length >= 3) {
+        console.warn("[segment-part] No SAM mask matched prompts, falling back to the user lasso");
+        return await uploadMaskedSelection(
+          admin,
+          userId,
+          body.concept_id,
+          body.part_kind,
+          srcRGBA,
+          rasterizePolygonMask(clampedLasso, W, H),
+          W,
+          H,
+        );
+      }
       return json({
         error: "No SAM mask matched your selection. Try clicking more clearly on the part, or draw the lasso tighter.",
       }, 422);
@@ -184,30 +215,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 6) Erode 1px to remove anti-aliased outline crud, then feather 2px.
-    const eroded = erode(union, W, H, 1);
-    const feathered = feather(eroded, W, H, 2);
-
-    // 7) Composite: keep original where mask=255, white where mask=0, blended where partial.
-    const out = new Uint8Array(W * H * 4);
-    const src = srcRGBA;
-    for (let i = 0, j = 0; i < W * H; i++, j += 4) {
-      const a = feathered[i] / 255; // 0..1
-      out[j]     = Math.round(src[j]     * a + 255 * (1 - a));
-      out[j + 1] = Math.round(src[j + 1] * a + 255 * (1 - a));
-      out[j + 2] = Math.round(src[j + 2] * a + 255 * (1 - a));
-      out[j + 3] = 255;
-    }
-
-    const png = encodePng(out, W, H);
-    const path = `${userId}/${body.concept_id}/${body.part_kind}-masked-${Date.now()}.png`;
-    const { error: upErr } = await admin.storage
-      .from("concept-renders")
-      .upload(path, png, { contentType: "image/png", upsert: true });
-    if (upErr) return json({ error: `Upload failed: ${upErr.message}` }, 500);
-    const { data: pub } = admin.storage.from("concept-renders").getPublicUrl(path);
-
-    return json({ masked_url: pub.publicUrl });
+    return await uploadMaskedSelection(admin, userId, body.concept_id, body.part_kind, srcRGBA, union, W, H);
   } catch (e) {
     console.error("[segment-part] fatal", e);
     if (e instanceof SamThrottledError) {
@@ -375,4 +383,51 @@ function feather(mask: Uint8Array, w: number, h: number, r: number): Uint8Array 
     }
   }
   return out;
+}
+
+async function uploadMaskedSelection(
+  admin: any,
+  userId: string,
+  conceptId: string,
+  partKind: string,
+  srcRGBA: Uint8Array,
+  mask: Uint8Array,
+  W: number,
+  H: number,
+) {
+  const eroded = erode(mask, W, H, 1);
+  const feathered = feather(eroded, W, H, 2);
+  const out = new Uint8Array(W * H * 4);
+  for (let i = 0, j = 0; i < W * H; i++, j += 4) {
+    const a = feathered[i] / 255;
+    out[j] = Math.round(srcRGBA[j] * a + 255 * (1 - a));
+    out[j + 1] = Math.round(srcRGBA[j + 1] * a + 255 * (1 - a));
+    out[j + 2] = Math.round(srcRGBA[j + 2] * a + 255 * (1 - a));
+    out[j + 3] = 255;
+  }
+  const png = encodePng(out, W, H);
+  const path = `${userId}/${conceptId}/${partKind}-masked-${Date.now()}.png`;
+  const { error: upErr } = await admin.storage
+    .from("concept-renders")
+    .upload(path, png, { contentType: "image/png", upsert: true });
+  if (upErr) return json({ error: `Upload failed: ${upErr.message}` }, 500);
+  const { data: pub } = admin.storage.from("concept-renders").getPublicUrl(path);
+  return json({ masked_url: pub.publicUrl });
+}
+
+function rasterizePolygonMask(poly: { x: number; y: number }[], w: number, h: number): Uint8Array {
+  const mask = new Uint8Array(w * h);
+  if (poly.length < 3) return mask;
+  const xs = poly.map((p) => p.x);
+  const ys = poly.map((p) => p.y);
+  const x0 = clamp(Math.floor(Math.min(...xs)), 0, w - 1);
+  const x1 = clamp(Math.ceil(Math.max(...xs)), 0, w - 1);
+  const y0 = clamp(Math.floor(Math.min(...ys)), 0, h - 1);
+  const y1 = clamp(Math.ceil(Math.max(...ys)), 0, h - 1);
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      if (pointInPolygon(x, y, poly)) mask[y * w + x] = 255;
+    }
+  }
+  return mask;
 }
