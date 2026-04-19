@@ -497,13 +497,21 @@ export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(funct
   const [meshBounds, setMeshBounds] = useState<MeshBounds | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const glRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.Camera | null>(null);
 
   useImperativeHandle(ref, () => ({
     captureFrame: () => {
       const gl = glRef.current;
-      if (!gl) return null;
+      const scene = sceneRef.current;
+      const camera = cameraRef.current;
+      if (!gl || !scene || !camera) return null;
       try {
-        return gl.domElement.toDataURL("image/png");
+        // Force a fresh render so the drawing buffer is populated right now,
+        // then read it back. Without this, toDataURL often returns a blank
+        // image because the buffer has been cleared since the last paint.
+        gl.render(scene, camera);
+        return gl.domElement.toDataURL("image/jpeg", 0.92);
       } catch {
         return null;
       }
