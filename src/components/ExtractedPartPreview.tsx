@@ -287,6 +287,51 @@ export function ExtractedPartPreview({
   const resetTrim = () => { setTrimPoints([]); setTrimLasso([]); };
   const clearMask = () => { setMaskedUrl(null); resetTrim(); };
 
+  const resetPreTrim = () => { setPrePoints([]); setPreLasso([]); };
+
+  // PRE-RENDER trim — runs SAM on the original concept image so Gemini only
+  // sees the isolated part, not the whole car.
+  const onPreSnap = async () => {
+    if (!sourceImageUrl) return;
+    if (prePoints.length === 0 && preLasso.length < 3) {
+      toast({
+        title: "Mark the part first",
+        description: "Click on the part or draw a rough outline around it.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPreSnapping(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("segment-part", {
+        body: {
+          image_url: sourceImageUrl,
+          points: prePoints,
+          lasso: preLasso,
+          concept_id: conceptId,
+          part_kind: `${kind}-pretrim`,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const url = (data as any).masked_url as string;
+      if (!url) throw new Error("No masked image returned");
+      setPreMaskedUrl(url);
+      toast({ title: "Trimmed", description: "Click 'Render with this crop' to send it to the AI." });
+    } catch (e: any) {
+      toast({ title: "Snap failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setPreSnapping(false);
+    }
+  };
+
+  // Continue from pretrim into the AI render. If `useTrim` is true, push the
+  // SAM-masked crop as the override source.
+  const continueFromPretrim = (useTrim: boolean) => {
+    const signal = { cancelled: false };
+    runRender(signal, true, useTrim ? preMaskedUrl ?? undefined : undefined);
+  };
+
   // GLB viewer (only when stage === "ready")
   useEffect(() => {
     if (stage !== "ready" || !glbUrl) return;
