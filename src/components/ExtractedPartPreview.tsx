@@ -508,6 +508,20 @@ export function ExtractedPartPreview({
               <Button variant="outline" onClick={() => runRender(undefined, true)}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Regenerate
               </Button>
+              {!trimOpen ? (
+                <Button variant="outline" onClick={() => setTrimOpen(true)}>
+                  <Scissors className="h-4 w-4 mr-1" /> {maskedUrl ? "Re-trim" : "Trim"}
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => setTrimOpen(false)}>
+                  <X className="h-4 w-4 mr-1" /> Done trimming
+                </Button>
+              )}
+              {maskedUrl && !trimOpen && (
+                <Button variant="ghost" onClick={clearMask}>
+                  <Undo2 className="h-4 w-4 mr-1" /> Use original
+                </Button>
+              )}
               <Button onClick={onMakeMesh}>
                 <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
               </Button>
