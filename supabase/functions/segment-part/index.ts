@@ -89,6 +89,10 @@ Deno.serve(async (req) => {
     const W = decoded.width, H = decoded.height;
     // Normalize to RGBA — pngs lib returns 3 channels for RGB pngs, 4 for RGBA.
     const srcRGBA = toRGBA(decoded.image, W, H);
+    const clampedLasso = normalizedLasso.map((p) => ({
+      x: clamp(Math.round(p.x), 0, W - 1),
+      y: clamp(Math.round(p.y), 0, H - 1),
+    }));
 
     // 2) Call SAM-2 everything-mode via Replicate (sync via Prefer: wait).
     console.log(`[segment-part] running SAM on ${W}x${H} image`);
@@ -140,10 +144,6 @@ Deno.serve(async (req) => {
     //    - background: explicit bg points
     const fgPts: { x: number; y: number }[] = [];
     const bgPts: { x: number; y: number }[] = [];
-    const clampedLasso = normalizedLasso.map((p) => ({
-      x: clamp(Math.round(p.x), 0, W - 1),
-      y: clamp(Math.round(p.y), 0, H - 1),
-    }));
     for (const p of points) {
       const t = { x: clamp(Math.round(p.x), 0, W - 1), y: clamp(Math.round(p.y), 0, H - 1) };
       if (p.label === 0) bgPts.push(t); else fgPts.push(t);
