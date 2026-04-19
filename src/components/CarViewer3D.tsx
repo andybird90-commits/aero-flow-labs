@@ -40,6 +40,11 @@ interface CarViewer3DProps {
 export interface CarViewer3DHandle {
   /** Capture the current frame as a base64 data URL. */
   captureFrame: () => string | null;
+  /**
+   * Capture a specific camera preset by temporarily moving the camera, rendering,
+   * grabbing the pixels, then restoring the camera. Returns a JPEG data URL.
+   */
+  captureAngle: (preset: CameraPreset) => string | null;
 }
 
 /* ─── helpers ──────────────────────────────────────────── */
