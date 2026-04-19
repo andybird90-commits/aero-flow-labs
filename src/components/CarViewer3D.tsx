@@ -74,12 +74,14 @@ function UserMesh({
   template,
   geometry,
   onLoaded,
+  onBounds,
 }: {
   url: string;
   ext: "stl" | "obj";
   template?: CarTemplate | null;
   geometry?: Geometry | null;
   onLoaded?: (ok: boolean) => void;
+  onBounds?: (b: MeshBounds | null) => void;
 }) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
 
