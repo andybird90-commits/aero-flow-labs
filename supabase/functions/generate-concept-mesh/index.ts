@@ -1,14 +1,13 @@
 /**
  * generate-concept-mesh
  *
- * Experimental: turn an approved concept render into a rough 3D GLB using
- * Replicate's `tencent/hunyuan-3d-3.1` image-to-3D model. The resulting
- * mesh is uploaded to the `concept-renders` bucket and the URL stored on
- * the concept row. This is a *visual reference* only — not exportable, not
- * the source for the parametric kit.
+ * Turn an approved concept render into a 3D GLB using the Meshy
+ * Image-to-3D API (their top-tier `meshy-5` model). Far better
+ * geometry quality on hard-surface subjects (cars) than open-source
+ * Replicate models.
  *
  * Body: { concept_id: string }
- * Returns: { mesh_url: string } on success, { error } otherwise.
+ * Returns: { status: "generating", concept_id } (202) — job runs in background.
  *
  * Auth: caller must own the concept (verified server-side).
  */
@@ -19,22 +18,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
+const MESHY_API_KEY = Deno.env.get("MESHY_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// firtoz/trellis — Microsoft TRELLIS, best open-source image-to-3D for hard surfaces (cars, mech).
-// Single image in, GLB out. Much cleaner topology than Hunyuan.
-const REPLICATE_VERSION = "e8f6c45206993f297372f5436b90350817bd9b4a0d52d2a76df50c1c8afa2b3c";
-const POLL_INTERVAL_MS = 3000;
-const MAX_POLL_MS = 5 * 60 * 1000; // 5 minutes
+const MESHY_BASE = "https://api.meshy.ai/openapi/v1/image-to-3d";
+const POLL_INTERVAL_MS = 4000;
+const MAX_POLL_MS = 8 * 60 * 1000; // 8 minutes — Meshy can take a few mins on top model
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    if (!REPLICATE_API_TOKEN) {
-      return json({ error: "REPLICATE_API_TOKEN is not configured" }, 500);
+    if (!MESHY_API_KEY) {
+      return json({ error: "MESHY_API_KEY is not configured" }, 500);
     }
 
     const { concept_id } = await req.json();
@@ -56,28 +53,14 @@ Deno.serve(async (req) => {
     // Load concept (verify ownership)
     const { data: concept, error: cErr } = await admin
       .from("concepts")
-      .select("id, user_id, project_id, render_front_url, render_side_url, render_rear34_url, render_rear_url")
+      .select("id, user_id, project_id, render_front_url")
       .eq("id", concept_id)
       .eq("user_id", userId)
       .maybeSingle();
     if (cErr || !concept) return json({ error: "Concept not found" }, 404);
 
-    // Trellis takes a single image
     const frontImage = concept.render_front_url;
     if (!frontImage) return json({ error: "Concept has no front render" }, 400);
-
-    // Trellis input schema: images (array), generate model output, GLB format
-    const input: Record<string, unknown> = {
-      images: [frontImage],
-      texture_size: 2048,
-      mesh_simplify: 0.95,
-      generate_model: true,
-      save_gaussian_ply: false,
-      ss_sampling_steps: 38,
-      slat_sampling_steps: 38,
-      ss_guidance_strength: 7.5,
-      slat_guidance_strength: 3,
-    };
 
     // Mark generating
     await admin
@@ -85,13 +68,19 @@ Deno.serve(async (req) => {
       .update({ preview_mesh_status: "generating", preview_mesh_error: null })
       .eq("id", concept_id);
 
-    console.log("generate-concept-mesh: starting Replicate run for concept", concept_id, "with views:", Object.keys(input).filter(k => k.endsWith("_image")));
+    console.log("generate-concept-mesh: starting Meshy job for concept", concept_id);
 
-    // Run the long Replicate job in the background so we don't hit the 150s
+    // Run the long Meshy job in the background so we don't hit the 150s
     // edge-runtime idle timeout. The client polls `preview_mesh_status` on
     // the concept row to know when it's done.
     // @ts-ignore - EdgeRuntime is available in Supabase edge runtime
-    EdgeRuntime.waitUntil(runReplicateJob({ admin, concept_id, userId, projectId: concept.project_id, input }));
+    EdgeRuntime.waitUntil(runMeshyJob({
+      admin,
+      concept_id,
+      userId,
+      projectId: concept.project_id,
+      imageUrl: frontImage,
+    }));
 
     return json({ status: "generating", concept_id }, 202);
   } catch (e) {
@@ -100,66 +89,86 @@ Deno.serve(async (req) => {
   }
 });
 
-async function runReplicateJob({
-  admin, concept_id, userId, projectId, input,
+async function runMeshyJob({
+  admin, concept_id, userId, projectId, imageUrl,
 }: {
   admin: ReturnType<typeof createClient>;
   concept_id: string;
   userId: string;
   projectId: string;
-  input: Record<string, unknown>;
+  imageUrl: string;
 }) {
   try {
-    const createResp = await fetch("https://api.replicate.com/v1/predictions", {
+    // 1) Create the Image-to-3D task using Meshy's top model.
+    // Docs: https://docs.meshy.ai/api/image-to-3d
+    const createResp = await fetch(MESHY_BASE, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
+        Authorization: `Bearer ${MESHY_API_KEY}`,
         "Content-Type": "application/json",
-        Prefer: "wait=5",
       },
-      body: JSON.stringify({ version: REPLICATE_VERSION, input }),
+      body: JSON.stringify({
+        image_url: imageUrl,
+        ai_model: "meshy-5",        // top-tier model
+        topology: "quad",            // cleaner geometry for hard surfaces
+        target_polycount: 50000,
+        should_remesh: true,
+        should_texture: true,
+        enable_pbr: true,
+        symmetry_mode: "auto",
+      }),
     });
 
     if (!createResp.ok) {
       const t = await createResp.text();
-      console.error("Replicate create failed:", createResp.status, t.slice(0, 500));
+      console.error("Meshy create failed:", createResp.status, t.slice(0, 500));
       await admin.from("concepts").update({
         preview_mesh_status: "failed",
-        preview_mesh_error: `Replicate ${createResp.status}: ${t.slice(0, 200)}`,
+        preview_mesh_error: `Meshy ${createResp.status}: ${t.slice(0, 300)}`,
       }).eq("id", concept_id);
       return;
     }
 
-    let prediction = await createResp.json();
-    console.log("Replicate prediction created:", prediction.id, "status:", prediction.status);
+    const createJson = await createResp.json();
+    const taskId: string | undefined = createJson.result;
+    if (!taskId) {
+      console.error("Meshy returned no task id:", JSON.stringify(createJson).slice(0, 500));
+      await admin.from("concepts").update({
+        preview_mesh_status: "failed",
+        preview_mesh_error: "Meshy returned no task id",
+      }).eq("id", concept_id);
+      return;
+    }
+    console.log("Meshy task created:", taskId);
 
+    // 2) Poll until it succeeds, fails, or times out.
     const start = Date.now();
-    while (
-      prediction.status !== "succeeded" &&
-      prediction.status !== "failed" &&
-      prediction.status !== "canceled"
-    ) {
+    let task: any = null;
+    while (true) {
       if (Date.now() - start > MAX_POLL_MS) {
         await admin.from("concepts").update({
           preview_mesh_status: "failed",
-          preview_mesh_error: "Generation timed out after 5 minutes",
+          preview_mesh_error: "Generation timed out after 8 minutes",
         }).eq("id", concept_id);
         return;
       }
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      const pollResp = await fetch(prediction.urls.get, {
-        headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}` },
+      const pollResp = await fetch(`${MESHY_BASE}/${taskId}`, {
+        headers: { Authorization: `Bearer ${MESHY_API_KEY}` },
       });
       if (!pollResp.ok) {
-        console.warn("poll failed:", pollResp.status);
+        console.warn("Meshy poll failed:", pollResp.status);
         continue;
       }
-      prediction = await pollResp.json();
-      console.log("Replicate poll status:", prediction.status);
+      task = await pollResp.json();
+      console.log("Meshy poll status:", task.status, "progress:", task.progress);
+      if (task.status === "SUCCEEDED" || task.status === "FAILED" || task.status === "CANCELED" || task.status === "EXPIRED") {
+        break;
+      }
     }
 
-    if (prediction.status !== "succeeded") {
-      const errMsg = prediction.error || `Replicate status: ${prediction.status}`;
+    if (task.status !== "SUCCEEDED") {
+      const errMsg = task.task_error?.message || `Meshy status: ${task.status}`;
       await admin.from("concepts").update({
         preview_mesh_status: "failed",
         preview_mesh_error: String(errMsg).slice(0, 500),
@@ -167,25 +176,18 @@ async function runReplicateJob({
       return;
     }
 
-    let glbUrl: string | undefined;
-    const out = prediction.output;
-    if (typeof out === "string") glbUrl = out;
-    else if (Array.isArray(out)) glbUrl = out.find((u: unknown) => typeof u === "string" && /\.(glb|gltf)$/i.test(u as string)) ?? out[0];
-    else if (out && typeof out === "object") {
-      // Trellis returns { model_file, color_video, gaussian_ply, ... }
-      glbUrl = out.model_file || out.mesh || out.glb || out.model || Object.values(out).find((v) => typeof v === "string" && /\.(glb|gltf)$/i.test(v as string)) as string | undefined;
-    }
+    const glbUrl: string | undefined = task.model_urls?.glb;
     if (!glbUrl) {
-      console.error("No GLB url in output:", JSON.stringify(out).slice(0, 500));
+      console.error("Meshy succeeded but no GLB url:", JSON.stringify(task.model_urls).slice(0, 500));
       await admin.from("concepts").update({
         preview_mesh_status: "failed",
-        preview_mesh_error: "Replicate returned no mesh URL",
+        preview_mesh_error: "Meshy returned no GLB URL",
       }).eq("id", concept_id);
       return;
     }
+    console.log("Meshy output GLB:", glbUrl);
 
-    console.log("Replicate output GLB:", glbUrl);
-
+    // 3) Download and re-host in our public bucket so we control caching/expiry.
     const glbResp = await fetch(glbUrl);
     if (!glbResp.ok) {
       await admin.from("concepts").update({
@@ -208,17 +210,19 @@ async function runReplicateJob({
       return;
     }
 
+    // Cache-bust the public URL so the viewer fetches the new mesh.
     const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
+    const bustedUrl = `${publicUrl}?v=${Date.now()}`;
 
     await admin.from("concepts").update({
-      preview_mesh_url: publicUrl,
+      preview_mesh_url: bustedUrl,
       preview_mesh_status: "ready",
       preview_mesh_error: null,
     }).eq("id", concept_id);
 
-    console.log("generate-concept-mesh: success", publicUrl);
+    console.log("generate-concept-mesh: success", bustedUrl);
   } catch (e) {
-    console.error("runReplicateJob error:", e);
+    console.error("runMeshyJob error:", e);
     await admin.from("concepts").update({
       preview_mesh_status: "failed",
       preview_mesh_error: e instanceof Error ? e.message.slice(0, 500) : "Unknown error",
