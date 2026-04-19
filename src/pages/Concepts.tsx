@@ -347,6 +347,20 @@ function ConceptCard({
           ×
         </button>
       </div>
+
+      <Dialog open={zoomOpen} onOpenChange={setZoomOpen}>
+        <DialogContent className="max-w-[96vw] w-[96vw] h-[92vh] p-0 border-border bg-surface-0 overflow-hidden sm:rounded-xl">
+          <VisuallyHidden asChild>
+            <DialogTitle>{concept.title} — large view</DialogTitle>
+          </VisuallyHidden>
+          <VisuallyHidden asChild>
+            <DialogDescription>Pick parts on a larger render</DialogDescription>
+          </VisuallyHidden>
+          <div className="relative w-full h-full bg-surface-2 grid-bg-fine">
+            {renderViewer("zoom")}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
