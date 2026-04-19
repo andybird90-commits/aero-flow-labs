@@ -26,6 +26,7 @@ import {
 } from "@/lib/repo";
 import { estimateAero, aeroFromResult, aeroDelta } from "@/lib/aero-estimator";
 import { cn } from "@/lib/utils";
+import { AeroAnchorNudge } from "@/components/AeroAnchorNudge";
 
 /* ─── 3D viewer (premium real-time, geometry-aware) ─────────── */
 import { CarViewer3D, type ViewerMode } from "@/components/CarViewer3D";
@@ -402,6 +403,12 @@ function BuildContent({ buildId }: { buildId: string }) {
               </div>
             )}
           </div>
+
+          {/* Anchor nudge — for fine-tuning aero placement on uploaded mesh */}
+          <AeroAnchorNudge
+            components={activeComponents}
+            meshLoaded={!!geometry?.stl_path}
+          />
         </div>
       </div>
 
