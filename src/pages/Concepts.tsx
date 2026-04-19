@@ -8,10 +8,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2,
+  Sparkles, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2, Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 export default function Concepts() {
   return (
@@ -206,8 +208,109 @@ function ConceptCard({
 
   const [angleIdx, setAngleIdx] = useState(0);
   const [pickMode, setPickMode] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const current = visibleAngles[angleIdx];
   const hasMultiple = visibleAngles.length > 1;
+
+  const renderViewer = (variant: "card" | "zoom") => (
+    <>
+      {current ? (
+        variant === "card" ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              if (pickMode) return;
+              e.stopPropagation();
+              setZoomOpen(true);
+            }}
+            className="absolute inset-0 block group"
+            title={pickMode ? "Pick a part" : "Open large view"}
+          >
+            <img
+              key={current.url}
+              src={current.url}
+              alt={`${concept.title} — ${current.label}`}
+              className="absolute inset-0 h-full w-full object-cover animate-fade-in"
+            />
+            {!pickMode && (
+              <span className="absolute bottom-2 right-2 rounded-md bg-surface-0/85 backdrop-blur px-2 py-1 border border-border text-mono text-[10px] uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Maximize2 className="h-3 w-3" />
+                Expand
+              </span>
+            )}
+          </button>
+        ) : (
+          <img
+            key={current.url}
+            src={current.url}
+            alt={`${concept.title} — ${current.label}`}
+            className="absolute inset-0 h-full w-full object-contain animate-fade-in"
+          />
+        )
+      ) : (
+        <div className="absolute inset-0 grid place-items-center text-muted-foreground">
+          <Sparkles className="h-8 w-8" />
+        </div>
+      )}
+
+      {/* Click-to-extract hotspots overlay */}
+      {current && (
+        <PartHotspotOverlay
+          active={pickMode}
+          view={current.key}
+          projectId={projectId}
+          conceptId={concept.id}
+          conceptTitle={concept.title}
+        />
+      )}
+
+      <div className="absolute top-2 right-2 flex items-center gap-1.5">
+        <button
+          onClick={(e) => { e.stopPropagation(); setPickMode((p) => !p); }}
+          className={cn(
+            "rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border backdrop-blur transition-colors",
+            pickMode
+              ? "bg-primary/90 text-primary-foreground border-primary"
+              : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
+          )}
+          title="Click any part on the render to extract it as STL"
+        >
+          <MousePointer2 className="h-3 w-3" />
+          {pickMode ? "Picking" : "Pick parts"}
+        </button>
+        {variant === "card" && <StatusChip tone={tone as any} size="sm">{concept.status}</StatusChip>}
+        {variant === "card" && current && !pickMode && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setZoomOpen(true); }}
+            className="rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border bg-surface-0/85 text-muted-foreground border-border hover:text-foreground backdrop-blur transition-colors"
+            title="Open large view"
+          >
+            <Maximize2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+
+      {hasMultiple && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-surface-0/80 backdrop-blur px-1.5 py-1 border border-border z-10">
+          {visibleAngles.map((a, i) => (
+            <button
+              key={a.key + i}
+              onClick={(e) => { e.stopPropagation(); setAngleIdx(i); }}
+              className={cn(
+                "px-2.5 py-0.5 rounded-full text-[10px] text-mono uppercase tracking-widest transition-colors",
+                i === angleIdx
+                  ? "bg-primary/20 text-primary"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              title={a.label}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className={cn(
@@ -216,75 +319,7 @@ function ConceptCard({
       concept.status === "rejected" && "opacity-50",
     )}>
       <div className="relative aspect-[4/3] bg-surface-2 grid-bg-fine">
-        {current ? (
-          <a
-            href={current.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="absolute inset-0 block"
-            title="Open full size in new tab"
-            onClick={(e) => { if (pickMode) e.preventDefault(); }}
-          >
-            <img
-              key={current.url}
-              src={current.url}
-              alt={`${concept.title} — ${current.label}`}
-              className="absolute inset-0 h-full w-full object-cover animate-fade-in"
-            />
-          </a>
-        ) : (
-          <div className="absolute inset-0 grid place-items-center text-muted-foreground">
-            <Sparkles className="h-8 w-8" />
-          </div>
-        )}
-
-        {/* Click-to-extract hotspots overlay */}
-        {current && (
-          <PartHotspotOverlay
-            active={pickMode}
-            view={current.key}
-            projectId={projectId}
-            conceptId={concept.id}
-            conceptTitle={concept.title}
-          />
-        )}
-
-        <div className="absolute top-2 right-2 flex items-center gap-1.5">
-          <button
-            onClick={() => setPickMode((p) => !p)}
-            className={cn(
-              "rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border backdrop-blur transition-colors",
-              pickMode
-                ? "bg-primary/90 text-primary-foreground border-primary"
-                : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
-            )}
-            title="Click any part on the render to extract it as STL"
-          >
-            <MousePointer2 className="h-3 w-3" />
-            {pickMode ? "Picking" : "Pick parts"}
-          </button>
-          <StatusChip tone={tone as any} size="sm">{concept.status}</StatusChip>
-        </div>
-
-        {hasMultiple && (
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-surface-0/80 backdrop-blur px-1.5 py-1 border border-border">
-            {visibleAngles.map((a, i) => (
-              <button
-                key={a.key + i}
-                onClick={() => setAngleIdx(i)}
-                className={cn(
-                  "px-2.5 py-0.5 rounded-full text-[10px] text-mono uppercase tracking-widest transition-colors",
-                  i === angleIdx
-                    ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                title={a.label}
-              >
-                {a.label}
-              </button>
-            ))}
-          </div>
-        )}
+        {renderViewer("card")}
       </div>
       <div className="p-3 flex-1">
         <div className="text-sm font-semibold tracking-tight truncate">{concept.title}</div>
@@ -297,6 +332,7 @@ function ConceptCard({
           </div>
         )}
       </div>
+
       <div className="grid grid-cols-4 border-t border-border">
         <button onClick={onApprove} className="py-2 text-success hover:bg-success/10 transition-colors" title="Approve">
           <Check className="mx-auto h-4 w-4" />
@@ -311,6 +347,20 @@ function ConceptCard({
           ×
         </button>
       </div>
+
+      <Dialog open={zoomOpen} onOpenChange={setZoomOpen}>
+        <DialogContent className="max-w-[96vw] w-[96vw] h-[92vh] p-0 border-border bg-surface-0 overflow-hidden sm:rounded-xl">
+          <VisuallyHidden asChild>
+            <DialogTitle>{concept.title} — large view</DialogTitle>
+          </VisuallyHidden>
+          <VisuallyHidden asChild>
+            <DialogDescription>Pick parts on a larger render</DialogDescription>
+          </VisuallyHidden>
+          <div className="relative w-full h-full bg-surface-2 grid-bg-fine">
+            {renderViewer("zoom")}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
