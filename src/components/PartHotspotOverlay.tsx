@@ -35,6 +35,9 @@ interface Props {
   projectId: string;
   conceptId: string;
   conceptTitle: string;
+  /** URL of the currently displayed concept render. Powers the optional
+   *  pre-render lasso trim inside the part preview modal. */
+  sourceImageUrl?: string;
 }
 
 interface Preview {
