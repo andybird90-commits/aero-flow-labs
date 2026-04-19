@@ -86,9 +86,8 @@ Deno.serve(async (req) => {
     const imgBytes = new Uint8Array(await imgResp.arrayBuffer());
     const decoded = decodePng(imgBytes);
     const W = decoded.width, H = decoded.height;
-    if (decoded.image.length !== W * H * 4) {
-      return json({ error: `Unexpected pixel layout (got ${decoded.image.length}, expected ${W*H*4})` }, 500);
-    }
+    // Normalize to RGBA — pngs lib returns 3 channels for RGB pngs, 4 for RGBA.
+    const srcRGBA = toRGBA(decoded.image, W, H);
 
     // 2) Call SAM-2 everything-mode via Replicate (sync via Prefer: wait).
     console.log(`[segment-part] running SAM on ${W}x${H} image`);
