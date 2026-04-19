@@ -236,7 +236,7 @@ export function ExtractedPartPreview({
         <DialogHeader>
           {titleLine}
           <DialogDescription>
-            {stage === "rendering" && "Drawing the part from 4 angles…"}
+            {stage === "rendering" && "Drawing the part on a clean white background…"}
             {stage === "review"    && "Review the renders. If the part looks right, turn it into a 3D model."}
             {stage === "meshing"   && "Building 3D mesh — usually 1-3 minutes."}
             {stage === "ready"     && "Mesh ready. Spin it around, then download."}
