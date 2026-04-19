@@ -22,7 +22,7 @@ function Nav() {
         <div className="leading-tight">
           <div className="text-sm font-semibold tracking-tight">AeroLab</div>
           <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            Virtual Wind Tunnel
+            Comparative aero studio
           </div>
         </div>
       </div>
@@ -135,8 +135,8 @@ function HeroVisual() {
       {/* Floating data tiles */}
       <div className="absolute top-4 left-4 right-4 flex items-start justify-between">
         <div className="flex items-center gap-2">
-          <StatusChip tone="simulating">Live preview · Run #2184</StatusChip>
-          <ConfidenceBadge level="high" compact />
+          <StatusChip tone="simulating">Estimated flow · live</StatusChip>
+          <ConfidenceBadge level="medium" compact />
         </div>
         <div className="hidden md:flex items-center gap-4 text-mono text-[10px] text-muted-foreground">
           <div><span className="text-muted-foreground/60">U∞ </span><span className="text-foreground">180 km/h</span></div>
@@ -148,9 +148,9 @@ function HeroVisual() {
       {/* Bottom data strip */}
       <div className="absolute inset-x-4 bottom-4 grid grid-cols-3 gap-3">
         {[
-          { l: "DOWNFORCE", v: "284", u: "kgf", d: "+18.4%" },
-          { l: "DRAG",      v: "112", u: "kgf", d: "+4.1%" },
-          { l: "L/D RATIO", v: "2.54", u: "",   d: "+0.31" },
+          { l: "AERO LOAD",  v: "284", u: "kgf", d: "+18.4%" },
+          { l: "DRAG EST.",  v: "112", u: "kgf", d: "+4.1%" },
+          { l: "L/D TEND.",  v: "2.54", u: "",   d: "+0.31" },
         ].map((s) => (
           <div key={s.l} className="glass-strong rounded-md px-3 py-2.5">
             <div className="flex items-center justify-between">
@@ -177,18 +177,19 @@ function Hero() {
           <div className="lg:col-span-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-1/60 px-3 py-1 text-mono text-[11px] uppercase tracking-widest text-muted-foreground backdrop-blur">
               <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse-soft" />
-              Solver cluster online · 14 nodes · 12 free
+              Geometry-aware aero studio · design-stage
             </div>
 
             <h1 className="mt-6 text-5xl md:text-6xl font-semibold leading-[1.04] tracking-tight">
-              The wind tunnel for{" "}
+              Design aero packages for{" "}
               <span className="text-primary glow-text">enthusiast and track cars.</span>
             </h1>
 
             <p className="mt-6 max-w-xl text-lg text-muted-foreground leading-relaxed">
               Pick your chassis. Configure splitter, wing, diffuser, skirts and canards.
-              Run comparative CFD jobs and read real engineering output —
-              drag, downforce, balance, pressure fields and wake structure.
+              See an approximate, geometry-aware aero estimate with comparative
+              flow, pressure and wake visualisations — built to compare packages,
+              not to certify them.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -203,10 +204,10 @@ function Hero() {
             <div className="mt-6 flex flex-wrap items-center gap-4 text-mono text-[11px] text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                Comparative aero · not OEM certification
+                Comparative aero · not validated CFD
               </span>
               <span className="hidden sm:inline text-muted-foreground/40">·</span>
-              <span>No card required for first 3 runs</span>
+              <span>Free to start · no card required</span>
             </div>
           </div>
 
@@ -251,20 +252,21 @@ function WhatItDoes() {
         <div className="lg:col-span-5">
           <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">What is AeroLab</div>
           <h2 className="mt-2 text-4xl font-semibold tracking-tight leading-tight">
-            A virtual wind tunnel,<br />built for the people who actually drive the car.
+            A comparative aero studio,<br />built for the people who actually drive the car.
           </h2>
         </div>
         <div className="lg:col-span-7 space-y-4 text-base text-muted-foreground leading-relaxed">
           <p>
-            AeroLab compresses the workflow of a professional aerodynamics team into a
-            single platform — geometry, parts, solver and post-processing.
-            You work on validated baseline meshes for supported chassis, not generic
-            shapes, so deltas between configurations are meaningful.
+            AeroLab compresses the aero design conversation into a single platform —
+            chassis, parts, package mode and post-processing.
+            You work on parametric baselines for supported cars so deltas between
+            configurations stay meaningful and easy to read.
           </p>
           <p>
-            Every run produces the same outputs a race engineer would expect:
-            force coefficients, aero balance, pressure distribution, surface streamlines and wake structure —
-            with the assumptions and confidence shown clearly alongside.
+            Every variant produces the same kind of output a development engineer
+            would reach for: estimated drag tendency, approximate aero load,
+            balance, comparative pressure and wake — with the assumptions and
+            confidence shown clearly alongside.
           </p>
         </div>
       </div>
@@ -278,38 +280,38 @@ function WhatItDoes() {
 const capabilities = [
   {
     icon: Cpu,
-    title: "Solver-backed CFD",
-    body: "RANS k-ω SST on adaptive meshes, rotating wheels, moving ground. Each variant runs as an independent job on the cluster.",
-    chip: "Solver-backed",
+    title: "Geometry-aware estimator",
+    body: "A deterministic surrogate model derives drag, aero load and balance from your chassis dimensions and selected aero parts. Updates instantly as you tune.",
+    chip: "Real-time preview",
   },
   {
     icon: Layers,
     title: "Parametric aero parts",
-    body: "Splitter, canards, skirts, diffuser and rear wing — driven by sliders. Surrogate predictions update in milliseconds; CFD confirms.",
+    body: "Splitter, canards, skirts, diffuser, ducktail and rear wing — all driven by sliders. Each part contributes to the comparative aero estimate.",
     chip: "Real-time preview",
   },
   {
     icon: GitCompareArrows,
-    title: "Variant comparison",
-    body: "Compare baseline vs street vs track packages side by side. See per-component DF/DR contribution and balance shift.",
+    title: "Comparative variants",
+    body: "Compare baseline vs street vs track packages side by side. See per-component contribution and balance shift between configurations.",
     chip: "Side-by-side",
   },
   {
     icon: ShieldCheck,
     title: "Honest outputs",
-    body: "Confidence and assumptions are surfaced on every figure. Built for development decisions, not OEM homologation.",
+    body: "Every figure shows its confidence and assumptions. Built for design-stage decisions, not OEM homologation or race-day claims.",
     chip: "High confidence",
   },
   {
     icon: Gauge,
-    title: "Engineering-grade post",
-    body: "Cp fields, surface streamlines, Q-criterion wake structures and convergence residuals — not just a single number.",
-    chip: "Full post-processing",
+    title: "Premium 3D visualisation",
+    body: "Estimated streamlines, approximate pressure zones, conceptual wake plume and force vectors — rendered in real time with cinematic studio lighting.",
+    chip: "Real-time preview",
   },
   {
     icon: FileDown,
     title: "Export the package",
-    body: "Promote a winning configuration and export a PDF report, raw CSV dataset and STL of the aero package for fabrication.",
+    body: "Promote a winning configuration and export a PDF report, raw CSV dataset and a summary STL of the aero package for fabrication discussions.",
     chip: "Optimized",
   },
 ];
@@ -359,22 +361,22 @@ function Capabilities() {
 /* ─────────────────────────────────────────────────────────────────── */
 const useCases = [
   {
-    label: "Top speed",
-    title: "Drag-limited builds",
-    body: "Trim parasitic drag while protecting yaw stability for high-speed runs and standing-mile events.",
-    metric: "Cd −7.4%",
+    label: "Street",
+    title: "Subtle, daily-friendly",
+    body: "Restrained splitter, low-key wing, usable ride height. Lower drag penalty, no aggressive stance compromises.",
+    metric: "Cd −2%",
   },
   {
-    label: "Track use",
-    title: "Maximum downforce",
-    body: "Stack splitter, diffuser and wing for grip-limited circuits where every Newton at the contact patch counts.",
+    label: "Track day",
+    title: "Balanced grip pack",
+    body: "Assertive front and rear aero, balance-focused. Moderate drag increase accepted in exchange for cornering load.",
+    metric: "DF +24%",
+  },
+  {
+    label: "Time attack",
+    title: "Aggressive package",
+    body: "Big wing, deep splitter, diffuser, canards. Drag accepted in exchange for maximum aero load and stability.",
     metric: "DF +44%",
-  },
-  {
-    label: "Balance",
-    title: "Front-rear tuning",
-    body: "Move the aero centre of pressure with confidence — without trial-and-error sessions on track day.",
-    metric: "%F target",
   },
 ];
 
@@ -385,11 +387,11 @@ function UseCases() {
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div className="max-w-xl">
             <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Use cases</div>
-            <h2 className="mt-2 text-4xl font-semibold tracking-tight">Optimize for what matters to you.</h2>
+            <h2 className="mt-2 text-4xl font-semibold tracking-tight">Three modes. One studio.</h2>
           </div>
           <p className="max-w-md text-sm text-muted-foreground">
-            One platform, three lenses. Pick the goal and AeroLab orients its post-processing,
-            scoring and recommendations accordingly.
+            Street, track day and time attack. Each mode shifts the package
+            recommendation, the visual presentation and the trade-off language.
           </p>
         </div>
 
@@ -424,12 +426,12 @@ function UseCases() {
 /*  Workflow                                                           */
 /* ─────────────────────────────────────────────────────────────────── */
 const workflow = [
-  { n: "01", icon: Box,             title: "Select your chassis",   body: "Pick from supported cars with validated baseline meshes — or upload your own STL.",     to: "/garage" },
-  { n: "02", icon: Wrench,          title: "Configure aero parts",  body: "Splitter, canards, skirts, diffuser, wing — all parametric, all live-previewable.",      to: "/parts" },
-  { n: "03", icon: PlayCircle,      title: "Run comparative CFD",   body: "Queue multiple variants on the solver cluster. Track residuals and convergence live.",   to: "/simulation" },
-  { n: "04", icon: BarChart3,       title: "Read engineering output",body: "Drag, downforce, balance, pressure fields, wake structure — confidence shown clearly.", to: "/results" },
-  { n: "05", icon: GitCompareArrows,title: "Compare variants",      body: "Side-by-side comparison and per-component delta matrix to pick a winner.",                to: "/compare" },
-  { n: "06", icon: FileDown,        title: "Export your package",   body: "PDF report, CSV dataset and STL package — ready for fabrication or your shop.",          to: "/exports" },
+  { n: "01", icon: Box,             title: "Select your chassis",       body: "Pick a supported car with a parametric baseline — or upload your own STL for visual reference.", to: "/garage" },
+  { n: "02", icon: Wrench,          title: "Configure aero parts",      body: "Splitter, canards, skirts, diffuser, ducktail, wing — all parametric, all live-previewable.",  to: "/parts" },
+  { n: "03", icon: PlayCircle,      title: "Pick a package mode",       body: "Street, track day or time attack. Mode shifts the recommendation and the visual presentation.", to: "/simulation" },
+  { n: "04", icon: BarChart3,       title: "Read the aero estimate",    body: "Approximate aero load, drag tendency, balance, pressure and wake — confidence shown clearly.", to: "/results" },
+  { n: "05", icon: GitCompareArrows,title: "Compare packages",          body: "Side-by-side comparison of baseline, street, track and time-attack configurations.",            to: "/compare" },
+  { n: "06", icon: FileDown,        title: "Export your package",       body: "PDF report, CSV dataset and STL summary — ready for fabrication discussions or your shop.",     to: "/exports" },
 ];
 
 function Workflow() {
@@ -442,7 +444,7 @@ function Workflow() {
             From garage to grid in six clear steps.
           </h2>
           <p className="mt-3 text-muted-foreground">
-            The pipeline mirrors how a professional aero engineer works — staged, reviewable, reversible.
+            The pipeline mirrors how a development engineer iterates a package — staged, reviewable, reversible.
           </p>
         </div>
 
@@ -490,10 +492,10 @@ function OutputsPreview() {
       <div className="mx-auto max-w-7xl px-6 py-24">
         <div className="max-w-2xl">
           <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Outputs</div>
-          <h2 className="mt-2 text-4xl font-semibold tracking-tight">Real engineering output, not vibes.</h2>
+          <h2 className="mt-2 text-4xl font-semibold tracking-tight">Premium aero output, honest framing.</h2>
           <p className="mt-3 text-muted-foreground">
-            Every run gives you the same artefacts a professional team would produce —
-            visualised in a UI built for fast comparison.
+            Every variant produces a comparative aero summary —
+            visualised in a UI built for fast, confident decisions.
           </p>
         </div>
 
@@ -503,10 +505,10 @@ function OutputsPreview() {
             <div className="rounded-lg border border-border bg-surface-0 overflow-hidden">
               <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
                 <div className="flex items-center gap-2.5">
-                  <span className="text-mono text-[10px] uppercase tracking-widest text-primary/90">Pressure field</span>
-                  <span className="text-mono text-[10px] text-muted-foreground">Cp · midplane</span>
+                  <span className="text-mono text-[10px] uppercase tracking-widest text-primary/90">Approximate pressure</span>
+                  <span className="text-mono text-[10px] text-muted-foreground">Cp · midplane est.</span>
                 </div>
-                <StatusChip tone="success">Converged</StatusChip>
+                <StatusChip tone="success">Estimated</StatusChip>
               </div>
 
               <div className="relative h-72 grid-bg">
@@ -550,7 +552,7 @@ function OutputsPreview() {
                   <div className="text-mono text-[10px] uppercase tracking-widest text-primary/80">Compare</div>
                   <div className="mt-1 text-sm font-medium">3 variants · CIVIC_FK8</div>
                 </div>
-                <StatusChip tone="solver">Solver-backed</StatusChip>
+                <StatusChip tone="solver">Comparative</StatusChip>
               </div>
 
               <table className="w-full text-sm">
@@ -631,7 +633,7 @@ const tiers = [
     price: "$0",
     period: "/forever",
     blurb: "For curious builders running their first comparisons.",
-    features: ["3 runs / month", "Quick solver fidelity", "1 active variant", "PDF export (watermarked)"],
+    features: ["3 estimates / month", "Geometry-aware estimator", "1 active variant", "PDF export (watermarked)"],
     cta: "Start free",
     variant: "glass" as const,
   },
@@ -640,7 +642,7 @@ const tiers = [
     price: "$29",
     period: "/month",
     blurb: "For enthusiasts iterating an aero package across a season.",
-    features: ["120 solver minutes", "Balanced fidelity", "Unlimited variants", "STL & CSV export", "Priority cluster"],
+    features: ["Unlimited estimates", "All package modes", "Unlimited variants", "STL & CSV export", "Priority support"],
     cta: "Start Pro trial",
     variant: "hero" as const,
     highlighted: true,
@@ -650,7 +652,7 @@ const tiers = [
     price: "Custom",
     period: "",
     blurb: "For workshops, race teams and aero engineers.",
-    features: ["High-fidelity solver", "Shared garage", "Custom geometries", "Wind-tunnel correlation", "Onboarding & support"],
+    features: ["High-fidelity estimator", "Shared garage", "Custom geometries", "Validation correlation tools", "Onboarding & support"],
     cta: "Talk to us",
     variant: "glass" as const,
   },
@@ -663,11 +665,11 @@ function Pricing() {
         <div className="text-center max-w-2xl mx-auto">
           <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Pricing</div>
           <h2 className="mt-2 text-4xl font-semibold tracking-tight">
-            Pay for solver time, not seats.
+            Pay for the studio, not the seat.
           </h2>
           <p className="mt-3 text-muted-foreground">
-            Start free. Scale to a Pro plan when you're iterating an aero package every weekend.
-            Team plan unlocks high-fidelity runs and shared garages.
+            Start free. Move to Pro when you're iterating an aero package every weekend.
+            Team unlocks the high-fidelity estimator and shared garages.
           </p>
         </div>
 
@@ -712,7 +714,7 @@ function Pricing() {
         </div>
 
         <p className="mt-6 text-center text-mono text-[11px] text-muted-foreground">
-          All tiers include comparative CFD outputs · honest confidence labelling · cancel anytime
+          All tiers include comparative aero outputs · honest confidence labelling · cancel anytime
         </p>
       </div>
     </section>
@@ -730,15 +732,15 @@ function FinalCTA() {
       <div className="relative mx-auto max-w-4xl px-6 py-28 text-center">
         <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-1/60 px-3 py-1 text-mono text-[11px] uppercase tracking-widest text-muted-foreground backdrop-blur">
           <Activity className="h-3 w-3 text-primary" />
-          Average first run · 38 minutes
+          First aero estimate · under 60 seconds
         </div>
         <h2 className="mt-6 text-5xl md:text-6xl font-semibold tracking-tight leading-[1.05]">
           Stop guessing.<br />
-          <span className="text-primary glow-text">Start measuring.</span>
+          <span className="text-primary glow-text">Start comparing.</span>
         </h2>
         <p className="mt-6 max-w-xl mx-auto text-lg text-muted-foreground">
-          Three runs free. No card. Open a build, configure parts, and read your first
-          comparative aero report in under an hour.
+          Free to start. No card. Open a build, configure parts, and read your first
+          comparative aero estimate in under a minute.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Button variant="hero" size="lg" asChild>
@@ -788,13 +790,13 @@ function Footer() {
               <div className="leading-tight">
                 <div className="text-sm font-semibold tracking-tight">AeroLab</div>
                 <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                  Virtual Wind Tunnel
+                  Comparative aero studio
                 </div>
               </div>
             </div>
             <p className="mt-5 max-w-sm text-sm text-muted-foreground leading-relaxed">
-              Comparative aerodynamics for enthusiast and track cars.
-              Solver-backed CFD, honest confidence, exportable packages.
+              Geometry-aware comparative aero for enthusiast and track cars.
+              Real-time visualisation, honest confidence, exportable packages.
             </p>
             <div className="mt-5 flex items-center gap-2">
               <Button variant="glass" size="icon" className="h-8 w-8"><Twitter className="h-3.5 w-3.5" /></Button>

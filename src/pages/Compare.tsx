@@ -1,6 +1,12 @@
 /**
- * Compare — pick 2-4 variants from the current build and see ranked metrics
- * + a Drag/Downforce scatter. All data from simulation_results.
+ * Compare — pick 2-4 variants from the current build and inspect them
+ * side-by-side. Hero is the premium 3D viewer with a baseline ghost overlay
+ * for the leader vs baseline. Followed by ranked package cards, a
+ * Drag/Downforce scatter and a full comparative aero table.
+ *
+ * Honest positioning: this is a *comparative aero visualisation*, not a
+ * solver-validated CFD comparison. Numbers come from the geometry-aware
+ * surrogate or from a recorded estimate pass.
  */
 import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
@@ -10,8 +16,14 @@ import { StatusChip } from "@/components/StatusChip";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { LoadingState } from "@/components/LoadingState";
 import { EmptyState } from "@/components/EmptyState";
-import { useVariants, useGeometry, type Variant, type SimResult } from "@/lib/repo";
+import { CarViewer3D } from "@/components/CarViewer3D";
+import { PackageModePicker } from "@/components/PackageModePicker";
+import {
+  useVariants, useGeometry, useBuild, useComponents,
+  type Variant, type SimResult,
+} from "@/lib/repo";
 import { estimateAero, aeroFromResult } from "@/lib/aero-estimator";
+import { getPackageMode, type PackageMode } from "@/lib/aero-package-modes";
 import {
   GitCompareArrows, Plus, X, Crown, Trophy, FileDown,
   TrendingUp, TrendingDown, Minus, ChevronDown, Eye,
@@ -33,17 +45,22 @@ function CompareContent({ buildId }: { buildId: string }) {
   const [search, setSearch] = useSearchParams();
   const { data: variants = [], isLoading } = useVariants(buildId);
   const { data: geometry } = useGeometry(buildId);
+  const { data: build } = useBuild(buildId);
+  const template = (build as any)?.car?.template ?? null;
 
   // Comma-separated ids in ?vs=
   const initial = (search.get("vs") ?? "").split(",").filter(Boolean);
   const [selected, setSelected] = useState<string[]>(initial);
+  const [packageMode, setPackageMode] = useState<PackageMode>(
+    (search.get("pkg") as PackageMode) ?? "track",
+  );
 
   // Initialise: prefer baseline + 2 others
   useEffect(() => {
     if (variants.length === 0 || selected.length > 0) return;
-    const baseline = variants.find((v) => v.is_baseline) ?? variants[0];
-    const others = variants.filter((v) => v.id !== baseline?.id).slice(0, 2);
-    setSelected([baseline?.id, ...others.map((v) => v.id)].filter(Boolean));
+    const baselineV = variants.find((v) => v.is_baseline) ?? variants[0];
+    const others = variants.filter((v) => v.id !== baselineV?.id).slice(0, 2);
+    setSelected([baselineV?.id, ...others.map((v) => v.id)].filter(Boolean));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variants]);
 
@@ -52,9 +69,10 @@ function CompareContent({ buildId }: { buildId: string }) {
     if (selected.length === 0) return;
     const next = new URLSearchParams(search);
     next.set("vs", selected.join(","));
+    next.set("pkg", packageMode);
     setSearch(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected.join(",")]);
+  }, [selected.join(","), packageMode]);
 
   const compared = useMemo(() => {
     return selected
@@ -64,13 +82,22 @@ function CompareContent({ buildId }: { buildId: string }) {
         const latest = v.results?.sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         )[0];
-        const est = estimateAero([], geometry); // components per-variant aren't loaded here; falls through to result if present
+        const est = estimateAero([], geometry);
         const aero = aeroFromResult(latest, est);
         return { variant: v, result: latest, aero };
       });
   }, [selected, variants, geometry]);
 
   const baseline = compared.find((c) => c.variant.is_baseline) ?? compared[0];
+
+  // Components for the leader (top L/D in current selection) + baseline so the
+  // 3D viewer can render leader-on-top, baseline as ghost
+  const leader = useMemo(() => {
+    if (compared.length === 0) return undefined;
+    return [...compared].sort((a, b) => b.aero.ld - a.aero.ld)[0];
+  }, [compared]);
+
+  const { data: leaderComponents = [] } = useComponents(leader?.variant.id);
 
   const onAdd = (id: string) =>
     setSelected((s) => (s.length < 4 && !s.includes(id) ? [...s, id] : s));
@@ -91,7 +118,7 @@ function CompareContent({ buildId }: { buildId: string }) {
         <EmptyState
           icon={<GitCompareArrows className="h-5 w-5 text-primary" />}
           title="Need at least 2 variants"
-          description="Create or duplicate variants on the Build page to compare them here."
+          description="Create or duplicate variants on the Build page to compare aero packages here."
           action={
             <Button variant="hero" size="sm" asChild>
               <Link to={`/build?id=${buildId}`}>Open build</Link>
@@ -105,17 +132,17 @@ function CompareContent({ buildId }: { buildId: string }) {
   const available = variants.filter((v) => !selected.includes(v.id));
 
   return (
-    <div className="px-6 py-6">
+    <div className="px-4 md:px-6 py-6 space-y-4">
       {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-mono text-[11px] uppercase tracking-[0.2em] text-primary/80">
-            Step 05 · Variant comparison
+            Step 05 · Comparative aero
           </div>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Compare variants</h1>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Compare packages</h1>
           <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
-            Side-by-side aero metrics. Variants without a simulation run use surrogate estimates,
-            shown with a yellow indicator.
+            Side-by-side geometry-aware aero estimates. Variants without a recorded pass
+            use the surrogate estimator and are marked as estimated.
           </p>
         </div>
         <Button variant="glass" size="sm" asChild>
@@ -124,6 +151,38 @@ function CompareContent({ buildId }: { buildId: string }) {
           </Link>
         </Button>
       </div>
+
+      {/* Hero 3D viewer — leader vs baseline ghost */}
+      {leader && baseline && (
+        <div className="relative overflow-hidden rounded-xl border border-border bg-surface-0 shadow-elevated">
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-0/85 px-3 py-2 backdrop-blur">
+            <div className="flex items-center gap-2">
+              <Crown className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium">{leader.variant.name}</span>
+              <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                vs {baseline.variant.name} (ghost)
+              </span>
+            </div>
+            <PackageModePicker value={packageMode} onChange={setPackageMode} compact />
+          </div>
+          <div className="relative h-[460px] bg-[radial-gradient(60%_60%_at_50%_45%,hsl(188_95%_55%/0.08),transparent_70%)]">
+            <div className="absolute inset-0 grid-bg opacity-30 pointer-events-none" />
+            <CarViewer3D
+              template={template}
+              geometry={geometry}
+              components={leaderComponents}
+              estimate={leader.aero}
+              baselineEstimate={baseline.aero}
+              mode="compare"
+              packageMode={packageMode}
+              compareGhost
+            />
+            <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
+              <StatusChip tone="success" size="sm">Comparative aero · {getPackageMode(packageMode).label}</StatusChip>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Variant chooser */}
       <VariantChooser
@@ -134,19 +193,13 @@ function CompareContent({ buildId }: { buildId: string }) {
       />
 
       {/* Ranked cards */}
-      <div className="mt-4">
-        <RankedCards entries={compared} baseline={baseline} />
-      </div>
+      <RankedCards entries={compared} baseline={baseline} />
 
       {/* Scatter */}
-      <div className="mt-4">
-        <DragDownforceChart entries={compared} />
-      </div>
+      <DragDownforceChart entries={compared} />
 
       {/* Comparison table */}
-      <div className="mt-4">
-        <ComparisonTable entries={compared} baseline={baseline} />
-      </div>
+      <ComparisonTable entries={compared} baseline={baseline} />
     </div>
   );
 }
@@ -284,7 +337,7 @@ function RankedCards({
 
               <div className="mt-3 rounded-md border border-border bg-surface-1/60 p-3">
                 <div className="flex items-baseline justify-between">
-                  <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">L/D ratio</span>
+                  <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">L/D tendency</span>
                   <DeltaInline v={dLD} dec={2} />
                 </div>
                 <div className="mt-1 text-3xl font-semibold tabular-nums text-mono">
@@ -293,9 +346,9 @@ function RankedCards({
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                <Stat l="Cd" v={aero.cd.toFixed(3)} delta={dCd} invert pct />
+                <Stat l="Cd est." v={aero.cd.toFixed(3)} delta={dCd} invert pct />
                 <Stat l="Drag" v={`${aero.drag_kgf}`} u="kgf" delta={aero.drag_kgf - baseline.aero.drag_kgf} invert />
-                <Stat l="DF total" v={`${aero.df_total_kgf > 0 ? "+" : ""}${aero.df_total_kgf}`} u="kgf" delta={dDF} highlight />
+                <Stat l="Aero load" v={`${aero.df_total_kgf > 0 ? "+" : ""}${aero.df_total_kgf}`} u="kgf" delta={dDF} highlight />
                 <Stat l="Balance F" v={`${aero.balance_front_pct.toFixed(1)}%`} delta={aero.balance_front_pct - baseline.aero.balance_front_pct} suffix="pp" />
               </div>
 
@@ -358,14 +411,13 @@ function DragDownforceChart({ entries }: { entries: ReturnType<typeof useEntries
     <div className="glass rounded-xl">
       <div className="border-b border-border px-4 py-3 flex items-center gap-2">
         <Trophy className="h-4 w-4 text-primary" />
-        <h3 className="text-sm font-semibold tracking-tight">Drag vs Downforce</h3>
+        <h3 className="text-sm font-semibold tracking-tight">Drag tendency vs aero load</h3>
         <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
           higher-left is better
         </span>
       </div>
       <div className="p-4">
         <svg viewBox={`0 0 ${w} ${h}`} className="w-full" preserveAspectRatio="xMidYMid meet">
-          {/* grid */}
           {Array.from({ length: 5 }).map((_, i) => (
             <line key={`gx-${i}`}
               x1={pad + ((w - 2 * pad) / 4) * i} x2={pad + ((w - 2 * pad) / 4) * i}
@@ -378,10 +430,8 @@ function DragDownforceChart({ entries }: { entries: ReturnType<typeof useEntries
               y1={pad + ((h - 2 * pad) / 4) * i} y2={pad + ((h - 2 * pad) / 4) * i}
               stroke="hsl(var(--border))" strokeWidth="0.4" />
           ))}
-          {/* axes */}
           <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="hsl(var(--border))" strokeWidth="0.8" />
           <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="hsl(var(--border))" strokeWidth="0.8" />
-          {/* points */}
           {entries.map((e, i) => (
             <g key={e.variant.id}>
               <circle cx={x(e.aero.drag_kgf)} cy={y(e.aero.df_total_kgf)} r="6"
@@ -393,14 +443,13 @@ function DragDownforceChart({ entries }: { entries: ReturnType<typeof useEntries
               </text>
             </g>
           ))}
-          {/* axis labels */}
           <text x={w - pad} y={h - 8} textAnchor="end" fill="hsl(var(--muted-foreground))"
             style={{ font: "10px 'JetBrains Mono', monospace" }}>
-            Drag (kgf) →
+            Drag est. (kgf) →
           </text>
           <text x={pad + 8} y={pad + 4} fill="hsl(var(--muted-foreground))"
             style={{ font: "10px 'JetBrains Mono', monospace" }}>
-            ↑ Downforce (kgf)
+            ↑ Aero load (kgf)
           </text>
         </svg>
       </div>
@@ -417,21 +466,21 @@ function ComparisonTable({
 }) {
   if (!baseline) return null;
   const rows = [
-    { label: "Drag coefficient (Cd)", get: (a: any) => a.cd.toFixed(3),                                    delta: (a: any) => ((a.cd - baseline.aero.cd) / baseline.aero.cd) * 100, invert: true, suffix: "%" },
-    { label: "Drag (kgf)",            get: (a: any) => a.drag_kgf.toString(),                              delta: (a: any) => a.drag_kgf - baseline.aero.drag_kgf,                  invert: true },
-    { label: "Front DF (kgf)",        get: (a: any) => `${a.df_front_kgf > 0 ? "+" : ""}${a.df_front_kgf}`, delta: (a: any) => a.df_front_kgf - baseline.aero.df_front_kgf },
-    { label: "Rear DF (kgf)",         get: (a: any) => `${a.df_rear_kgf > 0 ? "+" : ""}${a.df_rear_kgf}`,  delta: (a: any) => a.df_rear_kgf - baseline.aero.df_rear_kgf },
-    { label: "Total DF (kgf)",        get: (a: any) => `${a.df_total_kgf > 0 ? "+" : ""}${a.df_total_kgf}`, delta: (a: any) => a.df_total_kgf - baseline.aero.df_total_kgf },
-    { label: "L/D ratio",             get: (a: any) => a.ld.toFixed(2),                                    delta: (a: any) => a.ld - baseline.aero.ld },
-    { label: "Balance % front",       get: (a: any) => `${a.balance_front_pct.toFixed(1)}%`,               delta: (a: any) => a.balance_front_pct - baseline.aero.balance_front_pct, suffix: "pp" },
-    { label: "Top speed (km/h)",      get: (a: any) => `${a.top_speed_kmh}`,                               delta: (a: any) => a.top_speed_kmh - baseline.aero.top_speed_kmh },
+    { label: "Drag coefficient (Cd) · est.",     get: (a: any) => a.cd.toFixed(3),                                    delta: (a: any) => ((a.cd - baseline.aero.cd) / baseline.aero.cd) * 100, invert: true, suffix: "%" },
+    { label: "Estimated drag (kgf)",             get: (a: any) => a.drag_kgf.toString(),                              delta: (a: any) => a.drag_kgf - baseline.aero.drag_kgf,                  invert: true },
+    { label: "Approximate front load (kgf)",     get: (a: any) => `${a.df_front_kgf > 0 ? "+" : ""}${a.df_front_kgf}`, delta: (a: any) => a.df_front_kgf - baseline.aero.df_front_kgf },
+    { label: "Approximate rear load (kgf)",      get: (a: any) => `${a.df_rear_kgf > 0 ? "+" : ""}${a.df_rear_kgf}`,  delta: (a: any) => a.df_rear_kgf - baseline.aero.df_rear_kgf },
+    { label: "Total aero load (kgf)",            get: (a: any) => `${a.df_total_kgf > 0 ? "+" : ""}${a.df_total_kgf}`, delta: (a: any) => a.df_total_kgf - baseline.aero.df_total_kgf },
+    { label: "L/D tendency",                     get: (a: any) => a.ld.toFixed(2),                                    delta: (a: any) => a.ld - baseline.aero.ld },
+    { label: "Aero balance · % front",           get: (a: any) => `${a.balance_front_pct.toFixed(1)}%`,               delta: (a: any) => a.balance_front_pct - baseline.aero.balance_front_pct, suffix: "pp" },
+    { label: "Likely top speed (km/h)",          get: (a: any) => `${a.top_speed_kmh}`,                               delta: (a: any) => a.top_speed_kmh - baseline.aero.top_speed_kmh },
   ];
 
   return (
     <div className="glass rounded-xl overflow-hidden">
       <div className="border-b border-border px-4 py-3 flex items-center gap-2">
         <GitCompareArrows className="h-4 w-4 text-primary" />
-        <h3 className="text-sm font-semibold tracking-tight">Performance comparison</h3>
+        <h3 className="text-sm font-semibold tracking-tight">Comparative aero summary</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
