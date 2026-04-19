@@ -78,23 +78,56 @@ export function ExtractedPartPreview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conceptId, kind, label]);
 
+  const [meshProgress, setMeshProgress] = useState<number>(0);
+
   const onMakeMesh = async () => {
     setStage("meshing");
     setError(null);
+    setMeshProgress(0);
     try {
-      const { data, error } = await supabase.functions.invoke("meshify-part", {
+      // 1) Start the Meshy job → get a task_id
+      const startRes = await supabase.functions.invoke("meshify-part", {
         body: {
+          action: "start",
           concept_id: conceptId,
           part_kind: kind,
           image_urls: images.map((i) => i.url),
         },
       });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      const url = (data as any).glb_url as string;
-      if (!url) throw new Error("No mesh returned");
-      setGlbUrl(url);
-      setStage("ready");
+      if (startRes.error) throw startRes.error;
+      const startData = startRes.data as any;
+      if (startData?.error) throw new Error(startData.error);
+      const taskId: string | undefined = startData?.task_id;
+      if (!taskId) throw new Error("No task id returned");
+
+      // 2) Poll status every 4s for up to 8 minutes
+      const deadline = Date.now() + 8 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const pollRes = await supabase.functions.invoke("meshify-part", {
+          body: {
+            action: "status",
+            concept_id: conceptId,
+            part_kind: kind,
+            task_id: taskId,
+          },
+        });
+        if (pollRes.error) throw pollRes.error;
+        const pollData = pollRes.data as any;
+        if (pollData?.error) throw new Error(pollData.error);
+
+        if (typeof pollData?.progress === "number") setMeshProgress(pollData.progress);
+
+        if (pollData?.status === "SUCCEEDED" && pollData?.glb_url) {
+          setGlbUrl(pollData.glb_url as string);
+          setStage("ready");
+          return;
+        }
+        if (["FAILED", "CANCELED", "EXPIRED"].includes(pollData?.status)) {
+          throw new Error(pollData?.error || `Meshy ${pollData?.status}`);
+        }
+      }
+      throw new Error("Meshy timed out (8 min)");
     } catch (e: any) {
       const msg = String(e.message ?? e);
       setError(msg);
@@ -267,7 +300,9 @@ export function ExtractedPartPreview({
             {stage === "meshing" && (
               <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
                 <Box className="h-6 w-6 text-primary animate-pulse" />
-                <span className="text-xs font-mono uppercase tracking-widest text-primary">Meshing…</span>
+                <span className="text-xs font-mono uppercase tracking-widest text-primary">
+                  Meshing… {meshProgress}%
+                </span>
               </div>
             )}
           </div>
