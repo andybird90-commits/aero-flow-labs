@@ -45,6 +45,16 @@ export function ExtractedPartPreview({
   const [error, setError] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
+  const purgeCachedMesh = async () => {
+    const { error } = await supabase
+      .from("concept_parts")
+      .update({ glb_url: null })
+      .eq("concept_id", conceptId)
+      .eq("kind", kind);
+    if (error) throw error;
+    setGlbUrl(null);
+  };
+
   // Look up cached renders/mesh for this concept+kind. Returns true if we
   // hydrated from the cache (so the caller skips regeneration).
   const loadFromCache = async (signal?: { cancelled: boolean }) => {
