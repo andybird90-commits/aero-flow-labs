@@ -355,7 +355,15 @@ function BuildContent({ buildId }: { buildId: string }) {
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 md:px-6 py-6 space-y-6">
-      <HeroViewer variantName={active.name} runStatus={`${active.status} · ${active.id.slice(0,6)}`} />
+      <HeroViewer
+        variantName={active.name}
+        runStatus={`${active.status} · ${active.id.slice(0,6)}`}
+        template={template}
+        geometry={geometry}
+        components={activeComponents}
+        estimate={currentEst}
+        baselineEstimate={baselineEst}
+      />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2">
