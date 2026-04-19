@@ -28,6 +28,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const MESHY_SINGLE = "https://api.meshy.ai/openapi/v1/image-to-3d";
+const MESHY_MULTI  = "https://api.meshy.ai/openapi/v1/multi-image-to-3d";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
