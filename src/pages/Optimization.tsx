@@ -207,7 +207,7 @@ function OptContent({ buildId }: { buildId: string }) {
                     <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                       {j.objective.replace(/_/g, " ")}
                     </span>
-                    <StatusChip tone={j.state === "completed" ? "success" : j.state === "failed" ? "destructive" : "preview"} size="sm">
+                    <StatusChip tone={j.state === "completed" ? "success" : j.state === "failed" ? "failed" : "preview"} size="sm">
                       {j.state}
                     </StatusChip>
                   </span>

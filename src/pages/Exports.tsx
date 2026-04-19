@@ -299,7 +299,7 @@ function ExportsContent({ buildId }: { buildId: string }) {
                       </StatusChip>
                     )}
                     {row.status === "failed" && (
-                      <StatusChip tone="destructive" size="sm">
+                      <StatusChip tone="failed" size="sm">
                         <AlertCircle className="mr-1 h-3 w-3" /> Failed
                       </StatusChip>
                     )}
