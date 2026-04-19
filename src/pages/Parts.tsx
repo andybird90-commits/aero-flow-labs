@@ -1,0 +1,183 @@
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { WorkspaceShell } from "@/components/WorkspaceShell";
+import { CarViewer3D } from "@/components/CarViewer3D";
+import { Button } from "@/components/ui/button";
+import { StatusChip } from "@/components/StatusChip";
+import { Switch } from "@/components/ui/switch";
+import {
+  useGeometry, useApprovedConcept, useActiveConceptSet, useFittedParts, useUpsertFittedPart,
+  type FittedPart,
+} from "@/lib/repo";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { Wand2, RefreshCw, ArrowRight, Wrench, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const PART_KINDS = [
+  { kind: "splitter",   label: "Front splitter",   defaults: { depth: 80, nudge_x: 0, nudge_y: 0, nudge_z: 0 } },
+  { kind: "lip",        label: "Lip extension",    defaults: { depth: 30 } },
+  { kind: "canard",     label: "Canards",          defaults: { angle: 12 } },
+  { kind: "side_skirt", label: "Side skirts",      defaults: { depth: 70 } },
+  { kind: "wide_arch",  label: "Wide arches",      defaults: { flare: 50 } },
+  { kind: "diffuser",   label: "Rear diffuser",    defaults: { angle: 10 } },
+  { kind: "ducktail",   label: "Ducktail",         defaults: { height: 38 } },
+  { kind: "wing",       label: "Rear wing",        defaults: { aoa: 8, chord: 280, gurney: 12 } },
+];
+
+export default function Parts() {
+  return (
+    <WorkspaceShell>
+      {({ project, projectId }) => <PartsInner projectId={projectId!} project={project} />}
+    </WorkspaceShell>
+  );
+}
+
+function PartsInner({ projectId, project }: { projectId: string; project: any }) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const { data: geometry } = useGeometry(projectId);
+  const { data: approved } = useApprovedConcept(projectId);
+  const { data: conceptSet } = useActiveConceptSet(projectId);
+  const { data: parts = [] } = useFittedParts(conceptSet?.id);
+  const upsert = useUpsertFittedPart();
+  const [suggesting, setSuggesting] = useState(false);
+
+  const partByKind = (k: string) => parts.find((p) => p.kind === k);
+
+  const togglePart = async (kind: string) => {
+    if (!user || !conceptSet) return;
+    const existing = partByKind(kind);
+    const def = PART_KINDS.find((p) => p.kind === kind)!;
+    await upsert.mutateAsync({
+      userId: user.id,
+      conceptSetId: conceptSet.id,
+      id: existing?.id,
+      kind,
+      params: existing?.params ?? def.defaults,
+      enabled: !(existing?.enabled),
+    });
+  };
+
+  const aiSuggest = async () => {
+    if (!user || !conceptSet) return;
+    if (!approved) {
+      toast({ title: "Approve a concept first", description: "Go to Concepts and approve one.", variant: "destructive" });
+      return;
+    }
+    setSuggesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("suggest-part-params", {
+        body: { project_id: projectId, concept_id: approved.id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const suggestions = (data as any)?.parts as Array<{ kind: string; params: any; enabled: boolean }> | undefined;
+      if (!suggestions || suggestions.length === 0) {
+        toast({ title: "No suggestions returned", variant: "destructive" });
+        return;
+      }
+      for (const s of suggestions) {
+        const existing = partByKind(s.kind);
+        await upsert.mutateAsync({
+          userId: user.id,
+          conceptSetId: conceptSet.id,
+          id: existing?.id,
+          kind: s.kind,
+          params: s.params,
+          enabled: s.enabled,
+        });
+      }
+      toast({ title: "Parts generated", description: `${suggestions.length} part(s) configured from concept.` });
+    } catch (e: any) {
+      const msg = String(e.message ?? e);
+      if (msg.includes("429")) toast({ title: "Rate limit reached", variant: "destructive" });
+      else if (msg.includes("402")) toast({ title: "AI credits exhausted", variant: "destructive" });
+      else toast({ title: "Suggestion failed", description: msg, variant: "destructive" });
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  return (
+    <div className="grid gap-6 p-6 lg:grid-cols-[1fr_360px]">
+      <div className="glass rounded-xl overflow-hidden h-[640px] relative">
+        {geometry ? (
+          <CarViewer3D template={project.car?.template ?? null} geometry={geometry} parts={parts} />
+        ) : (
+          <div className="h-full grid place-items-center text-muted-foreground">Loading viewer…</div>
+        )}
+        <div className="absolute top-3 left-3 inline-flex items-center gap-2 rounded-md bg-surface-0/80 backdrop-blur px-2.5 py-1.5 border border-border">
+          <Wrench className="h-3.5 w-3.5 text-primary" />
+          <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Fitted parts preview
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Step 4 · Fitted Parts</div>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">Generate body kit parts</h1>
+        </div>
+
+        {!approved && (
+          <div className="glass rounded-xl p-3 flex items-start gap-2.5">
+            <AlertCircle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+            <div className="text-sm">
+              <p className="text-muted-foreground">
+                Approve a concept first.{" "}
+                <Link to={`/concepts?project=${projectId}`} className="text-primary hover:underline">
+                  Go to Concepts
+                </Link>
+              </p>
+            </div>
+          </div>
+        )}
+
+        <Button
+          variant="hero"
+          size="lg"
+          className="w-full"
+          onClick={aiSuggest}
+          disabled={!approved || !conceptSet || suggesting}
+        >
+          {suggesting ? (
+            <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> AI suggesting parts…</>
+          ) : (
+            <><Wand2 className="mr-2 h-4 w-4" /> Generate parts from concept</>
+          )}
+        </Button>
+
+        <div className="glass rounded-xl">
+          <div className="border-b border-border px-4 py-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold tracking-tight">Body kit parts</h3>
+            <StatusChip tone="neutral" size="sm">{parts.filter((p) => p.enabled).length} enabled</StatusChip>
+          </div>
+          <div className="p-3 space-y-1">
+            {PART_KINDS.map((p) => {
+              const existing = partByKind(p.kind);
+              const on = !!existing?.enabled;
+              return (
+                <div key={p.kind} className={cn(
+                  "flex items-center justify-between rounded-md px-2.5 py-2 transition-colors",
+                  on ? "bg-primary/[0.06]" : "hover:bg-surface-2",
+                )}>
+                  <div className="text-sm">{p.label}</div>
+                  <Switch checked={on} onCheckedChange={() => togglePart(p.kind)} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <Button variant="glass" size="lg" className="w-full" asChild disabled={parts.filter((p) => p.enabled).length === 0}>
+          <Link to={`/refine?project=${projectId}`}>
+            Refine parts <ArrowRight className="ml-2 h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}

@@ -1,55 +1,46 @@
 /**
- * CarViewer3D — premium real-time 3D aero visualisation.
+ * CarViewer3D — premium real-time studio render of the car + fitted parts.
  *
- * This is the showpiece of the app. It renders an approximate, geometry-aware
- * car model derived from car_template dimensions and overlays comparative aero
- * visualisations: estimated streamlines, approximate pressure heatmap, wake
- * plume and force direction indicators.
+ * Renders either the user's uploaded STL/OBJ, or a procedural placeholder
+ * coupe driven by the car_template dimensions when nothing is uploaded yet.
+ * Fitted aero parts (splitter, wing, skirts, etc.) are anchored to the
+ * car's bounding box so they conform to whatever model is loaded.
  *
- * Honest positioning:
- *   - The 3D model is a parametric procedural representation, not a digital
- *     twin of the user's exact vehicle.
- *   - The flow / pressure / wake overlays are *estimated* / *approximate* —
- *     they are seeded by the integrated forces from the surrogate aero
- *     estimator and react to component params, but they are not a CFD field.
+ * No CFD overlays — this is a pure design viewer.
  */
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
   OrbitControls,
   Environment,
   ContactShadows,
-  Float,
-  Html,
-  Bounds,
 } from "@react-three/drei";
 import * as THREE from "three";
-import { STLLoader } from "three-stdlib";
-import { OBJLoader } from "three-stdlib";
-import type { AeroComponent, CarTemplate, Geometry } from "@/lib/repo";
-import type { AeroEstimate } from "@/lib/aero-estimator";
-import type { PackageMode } from "@/lib/aero-package-modes";
-import { getPackageMode } from "@/lib/aero-package-modes";
+import { STLLoader, OBJLoader } from "three-stdlib";
+import type { CarTemplate, FittedPart, Geometry } from "@/lib/repo";
 import { useSignedMeshUrl, meshExtension } from "@/lib/mesh-url";
 import { readOrientation } from "@/components/MeshOrientation";
 import { computeAnchors, readNudge, nudged, type AeroAnchors, type MeshBounds } from "@/lib/aero-anchors";
 
-export type ViewerMode = "flow" | "pressure" | "wake" | "forces" | "compare";
+export type CameraPreset = "free" | "front_three_quarter" | "rear_three_quarter" | "side" | "top";
 
 interface CarViewer3DProps {
   template?: CarTemplate | null;
   geometry?: Geometry | null;
-  components?: AeroComponent[];
-  estimate: AeroEstimate;
-  baselineEstimate?: AeroEstimate;
-  mode: ViewerMode;
-  packageMode?: PackageMode;
-  /** When true, renders a ghost baseline car next to current variant */
-  compareGhost?: boolean;
+  parts?: FittedPart[];
+  /** When true, only render the original car mesh (no fitted parts). */
+  showPartsOnly?: boolean;
+  hideParts?: boolean;
   className?: string;
+  preset?: CameraPreset;
+  /** Map of part kind -> visible (default true). */
+  partVisibility?: Record<string, boolean>;
 }
 
-const PRIMARY = new THREE.Color("hsl(188, 95%, 55%)".replace("hsl", "").replace("(", "").replace(")", ""));
+export interface CarViewer3DHandle {
+  /** Capture the current frame as a base64 data URL. */
+  captureFrame: () => string | null;
+}
 
 /* ─── helpers ──────────────────────────────────────────── */
 function paramN(p: any, key: string, dflt = 0): number {
@@ -57,17 +48,11 @@ function paramN(p: any, key: string, dflt = 0): number {
   return typeof v === "number" ? v : dflt;
 }
 
-function findComponent(components: AeroComponent[] = [], kind: string) {
-  return components.find((c) => c.kind === kind && c.enabled);
+function findPart(parts: FittedPart[] = [], kind: string) {
+  return parts.find((c) => c.kind === kind && c.enabled);
 }
 
 /* ─── User-uploaded mesh (STL / OBJ) ───────────────────── */
-/**
- * Loads a signed-URL STL/OBJ and auto-fits it to the template's wheelbase
- * so it occupies roughly the same volume as the procedural body.
- * Falls back silently to nothing on error — caller renders the procedural
- * body when this returns null via the `loaded` callback.
- */
 function UserMesh({
   url,
   ext,
@@ -99,24 +84,17 @@ function UserMesh({
     const orientation = readOrientation(geometry);
 
     const fit = (obj: THREE.Object3D) => {
-      // 1) Apply user-chosen up-axis correction by wrapping in a parent group.
-      //    Three.js is Y-up; many CAD/STL exports are Z-up or X-up.
       const wrapper = new THREE.Group();
       if (orientation.upAxis === "z") {
-        // Z-up → Y-up: rotate -90° around X
         obj.rotation.x = -Math.PI / 2;
       } else if (orientation.upAxis === "x") {
-        // X-up → Y-up: rotate +90° around Z
         obj.rotation.z = Math.PI / 2;
       }
       wrapper.add(obj);
-
-      // 2) Apply yaw (around world Y) and optional 180° flip on the wrapper.
       wrapper.rotation.y =
         (orientation.yawDeg * Math.PI) / 180 +
         (orientation.flipForward ? Math.PI : 0);
 
-      // 3) Now fit the rotated wrapper.
       const box = new THREE.Box3().setFromObject(wrapper);
       const size = new THREE.Vector3();
       box.getSize(size);
@@ -124,7 +102,6 @@ function UserMesh({
       if (!isFinite(longest) || longest === 0) return wrapper;
       const scale = targetLength / longest;
       wrapper.scale.setScalar(scale);
-      // recentre & rest on ground
       box.setFromObject(wrapper);
       const center = new THREE.Vector3();
       box.getCenter(center);
@@ -203,49 +180,50 @@ function UserMesh({
       cancelled = true;
       onBounds?.(null);
     };
-  }, [url, ext, template?.wheelbase_mm, template?.track_front_mm, template?.frontal_area_m2, geometry?.ride_height_front_mm, geometry?.ride_height_rear_mm, (geometry?.metadata as any)?.mesh_orientation?.upAxis, (geometry?.metadata as any)?.mesh_orientation?.yawDeg, (geometry?.metadata as any)?.mesh_orientation?.flipForward, onLoaded, onBounds]);
+  }, [
+    url,
+    ext,
+    template?.wheelbase_mm,
+    geometry?.ride_height_front_mm,
+    geometry?.ride_height_rear_mm,
+    (geometry?.metadata as any)?.mesh_orientation?.upAxis,
+    (geometry?.metadata as any)?.mesh_orientation?.yawDeg,
+    (geometry?.metadata as any)?.mesh_orientation?.flipForward,
+    onLoaded,
+    onBounds,
+  ]);
 
   if (!object) return null;
   return <primitive object={object} />;
 }
 
-/* ─── Procedural car geometry ──────────────────────────── */
-/**
- * Builds a stylised low-poly coupe whose proportions are driven by the
- * template (wheelbase, track, frontal area) so different cars look different.
- */
-function CarBody({
+/* ─── Procedural placeholder car ───────────────────────── */
+function PlaceholderCar({
   template,
   geometry,
-  ghost = false,
 }: {
   template?: CarTemplate | null;
   geometry?: Geometry | null;
-  ghost?: boolean;
 }) {
   const wheelbase = (template?.wheelbase_mm ?? 2575) / 1000;
   const track = (template?.track_front_mm ?? 1520) / 1000;
   const fa = template?.frontal_area_m2 ?? 2.04;
-  // derive width / height from frontal area + track
   const width = Math.max(track + 0.05, 1.7);
-  const height = Math.max(0.45, fa / Math.max(width, 1.4) * 0.85);
-  const length = wheelbase + 1.45; // overhangs
+  const height = Math.max(0.45, (fa / Math.max(width, 1.4)) * 0.85);
+  const length = wheelbase + 1.45;
   const ride = ((geometry?.ride_height_front_mm ?? 130) + (geometry?.ride_height_rear_mm ?? 135)) / 2 / 1000;
 
-  // Body is built as a stack of beveled boxes for a coupe silhouette
   const bodyMat = useMemo(
     () =>
       new THREE.MeshPhysicalMaterial({
-        color: ghost ? "#444a58" : "#0a1622",
+        color: "#0a1622",
         metalness: 0.85,
         roughness: 0.28,
         clearcoat: 1.0,
         clearcoatRoughness: 0.15,
         envMapIntensity: 1.4,
-        transparent: ghost,
-        opacity: ghost ? 0.35 : 1,
       }),
-    [ghost],
+    [],
   );
   const greenhouseMat = useMemo(
     () =>
@@ -253,102 +231,67 @@ function CarBody({
         color: "#020610",
         metalness: 0.4,
         roughness: 0.15,
-        transmission: ghost ? 0 : 0.25,
-        thickness: 0.5,
         envMapIntensity: 1.6,
-        transparent: ghost,
-        opacity: ghost ? 0.25 : 1,
       }),
-    [ghost],
+    [],
   );
 
   const baseY = ride + 0.15;
 
   return (
-    <group position={[0, 0, 0]}>
-      {/* main body shell */}
+    <group>
       <mesh castShadow receiveShadow position={[0, baseY, 0]} material={bodyMat}>
         <boxGeometry args={[length, height, width]} />
       </mesh>
-      {/* nose taper */}
       <mesh castShadow position={[length / 2 - 0.25, baseY - 0.05, 0]} rotation={[0, 0, -0.12]} material={bodyMat}>
         <boxGeometry args={[0.7, height * 0.7, width * 0.95]} />
       </mesh>
-      {/* tail */}
       <mesh castShadow position={[-length / 2 + 0.2, baseY - 0.03, 0]} rotation={[0, 0, 0.08]} material={bodyMat}>
         <boxGeometry args={[0.6, height * 0.78, width * 0.96]} />
       </mesh>
-      {/* greenhouse / cabin */}
       <mesh castShadow position={[-0.05, baseY + height * 0.55, 0]} material={greenhouseMat}>
         <boxGeometry args={[length * 0.5, height * 0.5, width * 0.85]} />
       </mesh>
-      {/* roof slope front */}
       <mesh castShadow position={[length * 0.18, baseY + height * 0.45, 0]} rotation={[0, 0, -0.35]} material={greenhouseMat}>
         <boxGeometry args={[0.5, height * 0.55, width * 0.85]} />
       </mesh>
-      {/* roof slope rear */}
       <mesh castShadow position={[-length * 0.22, baseY + height * 0.45, 0]} rotation={[0, 0, 0.28]} material={greenhouseMat}>
         <boxGeometry args={[0.55, height * 0.5, width * 0.85]} />
       </mesh>
-
-      {/* wheels */}
       {[
         [length / 2 - 0.55, ride + 0.05, width / 2 - 0.05],
         [length / 2 - 0.55, ride + 0.05, -width / 2 + 0.05],
         [-length / 2 + 0.55, ride + 0.05, width / 2 - 0.05],
         [-length / 2 + 0.55, ride + 0.05, -width / 2 + 0.05],
       ].map((p, i) => (
-        <Wheel key={i} position={p as [number, number, number]} ghost={ghost} />
+        <Wheel key={i} position={p as [number, number, number]} />
       ))}
-
-      {/* underbody plate hint */}
-      {!ghost && (
-        <mesh position={[0, ride + 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[length * 0.95, width * 0.85]} />
-          <meshStandardMaterial color="#020610" metalness={0.3} roughness={0.7} />
-        </mesh>
-      )}
     </group>
   );
 }
 
-function Wheel({ position, ghost }: { position: [number, number, number]; ghost?: boolean }) {
+function Wheel({ position }: { position: [number, number, number] }) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame((_, dt) => {
-    if (ref.current && !ghost) ref.current.rotation.x += dt * 4.5;
+    if (ref.current) ref.current.rotation.x += dt * 1.2;
   });
   return (
-    <group position={position}>
-      <mesh ref={ref} castShadow rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.32, 0.32, 0.22, 28]} />
-        <meshStandardMaterial color={ghost ? "#3b3f48" : "#0a0d12"} metalness={0.6} roughness={0.4} />
-      </mesh>
-      {!ghost && (
-        <mesh rotation={[0, 0, Math.PI / 2]}>
-          <torusGeometry args={[0.21, 0.018, 12, 28]} />
-          <meshStandardMaterial color="#1a8fa5" emissive="#0a3f4a" emissiveIntensity={0.4} metalness={0.9} roughness={0.3} />
-        </mesh>
-      )}
-    </group>
+    <mesh ref={ref} position={position} castShadow rotation={[0, 0, Math.PI / 2]}>
+      <cylinderGeometry args={[0.32, 0.32, 0.22, 28]} />
+      <meshStandardMaterial color="#0a0d12" metalness={0.6} roughness={0.4} />
+    </mesh>
   );
 }
 
-/* ─── Aero parts (parametric add-ons, anchored to car) ───── */
-/**
- * Parts attach to **anchors** computed from either the uploaded mesh's
- * bounding box or the procedural template — so when a real STL is loaded
- * the splitter sticks to the actual nose, the wing sits behind the actual
- * tail, etc. Each component can also store a manual `nudge_x/y/z` offset
- * in its params for fine adjustment.
- */
-function AeroParts({
-  components = [],
-  packageMode,
+/* ─── Fitted parts (parametric add-ons, anchored to car) ─── */
+function FittedParts({
+  parts = [],
   anchors,
+  visibility,
 }: {
-  components?: AeroComponent[];
-  packageMode?: PackageMode;
+  parts?: FittedPart[];
   anchors: AeroAnchors;
+  visibility?: Record<string, boolean>;
 }) {
   const { length, width, height } = anchors;
   const a = anchors.anchors;
@@ -376,38 +319,44 @@ function AeroParts({
     [],
   );
 
-  const pkg = getPackageMode(packageMode);
-  const intensity = pkg.intensity;
+  const isVisible = (kind: string) => visibility?.[kind] !== false;
 
-  const splitter = findComponent(components, "splitter");
-  const wing = findComponent(components, "wing");
-  const diffuser = findComponent(components, "diffuser");
-  const skirts = findComponent(components, "skirts");
-  const canards = findComponent(components, "canards");
-  const ducktail = findComponent(components, "ducktail");
+  const splitter = isVisible("splitter") ? findPart(parts, "splitter") : undefined;
+  const wing = isVisible("wing") ? findPart(parts, "wing") : undefined;
+  const diffuser = isVisible("diffuser") ? findPart(parts, "diffuser") : undefined;
+  const skirts = isVisible("side_skirt") ? findPart(parts, "side_skirt") : undefined;
+  const canards = isVisible("canard") ? findPart(parts, "canard") : undefined;
+  const ducktail = isVisible("ducktail") ? findPart(parts, "ducktail") : undefined;
+  const wideArch = isVisible("wide_arch") ? findPart(parts, "wide_arch") : undefined;
+  const lip = isVisible("lip") ? findPart(parts, "lip") : undefined;
 
   return (
     <group>
-      {/* SPLITTER — protrudes forward from the front anchor */}
       {splitter && (() => {
         const n = readNudge(splitter.params);
-        const protr = paramN(splitter.params, "splProtrusion", 60) / 1000;
+        const protr = paramN(splitter.params, "depth", 80) / 1000;
         const p = nudged(a.splitter, n);
         return (
-          <mesh
-            position={[p.x + protr / 2, p.y, p.z]}
-            material={partMat}
-            castShadow
-          >
-            <boxGeometry args={[protr, 0.02, width * 0.95]} />
+          <mesh position={[p.x + protr / 2, p.y, p.z]} material={partMat} castShadow>
+            <boxGeometry args={[protr, 0.025, width * 0.95]} />
           </mesh>
         );
       })()}
 
-      {/* CANARDS — one per side, anchored to front fenders */}
+      {lip && (() => {
+        const n = readNudge(lip.params);
+        const depth = paramN(lip.params, "depth", 30) / 1000;
+        const p = nudged(a.splitter, n);
+        return (
+          <mesh position={[p.x + depth / 2, p.y + 0.04, p.z]} material={accentMat} castShadow>
+            <boxGeometry args={[depth, 0.012, width * 0.9]} />
+          </mesh>
+        );
+      })()}
+
       {canards && (() => {
         const n = readNudge(canards.params);
-        const angle = paramN(canards.params, "canAngle", 12) * Math.PI / 180;
+        const angle = paramN(canards.params, "angle", 12) * Math.PI / 180;
         return [
           { side: -1, anchor: a.canardsLeft },
           { side: 1, anchor: a.canardsRight },
@@ -416,7 +365,7 @@ function AeroParts({
           return (
             <mesh
               key={side}
-              position={[p.x, p.y, p.z * (side === 1 ? 1 : 1)]}
+              position={[p.x, p.y, p.z]}
               rotation={[0, 0, angle * -side]}
               material={accentMat}
               castShadow
@@ -427,105 +376,91 @@ function AeroParts({
         });
       })()}
 
-      {/* SIDE SKIRTS — left/right anchors */}
       {skirts && (() => {
         const n = readNudge(skirts.params);
-        const depth = paramN(skirts.params, "skDepth", 70) / 1000;
+        const depth = paramN(skirts.params, "depth", 70) / 1000;
         return [
           { side: -1, anchor: a.skirtsLeft },
           { side: 1, anchor: a.skirtsRight },
         ].map(({ side, anchor }) => {
           const p = nudged(anchor, n);
           return (
-            <mesh
-              key={side}
-              position={[p.x, p.y, p.z]}
-              material={partMat}
-              castShadow
-            >
+            <mesh key={side} position={[p.x, p.y, p.z]} material={partMat} castShadow>
               <boxGeometry args={[length * 0.55, depth, 0.04]} />
             </mesh>
           );
         });
       })()}
 
-      {/* DUCKTAIL — sits on the rear deck */}
+      {wideArch && (() => {
+        const n = readNudge(wideArch.params);
+        const flare = paramN(wideArch.params, "flare", 50) / 1000;
+        return [
+          { side: -1, anchor: a.skirtsLeft, x: a.splitter.x - 0.6 },
+          { side: 1, anchor: a.skirtsRight, x: a.splitter.x - 0.6 },
+          { side: -1, anchor: a.skirtsLeft, x: a.wing.x + 0.5 },
+          { side: 1, anchor: a.skirtsRight, x: a.wing.x + 0.5 },
+        ].map((s, i) => {
+          const p = nudged(s.anchor, n);
+          return (
+            <mesh
+              key={i}
+              position={[s.x, p.y + height * 0.25, p.z + (s.side * flare) / 2]}
+              material={partMat}
+              castShadow
+            >
+              <boxGeometry args={[0.5, 0.18, flare]} />
+            </mesh>
+          );
+        });
+      })()}
+
       {ducktail && (() => {
         const n = readNudge(ducktail.params);
-        const h = paramN(ducktail.params, "duckHeight", 38) / 1000;
+        const h = paramN(ducktail.params, "height", 38) / 1000;
         const p = nudged(a.ducktail, n);
         return (
-          <mesh
-            position={[p.x, p.y, p.z]}
-            rotation={[0, 0, 0.25]}
-            material={partMat}
-            castShadow
-          >
+          <mesh position={[p.x, p.y, p.z]} rotation={[0, 0, 0.25]} material={partMat} castShadow>
             <boxGeometry args={[0.22, h, width * 0.85]} />
           </mesh>
         );
       })()}
 
-      {/* REAR WING — anchored above tail, lifts with package intensity */}
       {wing && (() => {
         const n = readNudge(wing.params);
         const aoa = paramN(wing.params, "aoa", 8) * Math.PI / 180;
         const chord = paramN(wing.params, "chord", 280) / 1000;
         const gurney = paramN(wing.params, "gurney", 12) / 1000;
-        const elements = paramN(wing.params, "elements", 2);
         const p = nudged(a.wing, n);
         return (
-          <group position={[p.x, p.y + intensity * 0.05, p.z]}>
-            {/* uprights */}
+          <group position={[p.x, p.y, p.z]}>
             {[-1, 1].map((side) => (
               <mesh key={side} position={[0, -0.1, (width * 0.32) * side]} material={partMat} castShadow>
                 <boxGeometry args={[0.04, 0.22, 0.04]} />
               </mesh>
             ))}
-            {/* main plane */}
-            <mesh
-              rotation={[0, 0, -aoa]}
-              material={partMat}
-              castShadow
-            >
+            <mesh rotation={[0, 0, -aoa]} material={partMat} castShadow>
               <boxGeometry args={[chord, 0.025, width * 0.78]} />
             </mesh>
-            {/* gurney lip */}
-            <mesh
-              position={[-chord / 2, 0.012 + gurney / 2, 0]}
-              material={accentMat}
-            >
+            <mesh position={[-chord / 2, 0.012 + gurney / 2, 0]} material={accentMat}>
               <boxGeometry args={[0.012, gurney, width * 0.78]} />
             </mesh>
-            {/* second element */}
-            {elements > 1 && (
-              <mesh
-                position={[chord / 2.5, 0.06, 0]}
-                rotation={[0, 0, -aoa * 1.2]}
-                material={partMat}
-                castShadow
-              >
-                <boxGeometry args={[chord / 1.5, 0.02, width * 0.74]} />
-              </mesh>
-            )}
           </group>
         );
       })()}
 
-      {/* DIFFUSER — tucks under the rear */}
       {diffuser && (() => {
         const n = readNudge(diffuser.params);
-        const angle = paramN(diffuser.params, "diffAngle", 11) * Math.PI / 180;
-        const len = paramN(diffuser.params, "diffLength", 780) / 1500;
+        const angle = paramN(diffuser.params, "angle", 10) * Math.PI / 180;
         const p = nudged(a.diffuser, n);
         return (
           <mesh
-            position={[p.x, p.y, p.z]}
+            position={[p.x - 0.15, p.y, p.z]}
             rotation={[0, 0, angle]}
             material={partMat}
             castShadow
           >
-            <boxGeometry args={[len, 0.018, width * 0.85]} />
+            <boxGeometry args={[0.4, 0.025, width * 0.8]} />
           </mesh>
         );
       })()}
@@ -533,430 +468,124 @@ function AeroParts({
   );
 }
 
-/* ─── Streamlines (Estimated Flow) ────────────────────── */
-function Streamlines({
-  visible,
-  intensity = 0.7,
-  template,
-  estimate,
-}: {
-  visible: boolean;
-  intensity?: number;
-  template?: CarTemplate | null;
-  estimate: AeroEstimate;
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-  const wheelbase = (template?.wheelbase_mm ?? 2575) / 1000;
-  const length = wheelbase + 1.45;
-
-  // Number of streamlines reacts to package intensity + relative downforce
-  const lineCount = Math.round(36 * intensity + Math.min(20, Math.abs(estimate.df_total_kgf) / 20));
-  const lines = useMemo(() => {
-    const out: { points: THREE.Vector3[]; offset: number }[] = [];
-    for (let i = 0; i < lineCount; i++) {
-      const z = (i / (lineCount - 1) - 0.5) * 1.9;
-      const yStart = 0.15 + (i % 7) * 0.12;
-      const pts: THREE.Vector3[] = [];
-      for (let t = 0; t <= 1; t += 0.025) {
-        const x = length * 1.4 - t * length * 3.4;
-        // Flow goes over the body — bend up around mid, dip behind
-        const bumpUp =
-          Math.exp(-Math.pow((x - 0.2) / 1.0, 2)) * (0.55 - Math.abs(z) * 0.25);
-        const wakeDip =
-          x < -length / 2
-            ? Math.sin((x + length / 2) * 4) * 0.15 * Math.exp((x + length / 2) * 1.2)
-            : 0;
-        const y = yStart + bumpUp + wakeDip;
-        pts.push(new THREE.Vector3(x, y, z));
-      }
-      out.push({ points: pts, offset: Math.random() });
+/* ─── Camera control ───────────────────────────────────── */
+function CameraRig({ preset }: { preset: CameraPreset }) {
+  useFrame(({ camera, controls }: any) => {
+    if (preset === "free") return;
+    let target: [number, number, number] = [4, 1.5, 4];
+    if (preset === "front_three_quarter") target = [4.5, 1.6, 3.5];
+    if (preset === "rear_three_quarter") target = [-4.5, 1.6, -3.5];
+    if (preset === "side") target = [0, 1.4, 5];
+    if (preset === "top") target = [0, 5.5, 0.01];
+    camera.position.lerp(new THREE.Vector3(...target), 0.08);
+    if (controls) {
+      controls.target.lerp(new THREE.Vector3(0, 0.7, 0), 0.08);
+      controls.update();
     }
-    return out;
-  }, [length, lineCount]);
-
-  useFrame((state) => {
-    if (!groupRef.current || !visible) return;
-    const t = state.clock.elapsedTime;
-    groupRef.current.children.forEach((line, i) => {
-      const mat = (line as THREE.Line).material as THREE.LineBasicMaterial & { opacity: number };
-      if (mat) {
-        // Animate opacity to fake flow motion since dashed lines need geometry.computeLineDistances
-        mat.opacity = (0.45 - (i % 8) * 0.04) * (0.6 + Math.sin(t * 1.6 + i * 0.3) * 0.4);
-      }
-    });
   });
-
-  if (!visible) return null;
-
-  return (
-    <group ref={groupRef}>
-      {lines.map((l, i) => (
-        <line key={i}>
-          <bufferGeometry
-            attach="geometry"
-            ref={(geo) => {
-              if (geo) {
-                geo.setFromPoints(l.points);
-                (geo as any).computeBoundingSphere?.();
-              }
-            }}
-          />
-          <lineBasicMaterial
-            attach="material"
-            color="#22d3ee"
-            transparent
-            opacity={0.45 - (i % 8) * 0.04}
-            linewidth={1}
-          />
-        </line>
-      ))}
-    </group>
-  );
+  return null;
 }
 
-/* ─── Pressure heat zones ──────────────────────────────── */
-function PressureZones({
-  visible,
-  template,
-  estimate,
-}: {
-  visible: boolean;
-  template?: CarTemplate | null;
-  estimate: AeroEstimate;
-}) {
-  const wheelbase = (template?.wheelbase_mm ?? 2575) / 1000;
-  const length = wheelbase + 1.45;
-  const fa = template?.frontal_area_m2 ?? 2.04;
-  const width = Math.max((template?.track_front_mm ?? 1520) / 1000 + 0.05, 1.7);
-  const height = Math.max(0.45, fa / Math.max(width, 1.4) * 0.85);
-
-  if (!visible) return null;
-
-  // Front splitter / nose: high pressure (red)
-  // Roof / wing top: low pressure (cyan)
-  // Underbody: low pressure (cyan, intensity scales with downforce)
-  const dfMag = Math.min(1, Math.abs(estimate.df_total_kgf) / 250);
-
-  return (
-    <group>
-      {/* Stagnation zone (front bumper) */}
-      <mesh position={[length / 2 - 0.1, 0.3, 0]}>
-        <sphereGeometry args={[0.45, 24, 24]} />
-        <meshBasicMaterial color="#ef4444" transparent opacity={0.18} />
-      </mesh>
-      {/* Roof low pressure */}
-      <mesh position={[0, 0.25 + height + 0.1, 0]}>
-        <sphereGeometry args={[0.55, 24, 24]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.16} />
-      </mesh>
-      {/* Wing low pressure */}
-      <mesh position={[-length / 2 + 0.15, 0.4 + height, 0]}>
-        <sphereGeometry args={[0.42, 24, 24]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.22 + dfMag * 0.15} />
-      </mesh>
-      {/* Underbody low pressure */}
-      <mesh position={[0, 0.04, 0]} scale={[length * 0.4, 0.1, width * 0.4]}>
-        <sphereGeometry args={[1, 16, 16]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.12 + dfMag * 0.18} />
-      </mesh>
-      {/* Side mirror separation */}
-      <mesh position={[length * 0.05, height * 0.7 + 0.15, width / 2 - 0.05]}>
-        <sphereGeometry args={[0.25, 16, 16]} />
-        <meshBasicMaterial color="#f97316" transparent opacity={0.14} />
-      </mesh>
-      <mesh position={[length * 0.05, height * 0.7 + 0.15, -width / 2 + 0.05]}>
-        <sphereGeometry args={[0.25, 16, 16]} />
-        <meshBasicMaterial color="#f97316" transparent opacity={0.14} />
-      </mesh>
-    </group>
-  );
-}
-
-/* ─── Wake plume ───────────────────────────────────────── */
-function WakePlume({
-  visible,
-  template,
-  estimate,
-}: {
-  visible: boolean;
-  template?: CarTemplate | null;
-  estimate: AeroEstimate;
-}) {
-  const wheelbase = (template?.wheelbase_mm ?? 2575) / 1000;
-  const length = wheelbase + 1.45;
-  const fa = template?.frontal_area_m2 ?? 2.04;
-  const width = Math.max((template?.track_front_mm ?? 1520) / 1000 + 0.05, 1.7);
-  const groupRef = useRef<THREE.Group>(null);
-  const drag = estimate.drag_kgf;
-  const wakeSize = 0.7 + Math.min(2.5, drag / 60); // scales with drag
-
-  useFrame((state) => {
-    if (!groupRef.current || !visible) return;
-    const t = state.clock.elapsedTime;
-    groupRef.current.children.forEach((c, i) => {
-      const mesh = c as THREE.Mesh;
-      mesh.position.x = -length / 2 - 0.3 - i * 0.3 + Math.sin(t * 0.5 + i) * 0.05;
-      mesh.rotation.z = t * 0.2 + i;
-      const mat = mesh.material as THREE.MeshBasicMaterial;
-      mat.opacity = (0.18 - i * 0.018) * (0.7 + Math.sin(t * 1.2 + i) * 0.1);
-    });
-  });
-
-  if (!visible) return null;
-
-  return (
-    <group ref={groupRef}>
-      {Array.from({ length: 8 }).map((_, i) => (
-        <mesh key={i} position={[-length / 2 - 0.3 - i * 0.3, 0.4, 0]}>
-          <sphereGeometry args={[wakeSize * (1 + i * 0.12), 22, 22]} />
-          <meshBasicMaterial color="#0891b2" transparent opacity={0.18 - i * 0.018} depthWrite={false} />
-        </mesh>
-      ))}
-      {/* Counter-rotating vortex hint */}
-      {[-1, 1].map((side) => (
-        <mesh key={side} position={[-length / 2 - 0.6, 0.45, side * width * 0.3]}>
-          <torusGeometry args={[0.3 + drag / 400, 0.05, 12, 24]} />
-          <meshBasicMaterial color="#22d3ee" transparent opacity={0.35} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-/* ─── Force arrows ─────────────────────────────────────── */
-function ForceArrows({
-  visible,
-  template,
-  estimate,
-}: {
-  visible: boolean;
-  template?: CarTemplate | null;
-  estimate: AeroEstimate;
-}) {
-  const wheelbase = (template?.wheelbase_mm ?? 2575) / 1000;
-  const length = wheelbase + 1.45;
-
-  if (!visible) return null;
-
-  // Drag arrow (rear-pointing, red)
-  const dragLen = Math.min(2.2, estimate.drag_kgf / 80);
-  // Front DF arrow (down-pointing if positive DF)
-  const dfFrontLen = Math.min(1.5, Math.abs(estimate.df_front_kgf) / 80);
-  const dfFrontDir = estimate.df_front_kgf > 0 ? -1 : 1; // 1 = up = lift
-  const dfRearLen = Math.min(1.5, Math.abs(estimate.df_rear_kgf) / 80);
-  const dfRearDir = estimate.df_rear_kgf > 0 ? -1 : 1;
-
-  return (
-    <group>
-      <Arrow
-        from={[0, 1.2, 0]}
-        to={[-dragLen, 1.2, 0]}
-        color="#ef4444"
-        label={`Drag ${estimate.drag_kgf} kgf`}
-      />
-      <Arrow
-        from={[length / 2 - 0.5, 0.9, 0]}
-        to={[length / 2 - 0.5, 0.9 + dfFrontDir * dfFrontLen, 0]}
-        color={estimate.df_front_kgf > 0 ? "#22d3ee" : "#f97316"}
-        label={`Front ${estimate.df_front_kgf > 0 ? "+" : ""}${estimate.df_front_kgf} kgf`}
-      />
-      <Arrow
-        from={[-length / 2 + 0.5, 0.9, 0]}
-        to={[-length / 2 + 0.5, 0.9 + dfRearDir * dfRearLen, 0]}
-        color={estimate.df_rear_kgf > 0 ? "#22d3ee" : "#f97316"}
-        label={`Rear ${estimate.df_rear_kgf > 0 ? "+" : ""}${estimate.df_rear_kgf} kgf`}
-      />
-    </group>
-  );
-}
-
-function Arrow({
-  from,
-  to,
-  color,
-  label,
-}: {
-  from: [number, number, number];
-  to: [number, number, number];
-  color: string;
-  label?: string;
-}) {
-  const start = useMemo(() => new THREE.Vector3(...from), [from]);
-  const end = useMemo(() => new THREE.Vector3(...to), [to]);
-  const dir = useMemo(() => end.clone().sub(start), [end, start]);
-  const len = dir.length();
-  const midPoint = useMemo(() => start.clone().add(dir.clone().multiplyScalar(0.5)), [start, dir]);
-  const orientation = useMemo(() => {
-    const d = dir.clone().normalize();
-    const q = new THREE.Quaternion();
-    q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d);
-    return q;
-  }, [dir]);
-  if (len < 0.05) return null;
-  return (
-    <group>
-      <mesh position={midPoint.toArray()} quaternion={orientation}>
-        <cylinderGeometry args={[0.025, 0.025, len * 0.85, 12]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} />
-      </mesh>
-      <mesh position={end.toArray()} quaternion={orientation}>
-        <coneGeometry args={[0.07, 0.18, 16]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} />
-      </mesh>
-      {label && (
-        <Html position={end.toArray()} center distanceFactor={8} style={{ pointerEvents: "none" }}>
-          <div className="text-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded border border-border bg-surface-1/90 backdrop-blur whitespace-nowrap" style={{ color }}>
-            {label}
-          </div>
-        </Html>
-      )}
-    </group>
-  );
-}
-
-/* ─── Ground floor ─────────────────────────────────────── */
-function StudioFloor() {
-  return (
-    <>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <circleGeometry args={[12, 64]} />
-        <meshStandardMaterial color="#05080d" metalness={0.2} roughness={0.85} />
-      </mesh>
-      {/* Grid lines */}
-      <gridHelper args={[20, 40, "#1a3a45", "#0c1a22"]} position={[0, 0.001, 0]} />
-    </>
-  );
-}
-
-/* ─── Car shell — uploaded mesh OR procedural body ────── */
-function CarShell({
-  template,
-  geometry,
-  onMeshBounds,
-}: {
-  template?: CarTemplate | null;
-  geometry?: Geometry | null;
-  onMeshBounds: (b: MeshBounds | null) => void;
-}) {
-  const { url } = useSignedMeshUrl(geometry?.stl_path);
-  const ext = meshExtension(geometry?.stl_path);
-  const [loaded, setLoaded] = useState(false);
-
-  // Reset when path changes
-  useEffect(() => {
-    setLoaded(false);
-    onMeshBounds(null);
-  }, [geometry?.stl_path, onMeshBounds]);
-
-  const showProcedural = !url || !ext || !loaded;
-
-  return (
-    <>
-      {url && ext && (
-        <UserMesh
-          url={url}
-          ext={ext}
-          template={template}
-          geometry={geometry}
-          onLoaded={setLoaded}
-          onBounds={onMeshBounds}
-        />
-      )}
-      {showProcedural && <CarBody template={template} geometry={geometry} />}
-    </>
-  );
-}
-
-/* ─── Scene ────────────────────────────────────────────── */
-function Scene({
-  template,
-  geometry,
-  components,
-  estimate,
-  baselineEstimate,
-  mode,
-  packageMode,
-  compareGhost,
-}: Omit<CarViewer3DProps, "className">) {
+/* ─── Main component ──────────────────────────────────── */
+export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(function CarViewer3D(
+  { template, geometry, parts = [], hideParts, className, preset = "free", partVisibility },
+  ref,
+) {
+  const meshUrl = useSignedMeshUrl(geometry?.stl_path ?? null);
+  const ext = meshExtension(geometry?.stl_path ?? null);
+  const [meshLoaded, setMeshLoaded] = useState(false);
   const [meshBounds, setMeshBounds] = useState<MeshBounds | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const glRef = useRef<THREE.WebGLRenderer | null>(null);
 
+  useImperativeHandle(ref, () => ({
+    captureFrame: () => {
+      const gl = glRef.current;
+      if (!gl) return null;
+      try {
+        return gl.domElement.toDataURL("image/png");
+      } catch {
+        return null;
+      }
+    },
+  }), []);
+
+  const showUserMesh = !!(meshUrl && ext);
   const anchors = useMemo(
     () =>
-      computeAnchors(template, meshBounds, {
-        front_mm: geometry?.ride_height_front_mm,
-        rear_mm: geometry?.ride_height_rear_mm,
-      }),
-    [template, meshBounds, geometry?.ride_height_front_mm, geometry?.ride_height_rear_mm],
+      computeAnchors(
+        template,
+        showUserMesh && meshLoaded ? meshBounds : null,
+        {
+          front_mm: geometry?.ride_height_front_mm,
+          rear_mm: geometry?.ride_height_rear_mm,
+        },
+      ),
+    [template, geometry?.ride_height_front_mm, geometry?.ride_height_rear_mm, showUserMesh, meshLoaded, meshBounds],
   );
 
   return (
-    <>
-      {/* Lighting */}
-      <ambientLight intensity={0.25} />
-      <directionalLight
-        position={[6, 8, 4]}
-        intensity={1.3}
-        castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-        shadow-camera-far={30}
-        shadow-camera-left={-10}
-        shadow-camera-right={10}
-        shadow-camera-top={10}
-        shadow-camera-bottom={-10}
-      />
-      <directionalLight position={[-4, 3, -6]} intensity={0.45} color="#22d3ee" />
-      <pointLight position={[0, 4, 0]} intensity={0.4} color="#22d3ee" />
+    <div className={"relative h-full w-full " + (className ?? "")}>
+      <Canvas
+        shadows
+        dpr={[1, 2]}
+        camera={{ position: [4.5, 1.8, 4.2], fov: 35 }}
+        onCreated={({ gl }) => {
+          glRef.current = gl;
+          canvasRef.current = gl.domElement;
+          gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.toneMappingExposure = 0.95;
+        }}
+      >
+        <color attach="background" args={["#06080c"]} />
+        <fog attach="fog" args={["#06080c", 14, 28]} />
+        <ambientLight intensity={0.25} />
+        <directionalLight
+          position={[6, 8, 4]}
+          intensity={1.4}
+          castShadow
+          shadow-mapSize-width={1024}
+          shadow-mapSize-height={1024}
+        />
+        <spotLight position={[-4, 5, -3]} intensity={0.6} color="#22d3ee" />
 
-      <Environment preset="city" />
+        <Suspense fallback={null}>
+          <Environment preset="studio" />
+        </Suspense>
 
-      <Bounds fit clip observe margin={1.4}>
-        <Float speed={0.3} rotationIntensity={0} floatIntensity={0.05}>
-          <CarShell template={template} geometry={geometry} onMeshBounds={setMeshBounds} />
-          <AeroParts components={components} packageMode={packageMode} anchors={anchors} />
-          {compareGhost && (
-            <group position={[0, 0, 0]}>
-              <CarBody template={template} geometry={geometry} ghost />
-            </group>
-          )}
-          <Streamlines visible={mode === "flow"} intensity={getPackageMode(packageMode).intensity} template={template} estimate={estimate} />
-          <PressureZones visible={mode === "pressure"} template={template} estimate={estimate} />
-          <WakePlume visible={mode === "wake"} template={template} estimate={estimate} />
-          <ForceArrows visible={mode === "forces"} template={template} estimate={estimate} />
-        </Float>
-      </Bounds>
+        <CameraRig preset={preset} />
+        <OrbitControls
+          enablePan={false}
+          minDistance={3}
+          maxDistance={12}
+          minPolarAngle={0.2}
+          maxPolarAngle={Math.PI / 2 - 0.05}
+          target={[0, 0.7, 0]}
+        />
 
-      <ContactShadows position={[0, 0.001, 0]} opacity={0.6} scale={14} blur={2.2} far={4} />
-      <StudioFloor />
+        {showUserMesh ? (
+          <UserMesh
+            url={meshUrl!}
+            ext={ext!}
+            template={template}
+            geometry={geometry}
+            onLoaded={setMeshLoaded}
+            onBounds={setMeshBounds}
+          />
+        ) : (
+          <PlaceholderCar template={template} geometry={geometry} />
+        )}
 
-      <OrbitControls
-        enablePan={false}
-        minDistance={3}
-        maxDistance={14}
-        maxPolarAngle={Math.PI / 2 - 0.05}
-        autoRotate={mode !== "compare"}
-        autoRotateSpeed={0.45}
-        enableDamping
-        dampingFactor={0.07}
-      />
-    </>
+        {!hideParts && (
+          <FittedParts parts={parts} anchors={anchors} visibility={partVisibility} />
+        )}
+
+        <ContactShadows position={[0, 0, 0]} opacity={0.55} scale={14} blur={2.4} far={4} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+          <circleGeometry args={[14, 64]} />
+          <meshStandardMaterial color="#08101a" roughness={0.95} metalness={0.1} />
+        </mesh>
+      </Canvas>
+    </div>
   );
-}
-
-/* ─── Public component ─────────────────────────────────── */
-export function CarViewer3D(props: CarViewer3DProps) {
-  return (
-    <Canvas
-      shadows
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      camera={{ position: [5.5, 2.8, 5.5], fov: 32 }}
-      className={props.className}
-      style={{ background: "transparent" }}
-      dpr={[1, 2]}
-    >
-      <Suspense fallback={null}>
-        <Scene {...props} />
-      </Suspense>
-    </Canvas>
-  );
-}
+});
