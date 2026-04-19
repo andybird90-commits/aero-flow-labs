@@ -1,6 +1,7 @@
 import { useLocation } from "react-router-dom";
 import { Bell, Search, ChevronRight, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { UserMenu } from "@/components/UserMenu";
 
 const labels: Record<string, string[]> = {
   "/garage": ["Garage"],
@@ -10,6 +11,7 @@ const labels: Record<string, string[]> = {
   "/simulation": ["Build", "Simulation Setup"],
   "/results": ["Build", "Results"],
   "/compare": ["Build", "Compare"],
+  "/optimization": ["Optimization"],
   "/exports": ["Exports & Reports"],
   "/system": ["System Status"],
   "/design-system": ["Design System"],
@@ -59,6 +61,8 @@ export function Topbar() {
           <Bell className="h-4 w-4" />
           <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
         </Button>
+
+        <UserMenu />
       </div>
     </div>
   );
