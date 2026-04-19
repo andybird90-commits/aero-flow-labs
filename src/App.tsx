@@ -36,7 +36,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
+          <RealtimeBridge />
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/garage" element={<ProtectedRoute><Garage /></ProtectedRoute>} />
