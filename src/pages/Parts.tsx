@@ -325,13 +325,55 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
             {PART_KINDS.map((p) => {
               const existing = partByKind(p.kind);
               const on = !!existing?.enabled;
+              const aiSupported = AI_PART_SUPPORTED.has(p.kind);
+              const aiStatus = (existing as any)?.ai_mesh_status as string | undefined;
+              const aiUrl = (existing as any)?.ai_mesh_url as string | undefined;
+              const isAiGenerating = aiStatus === "generating" || generatingPartId === existing?.id;
               return (
                 <div key={p.kind} className={cn(
-                  "flex items-center justify-between rounded-md px-2.5 py-2 transition-colors",
+                  "rounded-md px-2.5 py-2 transition-colors",
                   on ? "bg-primary/[0.06]" : "hover:bg-surface-2",
                 )}>
-                  <div className="text-sm">{p.label}</div>
-                  <Switch checked={on} onCheckedChange={() => togglePart(p.kind)} />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{p.label}</span>
+                      {aiUrl && aiStatus === "ready" && (
+                        <span className="inline-flex items-center gap-1 rounded-sm bg-accent/15 px-1.5 py-0.5 text-mono text-[9px] uppercase tracking-widest text-accent">
+                          <Sparkles className="h-2.5 w-2.5" /> AI mesh
+                        </span>
+                      )}
+                    </div>
+                    <Switch checked={on} onCheckedChange={() => togglePart(p.kind)} />
+                  </div>
+                  {on && aiSupported && (
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                        {aiStatus === "ready" ? "Custom AI geometry"
+                          : aiStatus === "failed" ? "AI mesh failed"
+                          : isAiGenerating ? "Generating AI mesh…"
+                          : "Parametric placeholder"}
+                      </span>
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => existing?.id && generatePartMesh(existing.id, p.kind)}
+                        disabled={!existing?.id || isAiGenerating}
+                      >
+                        {isAiGenerating ? (
+                          <RefreshCw className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <>
+                            <Cpu className="mr-1.5 h-3 w-3" />
+                            <span className="text-[11px]">{aiUrl ? "Regenerate" : "AI mesh"}</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  {aiStatus === "failed" && (existing as any)?.ai_mesh_error && (
+                    <p className="mt-1.5 text-[11px] text-destructive/80">{(existing as any).ai_mesh_error}</p>
+                  )}
                 </div>
               );
             })}
