@@ -396,9 +396,14 @@ export function ExtractedPartPreview({
           )}
 
           {stage === "ready" && (
-            <Button onClick={onDownload}>
-              <Download className="h-4 w-4 mr-1" /> Download STL
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => { const u = glbUrl; setGlbUrl(null); setTimeout(() => setGlbUrl(u), 50); }}>
+                <RotateCcw className="h-4 w-4 mr-1" /> Reload viewer
+              </Button>
+              <Button onClick={onDownload}>
+                <Download className="h-4 w-4 mr-1" /> Download STL
+              </Button>
+            </>
           )}
 
           {stage === "error" && (
