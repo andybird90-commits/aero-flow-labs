@@ -294,9 +294,14 @@ export function ExtractedPartPreview({
           </Button>
 
           {stage === "review" && (
-            <Button onClick={onMakeMesh}>
-              <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => runRender()}>
+                <RotateCcw className="h-4 w-4 mr-1" /> Regenerate
+              </Button>
+              <Button onClick={onMakeMesh}>
+                <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
+              </Button>
+            </>
           )}
 
           {stage === "meshing" && (
