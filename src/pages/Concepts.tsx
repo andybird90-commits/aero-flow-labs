@@ -1,15 +1,14 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
-import { CarViewer3D, type CarViewer3DHandle } from "@/components/CarViewer3D";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
-import { useBrief, useConcepts, useGeometry, useUpdateConcept, useDeleteConcept, type Concept } from "@/lib/repo";
+import { useBrief, useConcepts, useUpdateConcept, useDeleteConcept, type Concept } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Camera, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2,
+  Sparkles, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
@@ -25,47 +24,31 @@ export default function Concepts() {
 function ConceptsInner({ projectId, project }: { projectId: string; project: any }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { data: geometry } = useGeometry(projectId);
   const { data: brief } = useBrief(projectId);
   const { data: concepts = [], refetch } = useConcepts(projectId);
   const updateConcept = useUpdateConcept();
   const deleteConcept = useDeleteConcept();
-  const viewerRef = useRef<CarViewer3DHandle>(null);
   const [generating, setGenerating] = useState(false);
 
-  const hasMesh = !!geometry?.stl_path;
   const hasBrief = !!(brief?.prompt && brief.prompt.trim().length > 10);
 
   const generate = async () => {
-    if (!user || !brief || !geometry) return;
+    if (!user || !brief) return;
     if (!hasBrief) {
       toast({ title: "Add a design brief first", variant: "destructive" });
       return;
     }
     setGenerating(true);
 
-    // Capture multiple viewer angles for a stronger reference set + future turntable.
-    let snapshots: Record<string, string | null> = {};
-    try {
-      const v = viewerRef.current;
-      if (v) {
-        snapshots = {
-          front_three_quarter: v.captureAngle("front_three_quarter"),
-          side: v.captureAngle("side"),
-          rear_three_quarter: v.captureAngle("rear_three_quarter"),
-          rear: v.captureAngle("rear_three_quarter"), // same preset but model will re-render rear
-        };
-      }
-    } catch {}
-
     try {
       const { data, error } = await supabase.functions.invoke("generate-concepts", {
         body: {
           project_id: projectId,
           brief_id: brief.id,
-          // Keep legacy field for backward-compat in the edge function
-          snapshot_data_url: snapshots.front_three_quarter ?? null,
-          snapshots,
+          // No user-uploaded mesh in the new flow — generator falls back to
+          // template-driven defaults for vehicle proportions.
+          snapshot_data_url: null,
+          snapshots: {},
         },
       });
       if (error) throw error;
