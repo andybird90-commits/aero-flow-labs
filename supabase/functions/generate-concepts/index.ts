@@ -109,6 +109,8 @@ Deno.serve(async (req) => {
     const hasSnapshot = !!(body.snapshot_data_url
       && typeof body.snapshot_data_url === "string"
       && body.snapshot_data_url.startsWith("data:image/"));
+    console.log("generate-concepts: snapshot attached =", hasSnapshot,
+      "len =", body.snapshot_data_url?.length ?? 0);
 
     for (const v of VARIATIONS) {
       // When we have the user's car screenshot, frame this as an EDIT of that
