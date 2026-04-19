@@ -23,7 +23,8 @@ const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const REPLICATE_VERSION = "b1b9449a1277e10402781c5d41eb30c0a0683504fb23fab591ca9dfc2aabe1cb";
+// tencent/hunyuan3d-2mv — multi-view variant, much better geometry when fed multiple angles
+const REPLICATE_VERSION = "71798fbc3c9f7b7097e3bb85496e5a797d8b8f616b550692e7c3e176a8e9e5db";
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -60,13 +61,20 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (cErr || !concept) return json({ error: "Concept not found" }, 404);
 
-    // Pick best reference image (front 3/4 preferred)
-    const imageUrl =
-      concept.render_front_url ||
-      concept.render_rear34_url ||
-      concept.render_side_url ||
-      concept.render_rear_url;
-    if (!imageUrl) return json({ error: "Concept has no rendered images" }, 400);
+    // Multi-view requires at least front_image
+    const frontImage = concept.render_front_url;
+    if (!frontImage) return json({ error: "Concept has no front render" }, 400);
+
+    // Map our 4 renders to the model's 4 view slots
+    const input: Record<string, unknown> = {
+      front_image: frontImage,
+      steps: 50,
+      guidance_scale: 5.5,
+      octree_resolution: 384,
+    };
+    if (concept.render_rear_url)   input.back_image  = concept.render_rear_url;
+    if (concept.render_side_url)   input.left_image  = concept.render_side_url;
+    if (concept.render_rear34_url) input.right_image = concept.render_rear34_url;
 
     // Mark generating
     await admin
@@ -74,7 +82,7 @@ Deno.serve(async (req) => {
       .update({ preview_mesh_status: "generating", preview_mesh_error: null })
       .eq("id", concept_id);
 
-    console.log("generate-concept-mesh: starting Replicate run for concept", concept_id);
+    console.log("generate-concept-mesh: starting Replicate run for concept", concept_id, "with views:", Object.keys(input).filter(k => k.endsWith("_image")));
 
     // Create prediction
     const createResp = await fetch("https://api.replicate.com/v1/predictions", {
@@ -84,16 +92,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
         Prefer: "wait=5",
       },
-      body: JSON.stringify({
-        version: REPLICATE_VERSION,
-        input: {
-          image: imageUrl,
-          steps: 50,
-          guidance_scale: 5.5,
-          octree_resolution: 256,
-          remove_background: true,
-        },
-      }),
+      body: JSON.stringify({ version: REPLICATE_VERSION, input }),
     });
 
     if (!createResp.ok) {
