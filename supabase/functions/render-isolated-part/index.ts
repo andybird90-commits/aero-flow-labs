@@ -224,7 +224,9 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-image",
+          // Pro image model — much better at faithfully reproducing details
+          // from reference images vs. inventing generic-looking geometry.
+          model: "google/gemini-3-pro-image-preview",
           messages: [{ role: "user", content: userContent }],
           modalities: ["image", "text"],
         }),
