@@ -41,21 +41,30 @@ interface Body {
   snapshots?: Partial<Record<AngleKey, string | null>>;
 }
 
-const VARIATIONS: Array<{ title: string; direction: string; modifier: string }> = [
+/**
+ * Three deliberately divergent design directions. The brief always wins on
+ * specifics (colour, era, vibe, constraints) — these only set the *intensity*
+ * and *purpose* axis so the user gets meaningfully different options instead
+ * of three near-identical renders.
+ */
+const VARIATIONS: Array<{ title: string; direction: string; modifier: string; emphasis: string }> = [
   {
     title: "OEM+ refined",
-    direction: "Subtle, road-friendly enhancements that keep the factory identity. Clean splitter, modest skirts, restrained ducktail.",
-    modifier: "OEM+ subtle styling, factory-respectful body kit, clean lines, premium street look",
+    direction: "Subtle, road-friendly enhancements that keep the factory identity. Clean splitter, modest skirts, restrained ducktail. No giant wing, no flared arches.",
+    modifier: "OEM+ subtle styling, factory-respectful body kit, clean lines, premium street look, minimal aero",
+    emphasis: "Restraint. The car must still read as a tasteful factory-plus build. Absolutely NO oversized rear wing, NO widebody arches, NO exposed canards.",
   },
   {
     title: "Track-focused aggression",
-    direction: "Aggressive aero kit with deeper splitter, larger canards, prominent rear wing and diffuser.",
-    modifier: "aggressive track build, deep front splitter, large rear wing, exposed canards, race-inspired bodywork",
+    direction: "Aggressive aero kit with deep front splitter, multiple canards, prominent freestanding rear wing on swan-neck mounts, full rear diffuser. Function over form.",
+    modifier: "aggressive track build, deep front splitter, large freestanding swan-neck rear wing, multiple exposed canards, dive planes, full diffuser, race-inspired bodywork, hood vents",
+    emphasis: "Maximum motorsport aero. The rear wing MUST be large and freestanding (not a ducktail). Visible canards and dive planes on the front bumper are required.",
   },
   {
     title: "Widebody GT",
-    direction: "Widebody arches, GT-style splitter, integrated side skirts, motorsport-grade rear wing.",
-    modifier: "widebody GT aero kit, flared arches, motorsport rear wing, GT3-inspired bodywork, fitment-focused stance",
+    direction: "Widebody flared arches front and rear, GT-style splitter, integrated side skirts, motorsport-grade rear wing, aggressive fitment with the wheels filling the new arches.",
+    modifier: "widebody GT aero kit, heavily flared front and rear arches, motorsport rear wing, GT3-inspired bodywork, fitment-focused stance, wide track, lowered ride height",
+    emphasis: "Width. The arches MUST be visibly flared/bolted-on, the track MUST be wider than stock, the wheels MUST fill the new arches. This is a wide car.",
   },
 ];
 
@@ -163,8 +172,10 @@ Deno.serve(async (req) => {
         `different model. ` +
         `Only add or modify bolt-on aero/styling parts (front splitter, side skirts, arches, rear ` +
         `diffuser, wing, canards) consistent with the styling brief. ` +
-        `${stylePrompt} ` +
-        `Studio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
+        `\n\nDESIGN DIRECTION (this variation): ${v.direction} ` +
+        `\nKEY EMPHASIS: ${v.emphasis} ` +
+        `\n\nUSER BRIEF (highest priority — must be reflected in the result): ${stylePrompt} ` +
+        `\n\nStudio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
         `no text, no watermark, no UI overlays.`;
 
       const fromConceptPrompt =
@@ -179,9 +190,12 @@ Deno.serve(async (req) => {
         `no text, no watermark, no UI overlays.`;
 
       const textPrompt =
-        `Premium automotive concept render of a custom car body kit, ${angle.framing}. ${v.modifier}. ` +
-        `${stylePrompt} ` +
-        `Studio lighting, dark dramatic backdrop, photorealistic, concept design quality, ` +
+        `Premium automotive concept render of a custom car body kit, ${angle.framing}. ` +
+        `${v.modifier}. ` +
+        `\n\nDESIGN DIRECTION: ${v.direction} ` +
+        `\nKEY EMPHASIS: ${v.emphasis} ` +
+        `\n\nUSER BRIEF (highest priority — must be reflected in the result): ${stylePrompt} ` +
+        `\n\nStudio lighting, dark dramatic backdrop, photorealistic, concept design quality, ` +
         `sharp focus, clean reflections, no text, no watermark.`;
 
       const promptText = !hasRef
