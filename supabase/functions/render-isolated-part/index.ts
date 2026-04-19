@@ -246,6 +246,16 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  // Chunked to avoid call-stack overflow on large images.
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
