@@ -1,108 +1,152 @@
 /**
- * Exports — generate downloadable artifacts (PDF / CSV / etc.) via the
- * generate-export edge function and list past exports with signed-URL
- * download links.
+ * Exports — client-side STL/OBJ generation for fitted body kit parts.
+ * Generates downloadable artifacts from the parametric parts on the active
+ * concept set and records each export in the `exports` table.
  */
-import { Link, useSearchParams } from "react-router-dom";
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import JSZip from "jszip";
+import * as THREE from "three";
+import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
+import { OBJExporter } from "three/examples/jsm/exporters/OBJExporter.js";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { StatusChip } from "@/components/StatusChip";
 import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import {
-  useExports, useGenerateExport, useVariants, downloadExport,
-  type ExportRow,
+  useExports, useCreateExport, useGeometry, useActiveConceptSet, useFittedParts,
+  type ExportRow, type FittedPart,
 } from "@/lib/repo";
+import { buildPartMesh } from "@/lib/part-geometry";
 import {
-  FileText, FileSpreadsheet, ClipboardList, Layers, Box, Image as ImageIcon,
-  Download, Loader2, Clock, CheckCircle2, AlertCircle, History, Lock, Users, Globe,
-  ChevronRight,
+  FileDown, Box, Layers, Loader2, CheckCircle2, AlertCircle, Download, Clock, History,
+  Package, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type ExportKind = "pdf_report" | "image_pack" | "comparison_sheet" | "aero_summary" | "stl_pack" | "assumptions_sheet";
+type ExportKind = "kit_stl_pack" | "kit_obj_pack" | "single_part_stl" | "single_part_obj" | "project_pack";
 
 const EXPORT_OPTIONS: {
-  kind: ExportKind; icon: typeof FileText; title: string; desc: string; format: string;
+  kind: ExportKind; icon: typeof FileDown; title: string; desc: string; format: string;
 }[] = [
-  { kind: "pdf_report",        icon: FileText,        title: "PDF engineering report", desc: "Full client-ready report with metrics + recommendations.", format: "PDF" },
-  { kind: "comparison_sheet",  icon: FileSpreadsheet, title: "Comparison sheet",       desc: "Variant metrics in CSV for spreadsheet analysis.",          format: "CSV" },
-  { kind: "aero_summary",      icon: ClipboardList,   title: "Aero summary",           desc: "One-page spec card of the selected variant.",                format: "PDF" },
-  { kind: "assumptions_sheet", icon: Layers,          title: "Assumptions sheet",      desc: "Solver settings, mesh stats, environment, confidence notes.", format: "PDF" },
-  { kind: "image_pack",        icon: ImageIcon,       title: "Image pack",             desc: "Pressure, streamline, wake renders.",                        format: "PDF" },
-  { kind: "stl_pack",          icon: Box,             title: "STL geometry pack",      desc: "Generated add-on parts as STL files.",                       format: "PDF" },
-];
-
-const REPORT_SECTIONS = [
-  { key: "vehicle",         label: "Vehicle details" },
-  { key: "variant",         label: "Variant details" },
-  { key: "objective",       label: "Objective" },
-  { key: "assumptions",     label: "Simulation assumptions" },
-  { key: "metrics",         label: "Key metrics" },
-  { key: "visuals",         label: "Result visuals" },
-  { key: "comparison",      label: "Comparison summary" },
-  { key: "recommendations", label: "Recommendations" },
-  { key: "confidence",      label: "Confidence notes" },
+  { kind: "kit_stl_pack",     icon: Package, title: "Full kit · STL pack",  desc: "All enabled parts as a zipped STL archive.",         format: "ZIP / STL" },
+  { kind: "kit_obj_pack",     icon: Package, title: "Full kit · OBJ pack",  desc: "All enabled parts as a zipped OBJ archive.",         format: "ZIP / OBJ" },
+  { kind: "single_part_stl",  icon: Box,     title: "Single part · STL",    desc: "Pick one part and export as a single STL file.",     format: "STL" },
+  { kind: "single_part_obj",  icon: Box,     title: "Single part · OBJ",    desc: "Pick one part and export as a single OBJ file.",     format: "OBJ" },
+  { kind: "project_pack",     icon: Layers,  title: "Project pack",         desc: "All parts plus a manifest.json with build details.", format: "ZIP" },
 ];
 
 const Exports = () => (
   <WorkspaceShell>
-    {(ctx) => <ExportsContent buildId={ctx.buildId!} />}
+    {(ctx) => <ExportsContent projectId={ctx.projectId!} project={ctx.project} />}
   </WorkspaceShell>
 );
 
-function ExportsContent({ buildId }: { buildId: string }) {
+function ExportsContent({ projectId, project }: { projectId: string; project: any }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [search] = useSearchParams();
-  const variantId = search.get("v");
-
+  const { data: geometry } = useGeometry(projectId);
+  const { data: conceptSet } = useActiveConceptSet(projectId);
+  const { data: parts = [] } = useFittedParts(conceptSet?.id);
   const { data: exports = [], isLoading } = useExports(user?.id);
-  const { data: variants = [] } = useVariants(buildId);
-  const generate = useGenerateExport();
+  const createExport = useCreateExport();
 
-  const [selectedKind, setSelectedKind] = useState<ExportKind>("pdf_report");
-  const [audience, setAudience] = useState<"internal" | "client" | "public">("client");
-  const [sections, setSections] = useState<Set<string>>(new Set(REPORT_SECTIONS.map((s) => s.key)));
-  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(variantId ?? null);
+  const [selectedKind, setSelectedKind] = useState<ExportKind>("kit_stl_pack");
+  const [singlePartId, setSinglePartId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  // Filter exports for this build
-  const buildExports = useMemo(
-    () => exports.filter((e) => e.build_id === buildId),
-    [exports, buildId],
+  const enabledParts = useMemo(() => parts.filter((p) => p.enabled), [parts]);
+
+  const projectExports = useMemo(
+    () => (exports as any[]).filter((e) => e.project_id === projectId),
+    [exports, projectId],
   );
 
-  const toggleSection = (k: string) =>
-    setSections((s) => {
-      const n = new Set(s);
-      n.has(k) ? n.delete(k) : n.add(k);
-      return n;
-    });
-
   const onGenerate = async () => {
+    if (!user || enabledParts.length === 0) {
+      toast({ title: "No enabled parts", description: "Enable parts in Fitted Parts first.", variant: "destructive" });
+      return;
+    }
+    setBusy(true);
     try {
-      await generate.mutateAsync({
-        build_id: buildId,
-        variant_id: selectedVariantId,
-        kind: selectedKind,
-        sections: Array.from(sections),
-        audience,
+      const targets =
+        selectedKind === "single_part_stl" || selectedKind === "single_part_obj"
+          ? enabledParts.filter((p) => p.id === (singlePartId ?? enabledParts[0].id))
+          : enabledParts;
+      if (targets.length === 0) throw new Error("No parts selected.");
+
+      const useObj = selectedKind === "kit_obj_pack" || selectedKind === "single_part_obj";
+      const single = selectedKind === "single_part_stl" || selectedKind === "single_part_obj";
+      const ext = useObj ? "obj" : "stl";
+
+      let blob: Blob;
+      let filename: string;
+
+      if (single) {
+        const text = serializePart(targets[0], useObj);
+        blob = new Blob([text], { type: "text/plain" });
+        filename = `${slug(targets[0].kind)}.${ext}`;
+      } else {
+        const zip = new JSZip();
+        for (const p of targets) {
+          const text = serializePart(p, useObj);
+          zip.file(`${slug(p.kind)}.${ext}`, text);
+        }
+        if (selectedKind === "project_pack") {
+          zip.file("manifest.json", JSON.stringify({
+            project: { id: projectId, name: project.name },
+            car: project.car?.name ?? null,
+            parts: targets.map((p) => ({ kind: p.kind, params: p.params })),
+            exported_at: new Date().toISOString(),
+          }, null, 2));
+        }
+        blob = await zip.generateAsync({ type: "blob" });
+        filename = `${slug(project.name)}-${selectedKind}.zip`;
+      }
+
+      // Upload to storage
+      const path = `${user.id}/${projectId}/${Date.now()}-${filename}`;
+      const { error: upErr } = await supabase.storage.from("exports").upload(path, blob, {
+        contentType: blob.type || "application/octet-stream",
+        upsert: false,
       });
-      toast({ title: "Export generated", description: "Available below for download." });
+      if (upErr) throw upErr;
+
+      // Record in exports table
+      await createExport.mutateAsync({
+        userId: user.id,
+        projectId,
+        kind: selectedKind,
+        sections: { parts: targets.map((p) => p.kind) },
+        filePath: path,
+        fileSizeBytes: blob.size,
+      });
+
+      // Trigger immediate browser download
+      triggerDownload(blob, filename);
+
+      toast({ title: "Export ready", description: `${filename} (${formatBytes(blob.size)})` });
     } catch (e: any) {
-      toast({ title: "Couldn't generate export", description: e.message, variant: "destructive" });
+      toast({ title: "Export failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setBusy(false);
     }
   };
 
   const onDownload = async (row: ExportRow) => {
     if (!row.file_path) return;
     try {
-      const ext = row.file_path.split(".").pop() ?? "pdf";
-      const filename = `${row.kind}_${row.id.slice(0, 8)}.${ext}`;
-      await downloadExport(row.file_path, filename);
+      const { data, error } = await supabase.storage.from("exports").createSignedUrl(row.file_path, 60);
+      if (error) throw error;
+      const a = document.createElement("a");
+      a.href = data.signedUrl;
+      a.download = row.file_path.split("/").pop() ?? "export";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     } catch (e: any) {
       toast({ title: "Download failed", description: e.message, variant: "destructive" });
     }
@@ -110,64 +154,37 @@ function ExportsContent({ buildId }: { buildId: string }) {
 
   if (isLoading) return <div className="px-6 py-6"><LoadingState /></div>;
 
+  const requiresPartPick = selectedKind === "single_part_stl" || selectedKind === "single_part_obj";
+
   return (
-    <div className="px-6 py-6 space-y-4">
-      {/* Header */}
+    <div className="p-6 space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="text-mono text-[11px] uppercase tracking-[0.2em] text-primary/80">
-            Step 06 · Deliverables
+          <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">
+            Step 6 · Export
           </div>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Exports & Reports</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Fabrication-ready exports</h1>
           <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
-            Generate downloadable engineering reports and data sheets from the current build.
-            Files are stored for 30 days with signed-URL access.
+            Export the generated body kit parts as STL or OBJ files for printing, milling or fabrication.
+            All geometry is generated from your fitted parts — no solver, no fakery.
           </p>
         </div>
-        <Button variant="hero" size="sm" disabled={generate.isPending} onClick={onGenerate}>
-          {generate.isPending ? (
-            <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Generating…</>
-          ) : (
-            <><Download className="mr-2 h-3.5 w-3.5" /> Generate export</>
-          )}
+        <Button variant="hero" size="lg" disabled={busy || enabledParts.length === 0} onClick={onGenerate}>
+          {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Building…</> : <><Download className="mr-2 h-4 w-4" /> Generate export</>}
         </Button>
       </div>
 
-      {/* Variant picker */}
-      {variants.length > 0 && (
-        <Card icon={ChevronRight} title="Variant" hint={selectedVariantId ? "scoped to one variant" : "build-level export"}>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setSelectedVariantId(null)}
-              className={cn(
-                "rounded-md border px-3 py-2 text-sm transition-colors",
-                !selectedVariantId
-                  ? "border-primary/40 bg-primary/10 text-primary"
-                  : "border-border bg-surface-1 hover:border-primary/30",
-              )}
-            >
-              Build (all variants)
-            </button>
-            {variants.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => setSelectedVariantId(v.id)}
-                className={cn(
-                  "rounded-md border px-3 py-2 text-sm transition-colors",
-                  selectedVariantId === v.id
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border bg-surface-1 hover:border-primary/30",
-                )}
-              >
-                {v.name}
-              </button>
-            ))}
+      {enabledParts.length === 0 && (
+        <div className="glass rounded-xl p-4 flex items-start gap-3">
+          <AlertCircle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+          <div className="text-sm text-muted-foreground">
+            No enabled parts on this project.{" "}
+            <Link to={`/parts?project=${projectId}`} className="text-primary hover:underline">Generate parts first</Link>.
           </div>
-        </Card>
+        </div>
       )}
 
-      {/* Export type */}
-      <Card icon={Download} title="Export type">
+      <Card icon={FileDown} title="Export format">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {EXPORT_OPTIONS.map((opt) => {
             const sel = opt.kind === selectedKind;
@@ -182,10 +199,8 @@ function ExportsContent({ buildId }: { buildId: string }) {
                 )}
               >
                 <div className="flex items-start justify-between">
-                  <div className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-md",
-                    sel ? "bg-primary/15 text-primary" : "bg-surface-2 text-muted-foreground",
-                  )}>
+                  <div className={cn("flex h-9 w-9 items-center justify-center rounded-md",
+                    sel ? "bg-primary/15 text-primary" : "bg-surface-2 text-muted-foreground")}>
                     <Icon className="h-4 w-4" />
                   </div>
                   {sel && <CheckCircle2 className="h-4 w-4 text-primary" />}
@@ -199,69 +214,53 @@ function ExportsContent({ buildId }: { buildId: string }) {
         </div>
       </Card>
 
-      {/* Audience */}
-      <Card icon={Users} title="Audience">
-        <div className="grid gap-3 md:grid-cols-3">
-          {[
-            { id: "internal" as const, icon: Lock,  title: "Internal",    desc: "Full solver data + caveats" },
-            { id: "client"   as const, icon: Users, title: "Client-ready", desc: "Branded layout + plain summary" },
-            { id: "public"   as const, icon: Globe, title: "Public",      desc: "Hero visuals only, no params" },
-          ].map((a) => {
-            const sel = a.id === audience;
-            const Icon = a.icon;
-            return (
-              <button
-                key={a.id}
-                onClick={() => setAudience(a.id)}
-                className={cn(
-                  "rounded-md border p-3 text-left transition-all",
-                  sel ? "border-primary/40 bg-primary/10 ring-1 ring-primary/30" : "border-border bg-surface-1 hover:border-primary/30",
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <Icon className={cn("h-4 w-4", sel ? "text-primary" : "text-muted-foreground")} />
-                  <span className="text-sm font-medium">{a.title}</span>
-                  {sel && <CheckCircle2 className="ml-auto h-3.5 w-3.5 text-primary" />}
-                </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">{a.desc}</p>
-              </button>
-            );
-          })}
-        </div>
-      </Card>
-
-      {/* Sections */}
-      {selectedKind === "pdf_report" && (
-        <Card icon={ClipboardList} title="Report contents" hint={`${sections.size} of ${REPORT_SECTIONS.length}`}>
-          <div className="grid gap-2 md:grid-cols-2">
-            {REPORT_SECTIONS.map((s) => {
-              const on = sections.has(s.key);
+      {requiresPartPick && (
+        <Card icon={ChevronRight} title="Select part">
+          <div className="flex flex-wrap gap-2">
+            {enabledParts.map((p) => {
+              const sel = (singlePartId ?? enabledParts[0]?.id) === p.id;
               return (
-                <div
-                  key={s.key}
+                <button
+                  key={p.id}
+                  onClick={() => setSinglePartId(p.id)}
                   className={cn(
-                    "flex items-center justify-between rounded-md border p-3 transition-colors",
-                    on ? "border-primary/25 bg-primary/5" : "border-border bg-surface-1",
+                    "rounded-md border px-3 py-2 text-sm transition-colors",
+                    sel ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-surface-1 hover:border-primary/30",
                   )}
                 >
-                  <span className="text-sm font-medium">{s.label}</span>
-                  <Switch checked={on} onCheckedChange={() => toggleSection(s.key)} className="data-[state=checked]:bg-primary" />
-                </div>
+                  {humanLabel(p.kind)}
+                </button>
               );
             })}
           </div>
         </Card>
       )}
 
-      {/* History */}
-      <Card icon={History} title="Export history" hint={`${buildExports.length} files`}>
-        {buildExports.length === 0 ? (
+      <Card icon={Box} title="Enabled parts" hint={`${enabledParts.length} part(s)`}>
+        {enabledParts.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No parts enabled.</p>
+        ) : (
+          <div className="grid gap-2 md:grid-cols-2">
+            {enabledParts.map((p) => (
+              <div key={p.id} className="flex items-center justify-between rounded-md border border-border bg-surface-1 px-3 py-2">
+                <div className="text-sm">{humanLabel(p.kind)}</div>
+                <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  {Object.keys((p.params ?? {}) as object).length} params
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card icon={History} title="Export history" hint={`${projectExports.length} files`}>
+        {projectExports.length === 0 ? (
           <p className="text-sm text-muted-foreground">No exports yet — generate one above.</p>
         ) : (
           <div className="rounded-md border border-border overflow-hidden">
-            {buildExports.map((row) => {
+            {projectExports.map((row: ExportRow) => {
               const opt = EXPORT_OPTIONS.find((o) => o.kind === row.kind);
-              const Icon = opt?.icon ?? FileText;
+              const Icon = opt?.icon ?? FileDown;
               const expired = row.expires_at && new Date(row.expires_at) < new Date();
               const ready = row.status === "ready" && !expired;
               return (
@@ -270,23 +269,18 @@ function ExportsContent({ buildId }: { buildId: string }) {
                     "grid grid-cols-[auto_1fr_auto_auto_auto] gap-3 border-b border-border/40 last:border-b-0 px-3 py-2.5 items-center transition-colors hover:bg-surface-1/40",
                     !ready && "opacity-70",
                   )}>
-                  <div className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded-md",
-                    ready ? "bg-primary/10 text-primary" : "bg-surface-2 text-muted-foreground",
-                  )}>
+                  <div className={cn("flex h-7 w-7 items-center justify-center rounded-md",
+                    ready ? "bg-primary/10 text-primary" : "bg-surface-2 text-muted-foreground")}>
                     <Icon className="h-3.5 w-3.5" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-medium truncate">{opt?.title ?? row.kind}</div>
                     <div className="text-mono text-[10px] text-muted-foreground">
-                      {row.id.slice(0, 8)} · {row.audience}
-                      {row.variant_id && variants.find((v) => v.id === row.variant_id) && (
-                        <> · {variants.find((v) => v.id === row.variant_id)?.name}</>
-                      )}
+                      {row.id.slice(0, 8)}
                     </div>
                   </div>
                   <div className="text-mono text-[11px] tabular-nums text-muted-foreground">
-                    {row.file_size_bytes ? `${(row.file_size_bytes / 1024).toFixed(1)} KB` : "—"}
+                    {row.file_size_bytes ? formatBytes(row.file_size_bytes) : "—"}
                   </div>
                   <div className="flex items-center gap-1 text-mono text-[11px] text-muted-foreground">
                     <Clock className="h-3 w-3" />
@@ -321,7 +315,7 @@ function ExportsContent({ buildId }: { buildId: string }) {
 }
 
 function Card({ icon: Icon, title, hint, children }: {
-  icon: typeof FileText; title: string; hint?: string; children: React.ReactNode;
+  icon: typeof FileDown; title: string; hint?: string; children: React.ReactNode;
 }) {
   return (
     <div className="glass rounded-xl">
@@ -333,6 +327,43 @@ function Card({ icon: Icon, title, hint, children }: {
       <div className="p-4">{children}</div>
     </div>
   );
+}
+
+/* ─── helpers ──────────────────────────────────────────── */
+
+function serializePart(part: FittedPart, asObj: boolean): string {
+  const mesh = buildPartMesh(part.kind, (part.params ?? {}) as Record<string, number>);
+  const scene = new THREE.Scene();
+  scene.add(mesh);
+  if (asObj) {
+    return new OBJExporter().parse(scene);
+  }
+  return new STLExporter().parse(scene, { binary: false }) as string;
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function slug(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function humanLabel(kind: string) {
+  return kind.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
 export default Exports;
