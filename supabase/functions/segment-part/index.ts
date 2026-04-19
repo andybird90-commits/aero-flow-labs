@@ -156,11 +156,9 @@ Deno.serve(async (req) => {
       const bytes = new Uint8Array(await r.arrayBuffer());
       const dec = decodePng(bytes);
       if (dec.width !== W || dec.height !== H) {
-        // Some SAM outputs come back smaller; we can still use the ratio but
-        // for now reject — re-running with matching res is the simplest fix.
         throw new Error(`mask size mismatch: ${dec.width}x${dec.height} vs ${W}x${H}`);
       }
-      return dec.image; // RGBA
+      return toRGBA(dec.image, dec.width, dec.height);
     }));
 
     type Scored = { idx: number; score: number };
