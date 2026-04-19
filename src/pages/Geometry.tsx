@@ -19,6 +19,7 @@ import {
   Layers, Ruler, Move3d, ShieldCheck,
 } from "lucide-react";
 import { useGeometry, useUpdateGeometry, type Geometry } from "@/lib/repo";
+import { MeshUpload } from "@/components/MeshUpload";
 import { cn } from "@/lib/utils";
 
 type UnderbodyModel = "simplified" | "detailed";
@@ -138,6 +139,7 @@ function GeometryContent({ buildId }: { buildId: string }) {
         {/* LEFT — geometry viewer scenery */}
         <div className="lg:col-span-2 space-y-4">
           <GeometryViewer form={form} />
+          <MeshUpload geometry={geometry} />
           <SourceFooter geometry={geometry} />
         </div>
 
