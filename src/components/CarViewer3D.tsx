@@ -21,6 +21,7 @@ import type { CarTemplate, FittedPart, Geometry } from "@/lib/repo";
 import { useSignedMeshUrl, meshExtension } from "@/lib/mesh-url";
 import { readOrientation } from "@/components/MeshOrientation";
 import { computeAnchors, readNudge, nudged, type AeroAnchors, type MeshBounds } from "@/lib/aero-anchors";
+import { AIPartMesh } from "@/components/AIPartMesh";
 
 export type CameraPreset = "free" | "front_three_quarter" | "rear_three_quarter" | "side" | "top";
 
@@ -433,10 +434,18 @@ function FittedParts({
 
       {wing && (() => {
         const n = readNudge(wing.params);
+        const p = nudged(a.wing, n);
+        // If the AI mesh for this part is ready, render it instead of the
+        // parametric placeholder. Same anchor, same nudge — just a different
+        // visual representation of the same logical part.
+        const aiUrl = (wing as any).ai_mesh_url as string | undefined;
+        const aiStatus = (wing as any).ai_mesh_status as string | undefined;
+        if (aiUrl && aiStatus === "ready") {
+          return <AIPartMesh url={aiUrl} kind="wing" position={[p.x, p.y, p.z]} />;
+        }
         const aoa = paramN(wing.params, "aoa", 8) * Math.PI / 180;
         const chord = paramN(wing.params, "chord", 280) / 1000;
         const gurney = paramN(wing.params, "gurney", 12) / 1000;
-        const p = nudged(a.wing, n);
         return (
           <group position={[p.x, p.y, p.z]}>
             {[-1, 1].map((side) => (

@@ -13,7 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { Wand2, RefreshCw, ArrowRight, Wrench, AlertCircle, Sparkles, Box } from "lucide-react";
+import { Wand2, RefreshCw, ArrowRight, Wrench, AlertCircle, Sparkles, Box, Cpu } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PART_KINDS = [
@@ -46,6 +46,10 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
   const upsert = useUpsertFittedPart();
   const [suggesting, setSuggesting] = useState(false);
   const [generatingMesh, setGeneratingMesh] = useState(false);
+  const [generatingPartId, setGeneratingPartId] = useState<string | null>(null);
+
+  // Kinds we support per-part AI mesh generation for (prototype scope).
+  const AI_PART_SUPPORTED = new Set(["wing", "splitter", "diffuser"]);
 
   const partByKind = (k: string) => parts.find((p) => p.kind === k);
 
@@ -59,6 +63,41 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
     }, 4000);
     return () => clearInterval(t);
   }, [meshStatus, projectId, qc]);
+
+  /* Poll fitted_parts while any per-part AI mesh job is running. */
+  const anyPartGenerating = parts.some((p) => (p as any).ai_mesh_status === "generating");
+  useEffect(() => {
+    if (!anyPartGenerating || !conceptSet?.id) return;
+    const t = setInterval(() => {
+      qc.invalidateQueries({ queryKey: ["fitted_parts", conceptSet.id] });
+    }, 4000);
+    return () => clearInterval(t);
+  }, [anyPartGenerating, conceptSet?.id, qc]);
+
+  const generatePartMesh = async (partId: string, kind: string) => {
+    setGeneratingPartId(partId);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-part-mesh", {
+        body: { fitted_part_id: partId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      qc.invalidateQueries({ queryKey: ["fitted_parts", conceptSet?.id] });
+      toast({
+        title: "AI mesh generation started",
+        description: `Generating a custom 3D ${kind} — this takes 1–3 minutes.`,
+      });
+    } catch (e: any) {
+      toast({
+        title: "AI mesh generation failed",
+        description: String(e.message ?? e),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingPartId(null);
+    }
+  };
+
 
   const togglePart = async (kind: string) => {
     if (!user || !conceptSet) return;
@@ -286,13 +325,55 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
             {PART_KINDS.map((p) => {
               const existing = partByKind(p.kind);
               const on = !!existing?.enabled;
+              const aiSupported = AI_PART_SUPPORTED.has(p.kind);
+              const aiStatus = (existing as any)?.ai_mesh_status as string | undefined;
+              const aiUrl = (existing as any)?.ai_mesh_url as string | undefined;
+              const isAiGenerating = aiStatus === "generating" || generatingPartId === existing?.id;
               return (
                 <div key={p.kind} className={cn(
-                  "flex items-center justify-between rounded-md px-2.5 py-2 transition-colors",
+                  "rounded-md px-2.5 py-2 transition-colors",
                   on ? "bg-primary/[0.06]" : "hover:bg-surface-2",
                 )}>
-                  <div className="text-sm">{p.label}</div>
-                  <Switch checked={on} onCheckedChange={() => togglePart(p.kind)} />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{p.label}</span>
+                      {aiUrl && aiStatus === "ready" && (
+                        <span className="inline-flex items-center gap-1 rounded-sm bg-accent/15 px-1.5 py-0.5 text-mono text-[9px] uppercase tracking-widest text-accent">
+                          <Sparkles className="h-2.5 w-2.5" /> AI mesh
+                        </span>
+                      )}
+                    </div>
+                    <Switch checked={on} onCheckedChange={() => togglePart(p.kind)} />
+                  </div>
+                  {on && aiSupported && (
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                        {aiStatus === "ready" ? "Custom AI geometry"
+                          : aiStatus === "failed" ? "AI mesh failed"
+                          : isAiGenerating ? "Generating AI mesh…"
+                          : "Parametric placeholder"}
+                      </span>
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => existing?.id && generatePartMesh(existing.id, p.kind)}
+                        disabled={!existing?.id || isAiGenerating}
+                      >
+                        {isAiGenerating ? (
+                          <RefreshCw className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <>
+                            <Cpu className="mr-1.5 h-3 w-3" />
+                            <span className="text-[11px]">{aiUrl ? "Regenerate" : "AI mesh"}</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  {aiStatus === "failed" && (existing as any)?.ai_mesh_error && (
+                    <p className="mt-1.5 text-[11px] text-destructive/80">{(existing as any).ai_mesh_error}</p>
+                  )}
                 </div>
               );
             })}
