@@ -98,6 +98,7 @@ export function ExtractedPartPreview({
       const startData = startRes.data as any;
       if (startData?.error) throw new Error(startData.error);
       const taskId: string | undefined = startData?.task_id;
+      const isMulti: boolean = !!startData?.is_multi;
       if (!taskId) throw new Error("No task id returned");
 
       // 2) Poll status every 4s for up to 8 minutes
