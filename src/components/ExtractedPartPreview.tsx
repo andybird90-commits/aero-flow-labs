@@ -46,35 +46,36 @@ export function ExtractedPartPreview({
   const mountRef = useRef<HTMLDivElement>(null);
 
   // Kick off render generation when the modal opens
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
+  const runRender = async (signal?: { cancelled: boolean }) => {
     setStage("rendering");
     setImages([]);
     setGlbUrl(null);
     setError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("render-isolated-part", {
+        body: { concept_id: conceptId, part_kind: kind, label },
+      });
+      if (signal?.cancelled) return;
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const renders = (data as any).renders as RenderImage[];
+      if (!renders?.length) throw new Error("No renders returned");
+      setImages(renders);
+      setStage("review");
+    } catch (e: any) {
+      if (signal?.cancelled) return;
+      const msg = String(e.message ?? e);
+      setError(msg);
+      setStage("error");
+    }
+  };
 
-    (async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke("render-isolated-part", {
-          body: { concept_id: conceptId, part_kind: kind, label },
-        });
-        if (cancelled) return;
-        if (error) throw error;
-        if ((data as any)?.error) throw new Error((data as any).error);
-        const renders = (data as any).renders as RenderImage[];
-        if (!renders?.length) throw new Error("No renders returned");
-        setImages(renders);
-        setStage("review");
-      } catch (e: any) {
-        if (cancelled) return;
-        const msg = String(e.message ?? e);
-        setError(msg);
-        setStage("error");
-      }
-    })();
-
-    return () => { cancelled = true; };
+  useEffect(() => {
+    if (!open) return;
+    const signal = { cancelled: false };
+    runRender(signal);
+    return () => { signal.cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conceptId, kind, label]);
 
   const onMakeMesh = async () => {
@@ -235,42 +236,40 @@ export function ExtractedPartPreview({
         <DialogHeader>
           {titleLine}
           <DialogDescription>
-            {stage === "rendering" && "Drawing the part from 4 angles…"}
-            {stage === "review"    && "Review the renders. If the part looks right, turn it into a 3D model."}
+            {stage === "rendering" && "Drawing the part on a clean white background…"}
+            {stage === "review"    && "Review the render. Regenerate if it looks generic, or turn it into a 3D model."}
             {stage === "meshing"   && "Building 3D mesh — usually 1-3 minutes."}
             {stage === "ready"     && "Mesh ready. Spin it around, then download."}
             {stage === "error"     && "Something went wrong. See details below."}
           </DialogDescription>
         </DialogHeader>
 
-        {/* RENDERING / REVIEW: image grid */}
+        {/* RENDERING / REVIEW: single hero image */}
         {(stage === "rendering" || stage === "review" || stage === "meshing") && (
-          <div className="grid grid-cols-2 gap-2">
-            {Array.from({ length: 4 }).map((_, i) => {
-              const img = images[i];
-              return (
-                <div
-                  key={i}
-                  className="aspect-square rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center relative"
-                >
-                  {img ? (
-                    <>
-                      <img src={img.url} alt={`${label} ${img.angle}`} className="w-full h-full object-contain" />
-                      <span className="absolute bottom-1 left-1 text-[10px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
-                        {img.angle}
-                      </span>
-                    </>
-                  ) : (
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  )}
-                  {stage === "meshing" && (
-                    <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex items-center justify-center">
-                      <Box className="h-5 w-5 text-primary animate-pulse" />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center relative aspect-[4/3]">
+            {images[0] ? (
+              <>
+                <img
+                  src={images[0].url}
+                  alt={`${label} hero render`}
+                  className="w-full h-full object-contain"
+                />
+                <span className="absolute bottom-2 left-2 text-[10px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+                  {images[0].angle}
+                </span>
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                <span className="text-xs font-mono uppercase tracking-widest">Drawing part…</span>
+              </div>
+            )}
+            {stage === "meshing" && (
+              <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
+                <Box className="h-6 w-6 text-primary animate-pulse" />
+                <span className="text-xs font-mono uppercase tracking-widest text-primary">Meshing…</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -295,9 +294,14 @@ export function ExtractedPartPreview({
           </Button>
 
           {stage === "review" && (
-            <Button onClick={onMakeMesh}>
-              <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => runRender()}>
+                <RotateCcw className="h-4 w-4 mr-1" /> Regenerate
+              </Button>
+              <Button onClick={onMakeMesh}>
+                <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
+              </Button>
+            </>
           )}
 
           {stage === "meshing" && (
@@ -313,7 +317,7 @@ export function ExtractedPartPreview({
           )}
 
           {stage === "error" && (
-            <Button onClick={() => { setStage("rendering"); setImages([]); }}>
+            <Button onClick={() => runRender()}>
               <RotateCcw className="h-4 w-4 mr-1" /> Retry
             </Button>
           )}

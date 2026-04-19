@@ -23,7 +23,7 @@ const MESHY_API_KEY = Deno.env.get("MESHY_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const MESHY_MULTI = "https://api.meshy.ai/openapi/v1/multi-image-to-3d";
+const MESHY_SINGLE = "https://api.meshy.ai/openapi/v1/image-to-3d";
 const POLL_MS = 4000;
 const MAX_MS = 8 * 60 * 1000;
 
@@ -57,17 +57,17 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!concept) return json({ error: "Concept not found" }, 404);
 
-    // Meshy accepts up to 4 images.
-    const inputUrls = image_urls.slice(0, 4);
+    // Single-image-to-3d. We use the first (hero) image only.
+    const inputUrl = image_urls[0];
 
-    const createResp = await fetch(MESHY_MULTI, {
+    const createResp = await fetch(MESHY_SINGLE, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${MESHY_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        image_urls: inputUrls,
+        image_url: inputUrl,
         ai_model: "meshy-6",
         topology: "triangle",
         target_polycount: 30000,
@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
         return json({ error: "Meshy timed out" }, 504);
       }
       await new Promise((r) => setTimeout(r, POLL_MS));
-      const pollResp = await fetch(`${MESHY_MULTI}/${taskId}`, {
+      const pollResp = await fetch(`${MESHY_SINGLE}/${taskId}`, {
         headers: { Authorization: `Bearer ${MESHY_API_KEY}` },
       });
       if (!pollResp.ok) {
