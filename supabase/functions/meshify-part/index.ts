@@ -115,14 +115,16 @@ Deno.serve(async (req) => {
       const taskId: string | undefined = createJson.result;
       if (!taskId) return json({ error: "Meshy returned no task id" }, 500);
       console.log("meshify-part task created:", taskId, "for", part_kind);
-      return json({ task_id: taskId, status: "IN_PROGRESS", progress: 0 });
+      return json({ task_id: taskId, status: "IN_PROGRESS", progress: 0, is_multi: useMulti });
     }
 
     // ─────────── STATUS ───────────
     const taskId = body.task_id;
     if (!taskId) return json({ error: "task_id required for status" }, 400);
+    const isMulti = (body as any).is_multi === true;
+    const pollEndpoint = isMulti ? MESHY_MULTI : MESHY_SINGLE;
 
-    const pollResp = await fetch(`${MESHY_SINGLE}/${taskId}`, {
+    const pollResp = await fetch(`${pollEndpoint}/${taskId}`, {
       headers: { Authorization: `Bearer ${MESHY_API_KEY}` },
     });
     if (!pollResp.ok) {
