@@ -217,12 +217,21 @@ function ConceptCard({
     )}>
       <div className="relative aspect-[4/3] bg-surface-2 grid-bg-fine">
         {current ? (
-          <img
-            key={current.url}
-            src={current.url}
-            alt={`${concept.title} — ${current.label}`}
-            className="absolute inset-0 h-full w-full object-cover animate-fade-in"
-          />
+          <a
+            href={current.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute inset-0 block"
+            title="Open full size in new tab"
+            onClick={(e) => { if (pickMode) e.preventDefault(); }}
+          >
+            <img
+              key={current.url}
+              src={current.url}
+              alt={`${concept.title} — ${current.label}`}
+              className="absolute inset-0 h-full w-full object-cover animate-fade-in"
+            />
+          </a>
         ) : (
           <div className="absolute inset-0 grid place-items-center text-muted-foreground">
             <Sparkles className="h-8 w-8" />
