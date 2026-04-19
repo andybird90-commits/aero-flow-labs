@@ -46,35 +46,36 @@ export function ExtractedPartPreview({
   const mountRef = useRef<HTMLDivElement>(null);
 
   // Kick off render generation when the modal opens
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
+  const runRender = async (signal?: { cancelled: boolean }) => {
     setStage("rendering");
     setImages([]);
     setGlbUrl(null);
     setError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("render-isolated-part", {
+        body: { concept_id: conceptId, part_kind: kind, label },
+      });
+      if (signal?.cancelled) return;
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const renders = (data as any).renders as RenderImage[];
+      if (!renders?.length) throw new Error("No renders returned");
+      setImages(renders);
+      setStage("review");
+    } catch (e: any) {
+      if (signal?.cancelled) return;
+      const msg = String(e.message ?? e);
+      setError(msg);
+      setStage("error");
+    }
+  };
 
-    (async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke("render-isolated-part", {
-          body: { concept_id: conceptId, part_kind: kind, label },
-        });
-        if (cancelled) return;
-        if (error) throw error;
-        if ((data as any)?.error) throw new Error((data as any).error);
-        const renders = (data as any).renders as RenderImage[];
-        if (!renders?.length) throw new Error("No renders returned");
-        setImages(renders);
-        setStage("review");
-      } catch (e: any) {
-        if (cancelled) return;
-        const msg = String(e.message ?? e);
-        setError(msg);
-        setStage("error");
-      }
-    })();
-
-    return () => { cancelled = true; };
+  useEffect(() => {
+    if (!open) return;
+    const signal = { cancelled: false };
+    runRender(signal);
+    return () => { signal.cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conceptId, kind, label]);
 
   const onMakeMesh = async () => {
