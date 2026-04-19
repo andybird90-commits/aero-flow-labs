@@ -80,7 +80,54 @@ const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
 };
 
 const ANGLES = [
-...
+  { key: "front34", label: "front 3/4 view, slightly above" },
+  { key: "side",    label: "pure side / profile view" },
+  { key: "rear34",  label: "rear 3/4 view, slightly above" },
+  { key: "top",     label: "top-down plan view" },
+] as const;
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const { concept_id, part_kind, label } = await req.json() as {
+      concept_id?: string; part_kind?: string; label?: string;
+    };
+    if (!concept_id || !part_kind) {
+      return json({ error: "concept_id and part_kind are required" }, 400);
+    }
+    if (!ALLOWED_KINDS.includes(part_kind as Kind)) {
+      return json({ error: `Unknown part_kind. Allowed: ${ALLOWED_KINDS.join(", ")}` }, 400);
+    }
+    const kind = part_kind as Kind;
+
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userRes, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
+    const userId = userRes.user.id;
+
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const { data: concept } = await admin
+      .from("concepts")
+      .select("id, project_id, user_id, title, direction")
+      .eq("id", concept_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!concept) return json({ error: "Concept not found" }, 404);
+
+    const styleHint = [
+      `Style match the concept "${concept.title}"`,
+      concept.direction ? `Direction: ${concept.direction}` : "",
+    ].filter(Boolean).join(". ");
+
+    const spec = PART_SPEC[kind];
+
+    const renders: Array<{ angle: string; url: string }> = [];
+
+    for (const angle of ANGLES) {
       const prompt = [
         `Studio product photograph of ${spec.what}.`,
         `Shape: ${spec.shape}.`,
