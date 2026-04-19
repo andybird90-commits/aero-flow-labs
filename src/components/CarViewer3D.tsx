@@ -750,6 +750,41 @@ function StudioFloor() {
   );
 }
 
+/* ─── Car shell — uploaded mesh OR procedural body ────── */
+function CarShell({
+  template,
+  geometry,
+}: {
+  template?: CarTemplate | null;
+  geometry?: Geometry | null;
+}) {
+  const { url } = useSignedMeshUrl(geometry?.stl_path);
+  const ext = meshExtension(geometry?.stl_path);
+  const [loaded, setLoaded] = useState(false);
+
+  // Reset when path changes
+  useEffect(() => {
+    setLoaded(false);
+  }, [geometry?.stl_path]);
+
+  const showProcedural = !url || !ext || !loaded;
+
+  return (
+    <>
+      {url && ext && (
+        <UserMesh
+          url={url}
+          ext={ext}
+          template={template}
+          geometry={geometry}
+          onLoaded={setLoaded}
+        />
+      )}
+      {showProcedural && <CarBody template={template} geometry={geometry} />}
+    </>
+  );
+}
+
 /* ─── Scene ────────────────────────────────────────────── */
 function Scene({
   template,
