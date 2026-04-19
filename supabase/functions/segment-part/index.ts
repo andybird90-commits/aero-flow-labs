@@ -86,9 +86,8 @@ Deno.serve(async (req) => {
     const imgBytes = new Uint8Array(await imgResp.arrayBuffer());
     const decoded = decodePng(imgBytes);
     const W = decoded.width, H = decoded.height;
-    if (decoded.image.length !== W * H * 4) {
-      return json({ error: `Unexpected pixel layout (got ${decoded.image.length}, expected ${W*H*4})` }, 500);
-    }
+    // Normalize to RGBA — pngs lib returns 3 channels for RGB pngs, 4 for RGBA.
+    const srcRGBA = toRGBA(decoded.image, W, H);
 
     // 2) Call SAM-2 everything-mode via Replicate (sync via Prefer: wait).
     console.log(`[segment-part] running SAM on ${W}x${H} image`);
@@ -157,11 +156,9 @@ Deno.serve(async (req) => {
       const bytes = new Uint8Array(await r.arrayBuffer());
       const dec = decodePng(bytes);
       if (dec.width !== W || dec.height !== H) {
-        // Some SAM outputs come back smaller; we can still use the ratio but
-        // for now reject — re-running with matching res is the simplest fix.
         throw new Error(`mask size mismatch: ${dec.width}x${dec.height} vs ${W}x${H}`);
       }
-      return dec.image; // RGBA
+      return toRGBA(dec.image, dec.width, dec.height);
     }));
 
     type Scored = { idx: number; score: number };
@@ -184,8 +181,9 @@ Deno.serve(async (req) => {
     const union = new Uint8Array(W * H);
     for (const s of keep) {
       const m = maskBufs[s.idx];
-      for (let i = 0, j = 3; i < union.length; i++, j += 4) {
-        if (m[j] > 127) union[i] = 255;
+      for (let i = 0, j = 0; i < union.length; i++, j += 4) {
+        // Grayscale mask → value in R; RGBA mask → value in A. Take max.
+        if (Math.max(m[j], m[j + 3]) > 127) union[i] = 255;
       }
     }
 
@@ -195,7 +193,7 @@ Deno.serve(async (req) => {
 
     // 7) Composite: keep original where mask=255, white where mask=0, blended where partial.
     const out = new Uint8Array(W * H * 4);
-    const src = decoded.image;
+    const src = srcRGBA;
     for (let i = 0, j = 0; i < W * H; i++, j += 4) {
       const a = feathered[i] / 255; // 0..1
       out[j]     = Math.round(src[j]     * a + 255 * (1 - a));
@@ -230,8 +228,36 @@ function json(obj: unknown, status = 200) {
 
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 
+// Normalize decoded PNG pixels to RGBA. The `pngs` lib returns 3 bytes per
+// pixel for RGB images, 4 for RGBA, 1 for grayscale, 2 for grayscale+alpha.
+function toRGBA(pixels: Uint8Array, w: number, h: number): Uint8Array {
+  const n = w * h;
+  const channels = pixels.length / n;
+  if (channels === 4) return pixels;
+  const out = new Uint8Array(n * 4);
+  if (channels === 3) {
+    for (let i = 0, s = 0, d = 0; i < n; i++, s += 3, d += 4) {
+      out[d] = pixels[s]; out[d + 1] = pixels[s + 1]; out[d + 2] = pixels[s + 2]; out[d + 3] = 255;
+    }
+  } else if (channels === 1) {
+    for (let i = 0, d = 0; i < n; i++, d += 4) {
+      const v = pixels[i]; out[d] = v; out[d + 1] = v; out[d + 2] = v; out[d + 3] = 255;
+    }
+  } else if (channels === 2) {
+    for (let i = 0, s = 0, d = 0; i < n; i++, s += 2, d += 4) {
+      const v = pixels[s]; out[d] = v; out[d + 1] = v; out[d + 2] = v; out[d + 3] = pixels[s + 1];
+    }
+  } else {
+    throw new Error(`Unsupported channel count: ${channels} (length=${pixels.length}, ${w}x${h})`);
+  }
+  return out;
+}
+
+// SAM masks may be grayscale (value in R) or RGBA (value in A). Take the max
+// so either layout works after toRGBA normalisation.
 function alphaAt(rgba: Uint8Array, w: number, x: number, y: number): number {
-  return rgba[(y * w + x) * 4 + 3];
+  const i = (y * w + x) * 4;
+  return Math.max(rgba[i], rgba[i + 3]);
 }
 
 function pointInPolygon(x: number, y: number, poly: { x: number; y: number }[]): boolean {
