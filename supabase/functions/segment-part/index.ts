@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
 
     console.log(`[segment-part] SAM returned ${maskUrls.length} masks in ${Date.now() - samStart}ms`);
     if (maskUrls.length === 0) {
-      if (normalizedLasso.length >= 3) {
+      if (clampedLasso.length >= 3) {
         console.warn("[segment-part] SAM returned no masks, falling back to the user lasso");
         return await uploadMaskedSelection(
           admin,
@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
           body.concept_id,
           body.part_kind,
           srcRGBA,
-          rasterizePolygonMask(normalizedLasso, W, H),
+          rasterizePolygonMask(clampedLasso, W, H),
           W,
           H,
         );
@@ -186,7 +186,7 @@ Deno.serve(async (req) => {
 
     const keep = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score);
     if (keep.length === 0) {
-      if (normalizedLasso.length >= 3) {
+      if (clampedLasso.length >= 3) {
         console.warn("[segment-part] No SAM mask matched prompts, falling back to the user lasso");
         return await uploadMaskedSelection(
           admin,
@@ -194,7 +194,7 @@ Deno.serve(async (req) => {
           body.concept_id,
           body.part_kind,
           srcRGBA,
-          rasterizePolygonMask(normalizedLasso, W, H),
+          rasterizePolygonMask(clampedLasso, W, H),
           W,
           H,
         );
@@ -386,7 +386,7 @@ function feather(mask: Uint8Array, w: number, h: number, r: number): Uint8Array 
 }
 
 async function uploadMaskedSelection(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   userId: string,
   conceptId: string,
   partKind: string,
