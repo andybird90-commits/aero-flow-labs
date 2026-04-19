@@ -403,20 +403,31 @@ export function ExtractedPartPreview({
           </DialogDescription>
         </DialogHeader>
 
-        {/* RENDERING / REVIEW: single hero render */}
+        {/* RENDERING / REVIEW: single hero render — or the lasso/click trim
+            tool when the user opens "Trim". Mask, once produced, replaces the
+            hero image so the user can see what they're about to mesh. */}
         {(stage === "rendering" || stage === "review" || stage === "meshing") && (
           <div className="relative">
             <div className="flex justify-center">
               <div className="relative aspect-square w-full max-w-md rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
-                {images[0] ? (
+                {trimOpen && images[0] ? (
+                  <PartLasso
+                    imageUrl={maskedUrl ?? images[0].url}
+                    mode={lassoMode}
+                    points={trimPoints}
+                    lasso={trimLasso}
+                    onChange={({ points, lasso }) => { setTrimPoints(points); setTrimLasso(lasso); }}
+                    className="w-full h-full"
+                  />
+                ) : (maskedUrl || images[0]) ? (
                   <>
                     <img
-                      src={images[0].url}
-                      alt={`${label} ${images[0].angle}`}
+                      src={maskedUrl ?? images[0].url}
+                      alt={`${label} ${images[0]?.angle ?? ""}`}
                       className="w-full h-full object-contain"
                     />
                     <span className="absolute bottom-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1 py-0.5 rounded">
-                      {images[0].angle}
+                      {maskedUrl ? "trimmed" : images[0]?.angle}
                     </span>
                   </>
                 ) : (
@@ -427,6 +438,40 @@ export function ExtractedPartPreview({
                 )}
               </div>
             </div>
+
+            {/* Trim toolbar — only meaningful in review stage */}
+            {stage === "review" && trimOpen && (
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-xs">
+                <div className="inline-flex rounded-md border border-border overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setLassoMode("lasso")}
+                    className={`px-2 py-1 inline-flex items-center gap-1 ${lassoMode === "lasso" ? "bg-primary text-primary-foreground" : "bg-surface-1 text-muted-foreground"}`}
+                  >
+                    <Lasso className="h-3 w-3" /> Lasso
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLassoMode("click")}
+                    className={`px-2 py-1 inline-flex items-center gap-1 ${lassoMode === "click" ? "bg-primary text-primary-foreground" : "bg-surface-1 text-muted-foreground"}`}
+                  >
+                    <MousePointerClick className="h-3 w-3" /> Click
+                  </button>
+                </div>
+                <span className="text-muted-foreground font-mono uppercase tracking-widest">
+                  {lassoMode === "click" ? "click on the part · shift-click = exclude" : "drag a loose outline around the part"}
+                </span>
+                <Button size="xs" variant="outline" onClick={resetTrim}>
+                  <Undo2 className="h-3 w-3 mr-1" /> Reset marks
+                </Button>
+                <Button size="xs" onClick={onSnap} disabled={snapping}>
+                  {snapping
+                    ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Snapping…</>
+                    : <><Scissors className="h-3 w-3 mr-1" /> Snap to part</>}
+                </Button>
+              </div>
+            )}
+
             {stage === "meshing" && (
               <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2 rounded-md">
                 <Box className="h-6 w-6 text-primary animate-pulse" />
