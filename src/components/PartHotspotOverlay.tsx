@@ -130,47 +130,64 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
   if (!active) return null;
 
   return (
-    <div className="absolute inset-0 pointer-events-none">
-      {/* Subtle dimming to make hotspots pop without hiding the render */}
-      <div className="absolute inset-0 bg-background/20" />
+    <>
+      {active && (
+        <div className="absolute inset-0 pointer-events-none">
+          {/* Subtle dimming to make hotspots pop without hiding the render */}
+          <div className="absolute inset-0 bg-background/20" />
 
-      {zones.map((z, i) => {
-        const busyKey = `${z.kind}:${z.label}`;
-        const busy = busyKind === busyKey;
-        const dim = busyKind && !busy;
-        return (
-          <button
-            key={`${z.kind}-${i}`}
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onPick(z); }}
-            onMouseEnter={() => setHoverIdx(i)}
-            onMouseLeave={() => setHoverIdx((h) => (h === i ? null : h))}
-            disabled={!!busyKind}
-            style={{
-              left:   `${z.x * 100}%`,
-              top:    `${z.y * 100}%`,
-              width:  `${z.w * 100}%`,
-              height: `${z.h * 100}%`,
-            }}
-            className={cn(
-              "absolute pointer-events-auto rounded-md border-2 border-dashed transition-all",
-              "flex items-center justify-center text-[10px] text-mono uppercase tracking-widest",
-              busy
-                ? "border-primary bg-primary/30 text-primary-foreground"
-                : hoverIdx === i
-                  ? "border-primary bg-primary/20 text-primary cursor-pointer scale-[1.02]"
-                  : "border-primary/50 bg-primary/5 text-primary/90 hover:bg-primary/10",
-              dim && "opacity-40",
-            )}
-          >
-            <span className="rounded bg-surface-0/85 backdrop-blur px-1.5 py-0.5 border border-border inline-flex items-center gap-1 shadow-sm">
-              {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Wand2 className="h-2.5 w-2.5" />}
-              {z.label}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+          {zones.map((z, i) => {
+            const busyKey = `${z.kind}:${z.label}`;
+            const busy = busyKind === busyKey;
+            const dim = busyKind && !busy;
+            return (
+              <button
+                key={`${z.kind}-${i}`}
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onPick(z); }}
+                onMouseEnter={() => setHoverIdx(i)}
+                onMouseLeave={() => setHoverIdx((h) => (h === i ? null : h))}
+                disabled={!!busyKind}
+                style={{
+                  left:   `${z.x * 100}%`,
+                  top:    `${z.y * 100}%`,
+                  width:  `${z.w * 100}%`,
+                  height: `${z.h * 100}%`,
+                }}
+                className={cn(
+                  "absolute pointer-events-auto rounded-md border-2 border-dashed transition-all",
+                  "flex items-center justify-center text-[10px] text-mono uppercase tracking-widest",
+                  busy
+                    ? "border-primary bg-primary/30 text-primary-foreground"
+                    : hoverIdx === i
+                      ? "border-primary bg-primary/20 text-primary cursor-pointer scale-[1.02]"
+                      : "border-primary/50 bg-primary/5 text-primary/90 hover:bg-primary/10",
+                  dim && "opacity-40",
+                )}
+              >
+                <span className="rounded bg-surface-0/85 backdrop-blur px-1.5 py-0.5 border border-border inline-flex items-center gap-1 shadow-sm">
+                  {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Wand2 className="h-2.5 w-2.5" />}
+                  {z.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {preview && (
+        <ExtractedPartPreview
+          open={!!preview}
+          onClose={() => setPreview(null)}
+          onDownload={confirmDownload}
+          kind={preview.kind}
+          label={preview.label}
+          params={preview.params}
+          reasoning={preview.reasoning}
+          filename={preview.filename}
+        />
+      )}
+    </>
   );
 }
 
