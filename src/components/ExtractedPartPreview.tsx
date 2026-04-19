@@ -227,12 +227,18 @@ export function ExtractedPartPreview({
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.8;
 
-      const loader = new GLTFLoader();
+      const loader = new STLLoader();
       loader.load(
         glbUrl,
-        (gltf) => {
+        (geometry) => {
           if (cancelled) return;
-          const model = gltf.scene;
+          geometry.computeVertexNormals();
+          const material = new THREE.MeshStandardMaterial({
+            color: 0xb8c2cc,
+            metalness: 0.2,
+            roughness: 0.6,
+          });
+          const model = new THREE.Mesh(geometry, material);
           scene.add(model);
 
           const box = new THREE.Box3().setFromObject(model);
@@ -245,7 +251,7 @@ export function ExtractedPartPreview({
           controls.update();
         },
         undefined,
-        (err) => console.error("GLB load failed", err),
+        (err) => console.error("STL load failed", err),
       );
 
       let raf = 0;
