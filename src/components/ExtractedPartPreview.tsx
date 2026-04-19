@@ -474,7 +474,7 @@ export function ExtractedPartPreview({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-[96vw] w-[96vw] sm:max-w-[92vw] h-[94vh] flex flex-col">
         <DialogHeader>
           {titleLine}
           <DialogDescription>
