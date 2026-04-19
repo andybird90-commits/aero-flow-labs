@@ -152,6 +152,11 @@ function UserMesh({
       return wrapper;
     };
 
+    const reportBounds = (obj: THREE.Object3D) => {
+      const b = new THREE.Box3().setFromObject(obj);
+      onBounds?.({ box: b });
+    };
+
     if (ext === "stl") {
       const loader = new STLLoader();
       loader.load(
@@ -162,11 +167,15 @@ function UserMesh({
           const mesh = new THREE.Mesh(geo);
           const obj = fit(mesh);
           setObject(obj);
+          reportBounds(obj);
           finish(true);
         },
         undefined,
         () => {
-          if (!cancelled) finish(false);
+          if (!cancelled) {
+            onBounds?.(null);
+            finish(false);
+          }
         },
       );
     } else {
@@ -177,19 +186,24 @@ function UserMesh({
           if (cancelled) return;
           const obj = fit(group);
           setObject(obj);
+          reportBounds(obj);
           finish(true);
         },
         undefined,
         () => {
-          if (!cancelled) finish(false);
+          if (!cancelled) {
+            onBounds?.(null);
+            finish(false);
+          }
         },
       );
     }
 
     return () => {
       cancelled = true;
+      onBounds?.(null);
     };
-  }, [url, ext, template?.wheelbase_mm, template?.track_front_mm, template?.frontal_area_m2, geometry?.ride_height_front_mm, geometry?.ride_height_rear_mm, (geometry?.metadata as any)?.mesh_orientation?.upAxis, (geometry?.metadata as any)?.mesh_orientation?.yawDeg, (geometry?.metadata as any)?.mesh_orientation?.flipForward, onLoaded]);
+  }, [url, ext, template?.wheelbase_mm, template?.track_front_mm, template?.frontal_area_m2, geometry?.ride_height_front_mm, geometry?.ride_height_rear_mm, (geometry?.metadata as any)?.mesh_orientation?.upAxis, (geometry?.metadata as any)?.mesh_orientation?.yawDeg, (geometry?.metadata as any)?.mesh_orientation?.flipForward, onLoaded, onBounds]);
 
   if (!object) return null;
   return <primitive object={object} />;
