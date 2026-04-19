@@ -486,7 +486,22 @@ function CameraRig({ preset }: { preset: CameraPreset }) {
   return null;
 }
 
-/* ─── Main component ──────────────────────────────────── */
+/** Captures the live scene + camera into refs so the parent can re-render on demand. */
+function SceneCapturer({
+  sceneRef,
+  cameraRef,
+}: {
+  sceneRef: React.MutableRefObject<THREE.Scene | null>;
+  cameraRef: React.MutableRefObject<THREE.Camera | null>;
+}) {
+  const { scene, camera } = useThree();
+  useEffect(() => {
+    sceneRef.current = scene;
+    cameraRef.current = camera;
+  }, [scene, camera, sceneRef, cameraRef]);
+  return null;
+}
+
 export const CarViewer3D = forwardRef<CarViewer3DHandle, CarViewer3DProps>(function CarViewer3D(
   { template, geometry, parts = [], hideParts, className, preset = "free", partVisibility },
   ref,
