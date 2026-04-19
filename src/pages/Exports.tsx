@@ -333,8 +333,11 @@ function Card({ icon: Icon, title, hint, children }: {
 
 function serializePart(part: FittedPart, asObj: boolean): string {
   const mesh = buildPartMesh(part.kind, (part.params ?? {}) as Record<string, number>);
+  // Scale metres → mm so slicers (Bambu / Prusa) open parts at real-world print size.
+  mesh.scale.setScalar(1000);
   const scene = new THREE.Scene();
   scene.add(mesh);
+  scene.updateMatrixWorld(true);
   if (asObj) {
     return new OBJExporter().parse(scene);
   }
