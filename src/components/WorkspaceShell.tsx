@@ -168,6 +168,24 @@ function ProjectHeader({
         ? "neutral"
         : "preview";
 
+  const garageCarId: string | null = project.garage_car_id ?? null;
+  const { data: garageCar } = useGarageCar(garageCarId);
+
+  const garageTitle = garageCar
+    ? [garageCar.year, garageCar.make, garageCar.model, garageCar.trim].filter(Boolean).join(" ")
+    : null;
+
+  const garageViews = garageCar
+    ? [
+        { url: garageCar.ref_front_url,         label: "Front" },
+        { url: garageCar.ref_front34_url,       label: "Front 3/4" },
+        { url: garageCar.ref_side_url,          label: "Side" },
+        { url: garageCar.ref_side_opposite_url, label: "Side opp" },
+        { url: garageCar.ref_rear34_url,        label: "Rear 3/4" },
+        { url: garageCar.ref_rear_url,          label: "Rear" },
+      ]
+    : [];
+
   return (
     <div className="border-b border-border bg-surface-0/60 backdrop-blur sticky top-14 z-20">
       <div className="px-6 py-3 flex flex-wrap items-center gap-3">
@@ -190,6 +208,60 @@ function ProjectHeader({
           {headerActions}
         </div>
       </div>
+
+      {garageCarId && (
+        <div className="px-6 pb-3 flex items-center gap-3 flex-wrap">
+          <Link
+            to="/garage"
+            className="flex items-center gap-1.5 text-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors shrink-0"
+            title="Open Garage"
+          >
+            <Car className="h-3 w-3" />
+            Garage ref
+          </Link>
+
+          {garageCar ? (
+            <>
+              <div className="flex items-center gap-1.5">
+                {garageViews.map((v, i) => (
+                  <div
+                    key={i}
+                    className="h-10 w-14 rounded-sm overflow-hidden border border-border bg-surface-2 shrink-0"
+                    title={v.label}
+                  >
+                    {v.url ? (
+                      <img
+                        src={v.url}
+                        alt={`${garageTitle} — ${v.label}`}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center text-mono text-[8px] text-muted-foreground/60 uppercase tracking-widest">
+                        {garageCar.generation_status === "generating" ? "…" : "—"}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold tracking-tight truncate">
+                  {garageTitle || "Garage car"}
+                </div>
+                <div className="text-mono text-[10px] text-muted-foreground truncate">
+                  {garageCar.color || "—"}
+                  {garageCar.generation_status !== "ready" && (
+                    <span className="ml-2 text-primary">· {garageCar.generation_status}</span>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-mono text-[10px] text-muted-foreground">Loading reference…</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
