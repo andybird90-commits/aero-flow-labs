@@ -12,7 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2, Maximize2, Layers,
+  Sparkles, Check, X, RefreshCw, Star, Wand2, AlertCircle, MousePointer2, Maximize2, Layers, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
@@ -149,24 +149,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
           </div>
         )}
 
-        {concepts.some((c) => c.status === "approved") && (
-          <div className="glass-strong rounded-xl p-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Check className="h-5 w-5 text-success shrink-0" />
-              <div className="min-w-0">
-                <div className="text-sm font-semibold tracking-tight">Concept approved</div>
-                <div className="text-mono text-[10px] text-muted-foreground">
-                  Generate fitted body kit parts based on the approved concept.
-                </div>
-              </div>
-            </div>
-            <Button variant="hero" size="sm" asChild>
-              <Link to={`/parts?project=${projectId}`}>
-                Generate parts <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </div>
-        )}
+        {/* Post-approval banner removed — exports now happen inline on the concept card. */}
       </div>
 
       <div className="space-y-4 lg:sticky lg:top-32 lg:self-start">
@@ -391,13 +374,27 @@ function ConceptCard({
               </div>
             )}
             <AeroKitProgress status={aeroStatus} error={aeroError} warning={aeroWarning} />
-            {aeroStatus === "ready" && (
-              <Link
-                to={`/library?project=${projectId}`}
-                className="block text-center text-mono text-[10px] uppercase tracking-widest text-primary hover:underline"
+            {aeroStatus === "ready" && polledAero.data?.aero_kit_url && (
+              <Button
+                variant="glass"
+                size="sm"
+                className="w-full"
+                onClick={async () => {
+                  const url = polledAero.data!.aero_kit_url!;
+                  try {
+                    const resp = await fetch(url);
+                    const blob = await resp.blob();
+                    const u = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = u;
+                    a.download = `${concept.title || "aero-kit"}.stl`;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(u), 1000);
+                  } catch {/* noop */}
+                }}
               >
-                View kit in Library →
-              </Link>
+                <Download className="mr-1.5 h-3.5 w-3.5" /> Download combined kit STL
+              </Button>
             )}
           </div>
         )}

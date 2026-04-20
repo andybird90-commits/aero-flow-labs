@@ -17,9 +17,6 @@ import {
   LayoutGrid,
   FileText,
   Sparkles,
-  Wrench,
-  Sliders,
-  FileDown,
   Settings,
   Hexagon,
   FileBox,
@@ -32,9 +29,6 @@ const projectsNav = [{ title: "Projects", url: "/projects", icon: LayoutGrid }];
 const studioNav = [
   { title: "Design Brief", url: "/brief", icon: FileText },
   { title: "Concepts", url: "/concepts", icon: Sparkles },
-  { title: "Fitted Parts", url: "/parts", icon: Wrench },
-  { title: "Refine", url: "/refine", icon: Sliders },
-  { title: "Exports", url: "/exports", icon: FileDown },
 ];
 
 const systemNav = [{ title: "Settings", url: "/settings", icon: Settings }];

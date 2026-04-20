@@ -14,10 +14,6 @@ import Projects from "./pages/Projects";
 
 import Brief from "./pages/Brief";
 import Concepts from "./pages/Concepts";
-import Parts from "./pages/Parts";
-import Refine from "./pages/Refine";
-import Library from "./pages/Library";
-import Exports from "./pages/Exports";
 import Settings from "./pages/Settings";
 import AdminCarStls from "./pages/AdminCarStls";
 
@@ -44,10 +40,10 @@ const App = () => (
             <Route path="/upload" element={<Navigate to="/brief" replace />} />
             <Route path="/brief" element={<ProtectedRoute><Brief /></ProtectedRoute>} />
             <Route path="/concepts" element={<ProtectedRoute><Concepts /></ProtectedRoute>} />
-            <Route path="/parts" element={<ProtectedRoute><Parts /></ProtectedRoute>} />
-            <Route path="/refine" element={<ProtectedRoute><Refine /></ProtectedRoute>} />
-            <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
-            <Route path="/exports" element={<ProtectedRoute><Exports /></ProtectedRoute>} />
+            <Route path="/parts" element={<Navigate to="/concepts" replace />} />
+            <Route path="/refine" element={<Navigate to="/concepts" replace />} />
+            <Route path="/library" element={<Navigate to="/concepts" replace />} />
+            <Route path="/exports" element={<Navigate to="/concepts" replace />} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/settings/car-stls" element={<ProtectedRoute><AdminCarStls /></ProtectedRoute>} />
 
@@ -58,7 +54,7 @@ const App = () => (
             <Route path="/simulation" element={<Navigate to="/concepts" replace />} />
             <Route path="/results" element={<Navigate to="/concepts" replace />} />
             <Route path="/compare" element={<Navigate to="/concepts" replace />} />
-            <Route path="/optimization" element={<Navigate to="/parts" replace />} />
+            <Route path="/optimization" element={<Navigate to="/concepts" replace />} />
             <Route path="/system" element={<Navigate to="/projects" replace />} />
             <Route path="/design-system" element={<Navigate to="/" replace />} />
 
