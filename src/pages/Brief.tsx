@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,7 +8,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useBrief, useUpsertBrief, type DesignBrief } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowRight, Save, Tag, Wrench } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { ArrowRight, Save, Tag, Wrench, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const STYLE_TAGS = [
@@ -38,6 +39,7 @@ export default function Brief() {
 function BriefInner({ projectId }: { projectId: string }) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { data: brief } = useBrief(projectId);
   const upsert = useUpsertBrief();
 
@@ -47,6 +49,7 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [constraints, setConstraints] = useState<string[]>([]);
   const [customConstraint, setCustomConstraint] = useState("");
   const [rights, setRights] = useState(false);
+  const [continuing, setContinuing] = useState(false);
 
   useEffect(() => {
     if (brief) {
@@ -62,27 +65,76 @@ function BriefInner({ projectId }: { projectId: string }) {
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   };
 
+  const persist = async () => {
+    if (!user) return null;
+    const allConstraints = [...constraints];
+    if (customConstraint.trim()) allConstraints.push(customConstraint.trim());
+    const saved = await upsert.mutateAsync({
+      userId: user.id,
+      projectId,
+      id: brief?.id,
+      patch: {
+        prompt,
+        style_tags: styleTags,
+        build_type: buildType || null,
+        constraints: allConstraints,
+        rights_confirmed: rights,
+      },
+    });
+    setCustomConstraint("");
+    return saved;
+  };
+
   const save = async () => {
-    if (!user) return;
     try {
-      const allConstraints = [...constraints];
-      if (customConstraint.trim()) allConstraints.push(customConstraint.trim());
-      await upsert.mutateAsync({
-        userId: user.id,
-        projectId,
-        id: brief?.id,
-        patch: {
-          prompt,
-          style_tags: styleTags,
-          build_type: buildType || null,
-          constraints: allConstraints,
-          rights_confirmed: rights,
-        },
-      });
-      setCustomConstraint("");
+      await persist();
       toast({ title: "Brief saved" });
     } catch (e: any) {
       toast({ title: "Couldn't save brief", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const continueToConcepts = async () => {
+    if (!prompt.trim() || !user) return;
+    setContinuing(true);
+    try {
+      const saved = await persist();
+      const briefId = (saved as any)?.id ?? brief?.id;
+      if (!briefId) throw new Error("Could not save brief");
+
+      // Navigate immediately so the user sees concepts appear as they generate.
+      navigate(`/concepts?project=${projectId}`);
+
+      // Kick off generation in the background — the Concepts page polls/refetches.
+      supabase.functions
+        .invoke("generate-concepts", {
+          body: {
+            project_id: projectId,
+            brief_id: briefId,
+            snapshot_data_url: null,
+            snapshots: {},
+          },
+        })
+        .then(({ data, error }) => {
+          if (error || (data as any)?.error) {
+            toast({
+              title: "Generation failed",
+              description: String(error?.message ?? (data as any)?.error ?? "Unknown error"),
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Concepts generated",
+              description: `${(data as any)?.count ?? "Several"} concept variations created.`,
+            });
+          }
+        });
+
+      toast({ title: "Generating concepts…", description: "This usually takes 20–40 seconds." });
+    } catch (e: any) {
+      toast({ title: "Couldn't continue", description: e.message, variant: "destructive" });
+    } finally {
+      setContinuing(false);
     }
   };
 
@@ -208,10 +260,21 @@ function BriefInner({ projectId }: { projectId: string }) {
         <Button variant="glass" size="lg" onClick={save} disabled={upsert.isPending}>
           <Save className="mr-2 h-4 w-4" /> Save brief
         </Button>
-        <Button variant="hero" size="lg" asChild disabled={!prompt.trim()}>
-          <Link to={`/concepts?project=${projectId}`} onClick={save}>
-            Continue to concepts <ArrowRight className="ml-2 h-4 w-4" />
-          </Link>
+        <Button
+          variant="hero"
+          size="lg"
+          onClick={continueToConcepts}
+          disabled={!prompt.trim() || continuing || upsert.isPending}
+        >
+          {continuing ? (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Starting generation…
+            </>
+          ) : (
+            <>
+              Continue to concepts <ArrowRight className="ml-2 h-4 w-4" />
+            </>
+          )}
         </Button>
       </div>
     </div>
