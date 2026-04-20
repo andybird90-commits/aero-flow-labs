@@ -259,6 +259,35 @@ function ConceptCard({
   const current = visibleAngles[angleIdx];
   const hasMultiple = visibleAngles.length > 1;
 
+  const goPrev = () => setAngleIdx((i) => (i - 1 + visibleAngles.length) % visibleAngles.length);
+  const goNext = () => setAngleIdx((i) => (i + 1) % visibleAngles.length);
+
+  // Keyboard arrows when the zoom dialog is open.
+  useEffect(() => {
+    if (!zoomOpen || !hasMultiple) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") { e.preventDefault(); goPrev(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); goNext(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomOpen, hasMultiple, visibleAngles.length]);
+
+  // Touch swipe — horizontal flick > 40px switches angles.
+  const touchStartX = useRef<number | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (!hasMultiple || pickMode) return;
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!hasMultiple || pickMode || touchStartX.current == null) return;
+    const dx = (e.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(dx) < 40) return;
+    if (dx > 0) goPrev(); else goNext();
+  };
+
   const renderViewer = (variant: "card" | "zoom") => (
     <>
       {current ? (
