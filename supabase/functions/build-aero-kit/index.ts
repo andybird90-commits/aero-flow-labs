@@ -81,6 +81,7 @@ Deno.serve(async (req) => {
     await admin.from("concepts").update({
       aero_kit_status: "queued",
       aero_kit_error: null,
+      aero_kit_warning: nonManifoldWarning,
       aero_kit_url: null,
     }).eq("id", concept.id);
 
