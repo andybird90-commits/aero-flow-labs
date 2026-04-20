@@ -21,6 +21,7 @@ import {
   Plus,
   Star,
   Clock,
+  Library,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCurrentProject } from "@/hooks/useCurrentProject";
@@ -35,6 +36,7 @@ const steps = [
   { label: "Concepts", icon: Sparkles,   to: "/concepts" },
   { label: "Parts",    icon: Wrench,     to: "/parts" },
   { label: "Refine",   icon: Sliders,    to: "/refine" },
+  { label: "Library",  icon: Library,    to: "/library" },
   { label: "Exports",  icon: FileDown,   to: "/exports" },
 ] as const;
 

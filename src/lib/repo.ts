@@ -329,6 +329,33 @@ export function useDeleteConcept() {
   });
 }
 
+/* ─── CONCEPT PARTS (extracted / modeled) ──────────────────── */
+export type ConceptPart = Database["public"]["Tables"]["concept_parts"]["Row"];
+
+export function useConceptParts(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["concept_parts", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("concept_parts")
+        .select("*").eq("project_id", projectId!).order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as ConceptPart[];
+    },
+  });
+}
+
+export function useDeleteConceptPart() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("concept_parts").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["concept_parts"] }),
+  });
+}
+
 /* ─── FITTED PARTS ─────────────────────────────────────────── */
 export function useFittedParts(conceptSetId: string | undefined) {
   return useQuery({

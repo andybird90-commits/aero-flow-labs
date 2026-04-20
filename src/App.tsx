@@ -16,6 +16,7 @@ import Brief from "./pages/Brief";
 import Concepts from "./pages/Concepts";
 import Parts from "./pages/Parts";
 import Refine from "./pages/Refine";
+import Library from "./pages/Library";
 import Exports from "./pages/Exports";
 import Settings from "./pages/Settings";
 
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="/concepts" element={<ProtectedRoute><Concepts /></ProtectedRoute>} />
             <Route path="/parts" element={<ProtectedRoute><Parts /></ProtectedRoute>} />
             <Route path="/refine" element={<ProtectedRoute><Refine /></ProtectedRoute>} />
+            <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
             <Route path="/exports" element={<ProtectedRoute><Exports /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
 
