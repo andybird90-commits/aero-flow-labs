@@ -42,7 +42,7 @@ const ANGLES = [
   {
     key: "side_opposite" as const,
     column: "ref_side_opposite_url",
-    framing: "pure side profile view from the passenger side (opposite side), perpendicular to the car, full body in frame — this side may show asymmetric details like the fuel filler cap",
+    framing: "pure side profile from the OPPOSITE side of the car to the previous side reference (i.e. the passenger side in left-hand-drive markets, driver side in right-hand-drive markets — whichever is opposite to the reference image). Mirror-image perspective compared to the reference. Perpendicular camera, full body in frame. This side should show any asymmetric details such as the fuel filler cap on this flank",
   },
   {
     key: "rear34" as const,
