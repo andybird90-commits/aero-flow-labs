@@ -1,353 +1,297 @@
 /**
- * Library — every part the user has drawn, extracted, or modeled in this
- * project. Two sources:
- *   • concept_parts  → AI-rendered + meshified parts from the Concepts page.
- *   • fitted_parts   → parametric body-kit parts from the Parts page.
+ * My Library — global, personal catalogue of every shareable asset the user
+ * has produced across all projects: concept renders, aero kits, single parts.
  *
- * Each entry shows its hero render (or 3D mesh), download/preview controls,
- * and a delete action.
+ * Auto-populated by DB triggers on concepts / concept_parts. The user can:
+ *   • toggle visibility (private / public)
+ *   • publish to the marketplace with a price (free or paid)
+ *   • unpublish, delete, download
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { WorkspaceShell } from "@/components/WorkspaceShell";
+import { AppLayout } from "@/components/AppLayout";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { StatusChip } from "@/components/StatusChip";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PartMeshViewer } from "@/components/PartMeshViewer";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import {
-  useConceptParts, useDeleteConceptPart,
-  useActiveConceptSet, useFittedParts, useDeleteFittedPart,
-  useConcepts,
-  type ConceptPart, type FittedPart,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  useMyLibrary, useUpdateLibraryItem, useDeleteLibraryItem,
+  usePublishListing, useUnpublishListing,
+  type LibraryItem, type MarketplaceListing, type LibraryItemKind,
 } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Box, Download, Trash2, Sparkles, Wrench, ImageOff, Eye, ArrowRight, Layers,
+  Box, Download, Trash2, Image as ImageIcon, Layers, Wrench,
+  Globe, Lock, Tag, Store, ImageOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { StockVsConceptPanel } from "@/components/StockVsConceptPanel";
-import { SourceBadge, type PartSource } from "@/components/SourceBadge";
+
+const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: string }> = {
+  concept_image:     { label: "Concept image", icon: ImageIcon, tone: "text-cyan-400"   },
+  aero_kit_mesh:     { label: "Aero kit",      icon: Layers,    tone: "text-amber-400"  },
+  concept_part_mesh: { label: "Single part",   icon: Wrench,    tone: "text-emerald-400"},
+};
+
+const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
+  { id: "all",               label: "All" },
+  { id: "concept_image",     label: "Images" },
+  { id: "aero_kit_mesh",     label: "Aero kits" },
+  { id: "concept_part_mesh", label: "Parts" },
+];
 
 export default function LibraryPage() {
-  return (
-    <WorkspaceShell>
-      {({ project, projectId }) => <LibraryInner projectId={projectId!} project={project} />}
-    </WorkspaceShell>
-  );
-}
-
-function LibraryInner({ projectId, project }: { projectId: string; project: any }) {
-  const { data: conceptParts = [], isLoading: cpLoading } = useConceptParts(projectId);
-  const { data: conceptSet } = useActiveConceptSet(projectId);
-  const { data: fittedParts = [], isLoading: fpLoading } = useFittedParts(conceptSet?.id);
-  const { data: concepts = [] } = useConcepts(projectId);
-  const delConcept = useDeleteConceptPart();
-  const delFitted = useDeleteFittedPart();
+  const { user } = useAuth();
+  const { data: items = [], isLoading } = useMyLibrary(user?.id);
+  const update = useUpdateLibraryItem();
+  const del = useDeleteLibraryItem();
+  const publish = usePublishListing();
+  const unpublish = useUnpublishListing();
   const { toast } = useToast();
 
-  const [previewMesh, setPreviewMesh] = useState<{ url: string; label: string } | null>(null);
-  const [sourceFilter, setSourceFilter] = useState<"all" | PartSource>("all");
+  const [filter, setFilter] = useState<LibraryItemKind | "all">("all");
+  const [publishing, setPublishing] = useState<LibraryItem | null>(null);
 
-  // Concepts with a ready boolean kit. Each shows the combined kit + boolean parts.
-  const aeroKits = concepts.filter((c: any) => c.aero_kit_url && c.aero_kit_status === "ready");
+  const filtered = useMemo(
+    () => filter === "all" ? items : items.filter(i => i.kind === filter),
+    [items, filter],
+  );
 
-  const filteredConceptParts = sourceFilter === "all"
-    ? conceptParts
-    : conceptParts.filter((p) => ((p.source as PartSource) ?? "extracted") === sourceFilter);
+  const stats = useMemo(() => ({
+    total: items.length,
+    images: items.filter(i => i.kind === "concept_image").length,
+    kits: items.filter(i => i.kind === "aero_kit_mesh").length,
+    parts: items.filter(i => i.kind === "concept_part_mesh").length,
+    listed: items.filter(i => i.marketplace_listings?.some(l => l.status === "active")).length,
+  }), [items]);
 
-  const totalSaved = conceptParts.length + fittedParts.filter((p) => p.enabled).length;
-  const meshed = conceptParts.filter((p) => !!p.glb_url).length;
-  const drawn = conceptParts.length;
-
-  const downloadMesh = async (url: string, name: string) => {
+  const togglePrivacy = async (item: LibraryItem & { marketplace_listings: MarketplaceListing[] }) => {
+    const willBePublic = item.visibility === "private";
+    if (willBePublic) {
+      // Going public is treated as "list on marketplace" so they can set a price.
+      setPublishing(item);
+      return;
+    }
+    // Unpublishing
+    const active = item.marketplace_listings?.find(l => l.status === "active");
     try {
-      const resp = await fetch(url);
-      const blob = await resp.blob();
-      const u = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = u; a.download = `${name}.stl`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(u), 1000);
+      if (active) {
+        await unpublish.mutateAsync({ listing_id: active.id, library_item_id: item.id });
+      } else {
+        await update.mutateAsync({ id: item.id, visibility: "private" });
+      }
+      toast({ title: "Made private" });
     } catch (e: any) {
-      toast({ title: "Download failed", description: String(e.message ?? e), variant: "destructive" });
+      toast({ title: "Could not update", description: String(e.message ?? e), variant: "destructive" });
     }
   };
 
-  const deleteConcept = async (p: ConceptPart) => {
-    if (!confirm(`Delete "${p.label ?? p.kind}"? This cannot be undone.`)) return;
+  const onDelete = async (item: LibraryItem) => {
+    if (!confirm(`Delete "${item.title}" from your library? This cannot be undone.`)) return;
     try {
-      await delConcept.mutateAsync(p.id);
-      toast({ title: "Part deleted" });
+      await del.mutateAsync(item.id);
+      toast({ title: "Deleted from library" });
     } catch (e: any) {
       toast({ title: "Delete failed", description: String(e.message ?? e), variant: "destructive" });
     }
   };
-
-  const deleteFitted = async (p: FittedPart) => {
-    if (!confirm(`Delete the ${p.kind} from the body kit?`)) return;
-    try {
-      await delFitted.mutateAsync(p.id);
-      toast({ title: "Part removed from kit" });
-    } catch (e: any) {
-      toast({ title: "Delete failed", description: String(e.message ?? e), variant: "destructive" });
-    }
-  };
-
-  const isLoading = cpLoading || fpLoading;
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Project Library</div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Saved parts</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Everything you've drawn, extracted, or modeled in this project — viewable and downloadable in one place.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Stat label="Total" value={totalSaved} />
-          <Stat label="Drawn" value={drawn} />
-          <Stat label="Meshed" value={meshed} />
-        </div>
-      </div>
+    <AppLayout>
+      <PageHeader
+        eyebrow="My Library"
+        title="Your saved assets"
+        description="Every concept image, aero kit, and 3D part you've generated — across all projects. Make any of them public to list on the Marketplace."
+      >
+        <Button variant="glass" size="sm" asChild>
+          <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
+        </Button>
+      </PageHeader>
 
-      {isLoading && (
-        <div className="text-center text-muted-foreground py-12">Loading library…</div>
-      )}
-
-      {/* Stock-vs-concept silhouette comparison (only renders if hero STL exists). */}
-      <StockVsConceptPanel
-        projectId={projectId}
-        carTemplateId={project?.car?.template?.id ?? null}
-      />
-
-      {!isLoading && totalSaved === 0 && (
-        <EmptyLibrary projectId={projectId} />
-      )}
-
-      {/* Aero-kit (boolean) section */}
-      {aeroKits.length > 0 && (
-        <Section
-          icon={Layers}
-          title="Aero kit (boolean)"
-          subtitle="Subtracted from your hero STL — printable shells with a panel-accurate mating face."
-        >
-          <div className="space-y-4">
-            {aeroKits.map((c: any) => (
-              <div key={c.id} className="glass rounded-xl p-3 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-medium truncate">{c.title}</div>
-                  <Button
-                    variant="glass" size="sm"
-                    onClick={() => downloadMesh(c.aero_kit_url, `${project.name ?? "kit"}-aero-kit`)}
-                  >
-                    <Download className="mr-1.5 h-3.5 w-3.5" /> Combined kit STL
-                  </Button>
-                </div>
-              </div>
-            ))}
+      <div className="p-6 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            <Stat label="Total" value={stats.total} />
+            <Stat label="Images" value={stats.images} />
+            <Stat label="Aero kits" value={stats.kits} />
+            <Stat label="Parts" value={stats.parts} />
+            <Stat label="Listed" value={stats.listed} accent />
           </div>
-        </Section>
-      )}
-
-      {/* Concept-extracted parts */}
-      {filteredConceptParts.length > 0 && (
-        <Section
-          icon={Sparkles}
-          title="Drawn & modeled parts"
-          subtitle="Extracted from your concept renders. Click a tile to preview the 3D mesh."
-        >
-          {/* Source filter */}
-          <div className="mb-3 flex items-center gap-1.5 flex-wrap">
-            <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground mr-1">Source:</span>
-            {(["all", "parametric", "extracted", "boolean"] as const).map((s) => (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {FILTERS.map(f => (
               <button
-                key={s}
-                onClick={() => setSourceFilter(s)}
+                key={f.id}
+                onClick={() => setFilter(f.id)}
                 className={cn(
-                  "rounded-full border px-2 py-0.5 text-[10px] text-mono uppercase tracking-widest transition-colors",
-                  sourceFilter === s
+                  "rounded-full border px-3 py-1 text-xs transition-colors",
+                  filter === f.id
                     ? "border-primary/50 bg-primary/10 text-primary"
                     : "border-border text-muted-foreground hover:text-foreground",
                 )}
               >
-                {s}
+                {f.label}
               </button>
             ))}
           </div>
+        </div>
+
+        {isLoading && (
+          <div className="text-center text-muted-foreground py-12">Loading library…</div>
+        )}
+
+        {!isLoading && filtered.length === 0 && <EmptyLibrary />}
+
+        {filtered.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredConceptParts.map((p) => (
-              <ConceptPartCard
-                key={p.id}
-                part={p}
-                onPreview={() => p.glb_url && setPreviewMesh({
-                  url: p.glb_url,
-                  label: p.label ?? p.kind,
-                })}
-                onDownload={() => p.glb_url && downloadMesh(p.glb_url, `${project.name ?? "part"}-${p.kind}`)}
-                onDelete={() => deleteConcept(p)}
+            {filtered.map(item => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                onTogglePrivacy={() => togglePrivacy(item)}
+                onPublish={() => setPublishing(item)}
+                onDelete={() => onDelete(item)}
               />
             ))}
           </div>
-        </Section>
-      )}
+        )}
+      </div>
 
-      {/* Fitted/parametric parts */}
-      {fittedParts.length > 0 && (
-        <Section
-          icon={Wrench}
-          title="Body kit parts (parametric)"
-          subtitle="Auto-fitted to your STL on the Parts page. Tweak parameters in Refine."
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {fittedParts.map((p) => (
-              <FittedPartCard
-                key={p.id}
-                part={p}
-                onDelete={() => deleteFitted(p)}
-              />
-            ))}
-          </div>
-          <div className="mt-4 flex gap-2">
-            <Button variant="glass" size="sm" asChild>
-              <Link to={`/parts?project=${projectId}`}>
-                Manage on Parts <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </Link>
-            </Button>
-            <Button variant="glass" size="sm" asChild>
-              <Link to={`/refine?project=${projectId}`}>
-                Refine parameters <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </div>
-        </Section>
-      )}
-
-      {/* Mesh preview dialog */}
-      <Dialog open={!!previewMesh} onOpenChange={(o) => !o && setPreviewMesh(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{previewMesh?.label}</DialogTitle>
-          </DialogHeader>
-          {previewMesh && (
-            <div className="h-[480px] rounded-md overflow-hidden border border-border">
-              <PartMeshViewer url={previewMesh.url} className="h-full w-full" />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+      <PublishDialog
+        item={publishing}
+        onClose={() => setPublishing(null)}
+        onSubmit={async (price_cents, title, description) => {
+          if (!publishing || !user) return;
+          try {
+            await publish.mutateAsync({
+              library_item_id: publishing.id,
+              user_id: user.id,
+              price_cents,
+              title: title || null,
+              description: description || null,
+            });
+            toast({ title: "Listed on Marketplace" });
+            setPublishing(null);
+          } catch (e: any) {
+            toast({ title: "Could not list", description: String(e.message ?? e), variant: "destructive" });
+          }
+        }}
+      />
+    </AppLayout>
   );
 }
 
-/* ─── small helpers ─────────────────────────────────────────── */
+/* ─── components ────────────────────────────────────────────── */
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
-    <div className="rounded-md border border-border bg-surface-0/40 px-3 py-2 min-w-[64px]">
+    <div className={cn(
+      "rounded-md border px-3 py-2 min-w-[64px]",
+      accent ? "border-primary/40 bg-primary/5" : "border-border bg-surface-0/40",
+    )}>
       <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">{label}</div>
       <div className="mt-0.5 text-lg font-semibold tracking-tight">{value}</div>
     </div>
   );
 }
 
-function Section({
-  icon: Icon, title, subtitle, children,
+function ItemCard({
+  item, onTogglePrivacy, onPublish, onDelete,
 }: {
-  icon: any; title: string; subtitle?: string; children: React.ReactNode;
-}) {
-  return (
-    <section>
-      <div className="mb-3 flex items-start gap-2.5">
-        <div className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
-          <Icon className="h-3.5 w-3.5" />
-        </div>
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
-          {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
-        </div>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function EmptyLibrary({ projectId }: { projectId: string }) {
-  return (
-    <div className="glass rounded-xl p-12 text-center">
-      <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground mb-3">
-        <Box className="h-5 w-5" />
-      </div>
-      <h3 className="text-lg font-semibold tracking-tight">Nothing saved yet</h3>
-      <p className="mt-1 text-sm text-muted-foreground max-w-md mx-auto">
-        Extract parts from a concept render, or generate a parametric body kit — they'll all appear here.
-      </p>
-      <div className="mt-5 flex flex-wrap gap-2 justify-center">
-        <Button variant="hero" size="sm" asChild>
-          <Link to={`/concepts?project=${projectId}`}>
-            <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Go to Concepts
-          </Link>
-        </Button>
-        <Button variant="glass" size="sm" asChild>
-          <Link to={`/parts?project=${projectId}`}>
-            <Wrench className="mr-1.5 h-3.5 w-3.5" /> Generate body kit
-          </Link>
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function ConceptPartCard({
-  part, onPreview, onDownload, onDelete,
-}: {
-  part: ConceptPart;
-  onPreview: () => void;
-  onDownload: () => void;
+  item: LibraryItem & { marketplace_listings: MarketplaceListing[] };
+  onTogglePrivacy: () => void;
+  onPublish: () => void;
   onDelete: () => void;
 }) {
-  const renders = (part.render_urls as any) as Array<{ angle: string; url: string }> | null;
-  const hero = renders?.[0]?.url ?? null;
-  const hasMesh = !!part.glb_url;
+  const meta = KIND_META[item.kind];
+  const Icon = meta.icon;
+  const listing = item.marketplace_listings?.find(l => l.status === "active");
+  const isPublic = item.visibility === "public";
+
+  const download = async () => {
+    if (!item.asset_url) return;
+    const ext =
+      item.asset_mime === "image/png" ? "png" :
+      item.asset_mime === "model/stl" ? "stl" :
+      item.asset_mime === "model/gltf-binary" ? "glb" : "bin";
+    try {
+      const r = await fetch(item.asset_url);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${item.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.${ext}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {/* noop */}
+  };
 
   return (
     <div className="group glass rounded-xl overflow-hidden flex flex-col">
       <div className="relative aspect-square bg-surface-0">
-        {hero ? (
-          <img src={hero} alt={part.label ?? part.kind} className="absolute inset-0 h-full w-full object-cover" />
+        {item.thumbnail_url ? (
+          <img src={item.thumbnail_url} alt={item.title} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <div className="absolute inset-0 grid place-items-center text-muted-foreground">
             <ImageOff className="h-6 w-6" />
           </div>
         )}
-        <div className="absolute top-2 left-2">
-          <StatusChip tone={hasMesh ? "success" : "preview"} size="sm">
-            {hasMesh ? "Meshed" : "Drawn"}
-          </StatusChip>
+        <div className="absolute top-2 left-2 flex gap-1">
+          <Badge variant="outline" className={cn("bg-background/70 backdrop-blur", meta.tone)}>
+            <Icon className="mr-1 h-3 w-3" />
+            {meta.label}
+          </Badge>
+        </div>
+        <div className="absolute top-2 right-2 flex gap-1">
+          {listing ? (
+            <Badge className="bg-primary/90 text-primary-foreground">
+              <Tag className="mr-1 h-3 w-3" />
+              {listing.price_cents === 0 ? "Free" : formatPrice(listing.price_cents, listing.currency)}
+            </Badge>
+          ) : isPublic ? (
+            <Badge variant="outline" className="bg-background/70 backdrop-blur"><Globe className="mr-1 h-3 w-3" />Public</Badge>
+          ) : (
+            <Badge variant="outline" className="bg-background/70 backdrop-blur"><Lock className="mr-1 h-3 w-3" />Private</Badge>
+          )}
         </div>
       </div>
-      <div className="p-3 flex-1 flex flex-col gap-2">
+
+      <div className="p-3 flex-1 flex flex-col gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium truncate">{part.label ?? part.kind}</div>
-          <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground truncate">
-            {part.kind}
+          <div className="text-sm font-medium truncate" title={item.title}>{item.title}</div>
+          <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            {new Date(item.created_at).toLocaleDateString()}
           </div>
         </div>
+
+        <div className="flex items-center justify-between rounded-md border border-border bg-surface-0/40 px-2.5 py-1.5">
+          <div className="flex items-center gap-1.5 text-xs">
+            {isPublic ? <Globe className="h-3.5 w-3.5 text-primary" /> : <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
+            <span>{isPublic ? "Public" : "Private"}</span>
+          </div>
+          <Switch
+            checked={isPublic}
+            onCheckedChange={onTogglePrivacy}
+            aria-label="Toggle public visibility"
+          />
+        </div>
+
         <div className="mt-auto flex gap-1.5">
           <Button
-            variant="glass" size="sm" className="flex-1"
-            disabled={!hasMesh} onClick={onPreview}
-            title={hasMesh ? "Preview 3D" : "No mesh yet"}
+            variant={listing ? "glass" : "hero"}
+            size="sm"
+            className="flex-1"
+            onClick={onPublish}
           >
-            <Eye className="h-3.5 w-3.5" />
+            <Store className="mr-1 h-3.5 w-3.5" />
+            {listing ? "Edit listing" : "Sell"}
           </Button>
-          <Button
-            variant="glass" size="sm" className="flex-1"
-            disabled={!hasMesh} onClick={onDownload}
-            title={hasMesh ? "Download STL" : "No mesh yet"}
-          >
+          <Button variant="glass" size="sm" onClick={download} disabled={!item.asset_url} title="Download">
             <Download className="h-3.5 w-3.5" />
           </Button>
           <Button
@@ -364,46 +308,115 @@ function ConceptPartCard({
   );
 }
 
-function FittedPartCard({
-  part, onDelete,
+function PublishDialog({
+  item, onClose, onSubmit,
 }: {
-  part: FittedPart;
-  onDelete: () => void;
+  item: LibraryItem | null;
+  onClose: () => void;
+  onSubmit: (price_cents: number, title: string, description: string) => Promise<void>;
 }) {
-  const params = (part.params as Record<string, any>) ?? {};
-  const entries = Object.entries(params).slice(0, 4);
+  const [priceInput, setPriceInput] = useState("0");
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Reset form when item changes
+  useMemo(() => {
+    if (item) {
+      setPriceInput("0");
+      setTitle(item.title);
+      setDesc(item.description ?? "");
+    }
+  }, [item?.id]);
+
+  if (!item) return null;
+
+  const cents = Math.max(0, Math.round(parseFloat(priceInput || "0") * 100));
 
   return (
-    <div className={cn(
-      "glass rounded-xl p-3 flex flex-col gap-2",
-      !part.enabled && "opacity-60",
-    )}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-sm font-medium truncate capitalize">{part.kind.replace(/_/g, " ")}</div>
-          <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            {part.enabled ? "Enabled" : "Disabled"}
+    <Dialog open={!!item} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>List on Marketplace</DialogTitle>
+          <DialogDescription>
+            Make this asset public and set a price. Use $0 to give it away for free.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="lst-title">Title</Label>
+            <Input id="lst-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="lst-desc">Description (optional)</Label>
+            <Textarea id="lst-desc" value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} />
+          </div>
+          <div>
+            <Label htmlFor="lst-price">Price (USD)</Label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-3 flex items-center text-muted-foreground text-sm">$</span>
+              <Input
+                id="lst-price"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={priceInput}
+                onChange={(e) => setPriceInput(e.target.value)}
+                className="pl-6"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Buyers will see {cents === 0 ? "Free" : formatPrice(cents, "usd")}.
+            </p>
           </div>
         </div>
-        <Button
-          variant="ghost" size="sm"
-          onClick={onDelete}
-          className="text-muted-foreground hover:text-destructive shrink-0"
-          title="Remove"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button
+            variant="hero"
+            disabled={submitting}
+            onClick={async () => {
+              setSubmitting(true);
+              try {
+                await onSubmit(cents, title, desc);
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+          >
+            {submitting ? "Listing…" : "Publish"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EmptyLibrary() {
+  return (
+    <div className="glass rounded-xl p-12 text-center">
+      <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground mb-3">
+        <Box className="h-5 w-5" />
+      </div>
+      <h3 className="text-lg font-semibold tracking-tight">Nothing in your library yet</h3>
+      <p className="mt-1 text-sm text-muted-foreground max-w-md mx-auto">
+        Generate concepts or extract parts in any project — they'll appear here automatically.
+      </p>
+      <div className="mt-5">
+        <Button variant="hero" size="sm" asChild>
+          <Link to="/projects">Open a project</Link>
         </Button>
       </div>
-      {entries.length > 0 && (
-        <div className="grid grid-cols-2 gap-1 text-[11px]">
-          {entries.map(([k, v]) => (
-            <div key={k} className="flex justify-between gap-2 text-muted-foreground">
-              <span className="truncate">{k}</span>
-              <span className="text-foreground font-mono">{String(v)}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
+}
+
+export function formatPrice(cents: number, currency = "usd") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+  }).format(cents / 100);
 }
