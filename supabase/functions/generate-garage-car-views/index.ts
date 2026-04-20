@@ -118,7 +118,12 @@ Deno.serve(async (req) => {
   }
 });
 
-async function runGeneration(admin: any, car: any, userId: string) {
+async function runGeneration(
+  admin: any,
+  car: any,
+  userId: string,
+  anglesToRun: typeof ANGLES,
+) {
   const carLabel = [
     car.year ? String(car.year) : "",
     car.make,
@@ -129,13 +134,24 @@ async function runGeneration(admin: any, car: any, userId: string) {
   const colorClause = car.color ? `Paint colour: ${car.color}.` : "";
   const notesClause = car.notes ? `Additional notes: ${car.notes}.` : "";
 
-  // Step 1: generate the hero (front 3/4) shot from text. This locks in
-  // identity (paint, wheels, stance, lighting). The other 3 angles will
-  // reuse it as the primary reference for visual consistency.
+  // The hero (front 3/4) image anchors identity for every other angle.
+  // For partial regeneration we may not be regenerating it — in that case
+  // reuse whichever existing reference is available as the visual anchor.
   let heroDataUrl: string | null = null;
+  const willGenerateHero = anglesToRun.some((a) => a.key === "front34");
+  if (!willGenerateHero) {
+    const existingAnchor =
+      car.ref_front34_url ||
+      car.ref_side_url ||
+      car.ref_front_url ||
+      car.ref_rear34_url ||
+      car.ref_rear_url ||
+      car.ref_side_opposite_url;
+    if (existingAnchor) heroDataUrl = existingAnchor; // public https url is fine
+  }
 
-  for (const angle of ANGLES) {
-    const isHero = angle.key === "front34";
+  for (const angle of anglesToRun) {
+    const isHero = angle.key === "front34" && willGenerateHero;
     const promptText = isHero
       ? [
           `Photorealistic studio photograph of a STOCK FACTORY ${carLabel}. ` +
