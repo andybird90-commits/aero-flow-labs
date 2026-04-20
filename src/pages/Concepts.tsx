@@ -220,7 +220,9 @@ function ConceptCard({
   const aeroStatus = ((polledAero.data?.aero_kit_status ?? initialAeroStatus) as AeroKitStatus);
   const aeroError = polledAero.data?.aero_kit_error ?? initialAeroError;
   const aeroWarning = polledAero.data?.aero_kit_warning ?? initialAeroWarning;
+  const aeroUpdatedAt = polledAero.data?.updated_at ?? concept.updated_at;
   const aeroBuilding = aeroStatus !== "idle" && aeroStatus !== "ready" && aeroStatus !== "failed";
+  const aeroStale = aeroBuilding && (Date.now() - new Date(aeroUpdatedAt).getTime()) > 2 * 60 * 1000;
   const tone = concept.status === "approved"
     ? "success"
     : concept.status === "rejected"
@@ -373,12 +375,13 @@ function ConceptCard({
                 variant="hero"
                 size="sm"
                 className="w-full"
-                disabled={aeroBuilding}
+                disabled={aeroBuilding && !aeroStale}
                 onClick={onBuildKit}
                 title="Run displace → subtract → split using the real hero STL"
               >
                 <Layers className="mr-1.5 h-3.5 w-3.5" />
-                {aeroBuilding ? "Building aero kit…"
+                {aeroBuilding && !aeroStale ? "Building aero kit…"
+                  : aeroStale ? "Retry aero kit build"
                   : aeroStatus === "ready" ? "Rebuild aero kit"
                   : "Build aero kit from real STL"}
               </Button>
