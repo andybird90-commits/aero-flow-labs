@@ -236,6 +236,46 @@ function wing(p: Params, b: KitBounds): THREE.Group {
   return g;
 }
 
+/* ─── louvred vent: shared builder for bonnet & wing vents ──
+ *   - recessed tray (length × width × depth)
+ *   - N parallel angled louvre slats spanning the opening
+ * Used for both `bonnet_vent` and `wing_vent` since the geometry is identical
+ * apart from defaults — orientation/placement is up to the viewer / car. */
+function louvredVent(p: Params, _b: KitBounds): THREE.Group {
+  const length = num(p, "length", 240) / 1000;
+  const width  = num(p, "width", 120) / 1000;
+  const depth  = num(p, "depth", 18) / 1000;
+  const louvres = Math.max(2, Math.round(num(p, "louvre_count", 5)));
+
+  const g = new THREE.Group();
+
+  // Recessed surround (a thin frame around an open tray).
+  const wall = 0.006;
+  const tray = new THREE.Mesh(
+    new THREE.BoxGeometry(length, depth, width),
+    matNeutral(),
+  );
+  tray.position.y = -depth / 2;
+  g.add(tray);
+
+  // Louvre slats — angled ~25°, evenly spaced across the length.
+  const slatThick = 0.004;
+  const slatAngle = (25 * Math.PI) / 180;
+  const usable = length - wall * 2;
+  const spacing = usable / louvres;
+  for (let i = 0; i < louvres; i++) {
+    const x = -usable / 2 + spacing * (i + 0.5);
+    const slat = new THREE.Mesh(
+      new THREE.BoxGeometry(spacing * 0.85, slatThick, width - wall * 2),
+      matNeutral(),
+    );
+    slat.position.set(x, -slatThick, 0);
+    slat.rotation.set(0, 0, slatAngle);
+    g.add(slat);
+  }
+  return g;
+}
+
 function placeholder(kind: string): THREE.Mesh {
   const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.2), matNeutral());
   m.name = kind;
