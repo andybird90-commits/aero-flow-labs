@@ -4,20 +4,24 @@
  * so the same look can be applied across different cars.
  */
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useStylePresets, useCreateStylePreset, useUpdateStylePreset, useDeleteStylePreset,
+  useCarTemplates, useCreateProjectWithStyle,
   type StylePreset,
 } from "@/lib/repo";
-import { Palette, Plus, Save, Trash2, Globe, Lock, Tag, Wrench } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Palette, Plus, Save, Trash2, Globe, Lock, Tag, Wrench, Sparkles, Car as CarIcon, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const STYLE_TAGS = [
