@@ -14,14 +14,10 @@ import { StatusChip } from "@/components/StatusChip";
 import {
   FileText,
   Sparkles,
-  Wrench,
-  Sliders,
-  FileDown,
   ChevronRight,
   Plus,
   Star,
   Clock,
-  Library,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCurrentProject } from "@/hooks/useCurrentProject";
@@ -34,10 +30,6 @@ type Ctx = ReturnType<typeof useCurrentProject>;
 const steps = [
   { label: "Brief",    icon: FileText,   to: "/brief" },
   { label: "Concepts", icon: Sparkles,   to: "/concepts" },
-  { label: "Parts",    icon: Wrench,     to: "/parts" },
-  { label: "Refine",   icon: Sliders,    to: "/refine" },
-  { label: "Library",  icon: Library,    to: "/library" },
-  { label: "Exports",  icon: FileDown,   to: "/exports" },
 ] as const;
 
 interface WorkspaceShellProps {
