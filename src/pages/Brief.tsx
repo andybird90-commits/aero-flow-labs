@@ -122,62 +122,6 @@ function BriefInner({ projectId }: { projectId: string }) {
     }
   };
 
-  const toggleTemplate = (id: string) => {
-    setSelectedTemplateIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
-
-  const generateForSelected = async () => {
-    if (!user || !stylePresetId || selectedTemplateIds.length === 0) return;
-    const picks = supportedTemplates.filter((t: any) => selectedTemplateIds.includes(t.id));
-    if (picks.length === 0) return;
-
-    setBulkRunning(true);
-    const created: { project_id: string; brief_id: string; project_name: string }[] = [];
-    try {
-      for (const tmpl of picks) {
-        const res = await createWithStyle.mutateAsync({
-          userId: user.id,
-          template: tmpl as any,
-          stylePresetId,
-          addendumPrompt: prompt.trim(),
-          styleTags,
-          constraints: [...constraints, ...(customConstraint.trim() ? [customConstraint.trim()] : [])],
-          buildType: buildType || null,
-          rightsConfirmed: rights,
-        });
-        created.push(res);
-      }
-
-      for (const c of created) {
-        supabase.functions.invoke("generate-concepts", {
-          body: {
-            project_id: c.project_id,
-            brief_id: c.brief_id,
-            snapshot_data_url: null,
-            snapshots: {},
-          },
-        }).then(({ error, data }) => {
-          if (error || (data as any)?.error) {
-            toast({
-              title: `Generation failed for ${c.project_name}`,
-              description: String(error?.message ?? (data as any)?.error ?? "Unknown error"),
-              variant: "destructive",
-            });
-          }
-        });
-      }
-
-      toast({
-        title: `Generating ${created.length} project${created.length === 1 ? "" : "s"}…`,
-        description: "Concepts will appear in each project as they finish.",
-      });
-      setSelectedTemplateIds([]);
-      navigate("/projects");
-    } catch (e: any) {
-      toast({ title: "Couldn't queue generations", description: e.message, variant: "destructive" });
-    } finally {
       setBulkRunning(false);
     }
   };
