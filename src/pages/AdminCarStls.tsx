@@ -198,11 +198,11 @@ function CarStlsInner({ userId }: { userId: string }) {
       qc.invalidateQueries({ queryKey: ["car_stls"] });
       qc.invalidateQueries({ queryKey: ["car_stl_for_template", row.car_template_id] });
       toast({
-        title: stats?.manifold ? "Repair complete · manifold" : "Repair complete · NOT manifold",
+        title: stats?.manifold ? "Repair complete · manifold" : "Repair complete · warning: non-manifold",
         description: stats
           ? `${stats.triangle_count_out.toLocaleString()} tris · ${stats.open_edges} open edges · ${stats.duplicate_edges} non-manifold edges`
           : "See row details.",
-        variant: stats?.manifold ? "default" : "destructive",
+        variant: "default",
       });
     } catch (e: any) {
       toast({ title: "Repair failed", description: String(e.message ?? e), variant: "destructive" });
@@ -381,7 +381,7 @@ function CarStlRow({
               <CheckCircle2 className="mr-1 h-3 w-3" /> Manifold
             </Badge>
           ) : (
-            <Badge variant="outline" className="border-destructive/40 text-destructive">
+            <Badge variant="outline" className="border-warning/40 text-warning">
               <AlertTriangle className="mr-1 h-3 w-3" /> Non-manifold
             </Badge>
           )}
