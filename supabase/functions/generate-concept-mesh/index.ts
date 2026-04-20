@@ -1,18 +1,18 @@
 /**
  * generate-concept-mesh
  *
- * Turn an approved concept into a 3D GLB using Meshy's Multi-Image-to-3D
- * endpoint. We feed all 4 angles (front 3/4, side, rear 3/4, rear) so Meshy
- * has proper multi-view coverage instead of guessing the back of the car
- * from a single front shot.
+ * Turn an approved concept into a 3D GLB using Hyper3D Rodin Gen-2 (Ultra)
+ * via Replicate. We feed all 4 angles (front 3/4, side, rear 3/4, rear) so
+ * Rodin has proper multi-view coverage instead of guessing the back of the
+ * car from a single front shot.
  *
  * Pipeline:
  *   1. Fetch the 4 concept render URLs from the `concepts` row.
  *   2. Background-remove each one via Replicate (851-labs/background-remover)
- *      so Meshy gets a clean silhouette on a transparent / white backdrop.
- *      Concept renders we show in the UI keep their dramatic studio backdrop —
- *      these cleaned versions are only used as Meshy input.
- *   3. POST to Meshy `multi-image-to-3d` with `meshy-6` + quad topology.
+ *      so Rodin gets a clean silhouette on a transparent backdrop. Concept
+ *      renders we show in the UI keep their dramatic studio backdrop — these
+ *      cleaned versions are only used as model input.
+ *   3. POST to Replicate `hyper3d/rodin` with all cleaned angle images.
  *   4. Poll until done, download GLB, re-host in our `concept-renders` bucket.
  *
  * Body: { concept_id: string }
@@ -27,14 +27,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const MESHY_API_KEY = Deno.env.get("MESHY_API_KEY")!;
 const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const MESHY_MULTI_BASE = "https://api.meshy.ai/openapi/v1/multi-image-to-3d";
+const RODIN_MODEL = "hyper3d/rodin";
 const POLL_INTERVAL_MS = 4000;
-const MAX_POLL_MS = 10 * 60 * 1000; // 10 minutes — multi-image can take longer
+const MAX_POLL_MS = 10 * 60 * 1000; // 10 minutes — Rodin Gen-2 can take a while
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
