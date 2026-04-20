@@ -552,11 +552,11 @@ export function useAeroKitStatus(conceptId: string | undefined, active: boolean)
     queryFn: async () => {
       const { data, error } = await supabase
         .from("concepts")
-        .select("aero_kit_status, aero_kit_url, aero_kit_error")
+        .select("aero_kit_status, aero_kit_url, aero_kit_error, aero_kit_warning")
         .eq("id", conceptId!)
         .maybeSingle();
       if (error) throw error;
-      return data as { aero_kit_status: string; aero_kit_url: string | null; aero_kit_error: string | null } | null;
+      return data as { aero_kit_status: string; aero_kit_url: string | null; aero_kit_error: string | null; aero_kit_warning: string | null } | null;
     },
   });
 }
