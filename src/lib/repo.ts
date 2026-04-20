@@ -105,10 +105,36 @@ export function useUpsertCarStl() {
       }
       const path = `${input.carTemplateId}/${Date.now()}-${safeName}`;
       const contentType = ext === "obj" ? "model/obj" : "model/stl";
-      const { error: upErr } = await supabase.storage
-        .from("car-stls")
-        .upload(path, input.file, { contentType, upsert: false });
-      if (upErr) throw upErr;
+
+      // The JS SDK's plain `.upload()` POSTs the whole file in one request and
+      // gateways tend to reject anything > ~50 MB. Mesh files commonly exceed
+      // this, so for large files we route through a signed upload URL which
+      // streams the body and tolerates much larger payloads.
+      const LARGE_THRESHOLD = 6 * 1024 * 1024; // 6 MB
+      if (input.file.size > LARGE_THRESHOLD) {
+        const { data: signed, error: signErr } = await supabase.storage
+          .from("car-stls")
+          .createSignedUploadUrl(path);
+        if (signErr || !signed) {
+          console.error("createSignedUploadUrl failed", signErr);
+          throw new Error(signErr?.message ?? "Could not create upload URL");
+        }
+        const { error: putErr } = await supabase.storage
+          .from("car-stls")
+          .uploadToSignedUrl(signed.path, signed.token, input.file, { contentType });
+        if (putErr) {
+          console.error("uploadToSignedUrl failed", putErr);
+          throw new Error(`Upload failed (${(input.file.size / 1024 / 1024).toFixed(1)} MB): ${putErr.message}`);
+        }
+      } else {
+        const { error: upErr } = await supabase.storage
+          .from("car-stls")
+          .upload(path, input.file, { contentType, upsert: false });
+        if (upErr) {
+          console.error("storage.upload failed", upErr);
+          throw new Error(`Upload failed (${(input.file.size / 1024 / 1024).toFixed(1)} MB): ${upErr.message}`);
+        }
+      }
 
       // Upsert by car_template_id (unique). Replace stl_path; clear repaired side.
       const { data, error } = await supabase
