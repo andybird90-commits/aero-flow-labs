@@ -53,12 +53,6 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [rights, setRights] = useState(false);
   const [continuing, setContinuing] = useState(false);
   const [stylePresetId, setStylePresetId] = useState<string | null>(null);
-  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
-  const [bulkRunning, setBulkRunning] = useState(false);
-
-  const { data: templates = [] } = useCarTemplates();
-  const supportedTemplates = templates.filter((t: any) => t.supported);
-  const createWithStyle = useCreateProjectWithStyle();
 
   const activePreset = presets.find((p) => p.id === stylePresetId) ?? null;
 
