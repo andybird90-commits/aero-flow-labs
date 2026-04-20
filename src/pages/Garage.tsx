@@ -268,7 +268,7 @@ function CarCard({
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-border">
         {views.map((v) => (
-          <div key={v.label} className="aspect-video bg-surface-2 relative">
+          <div key={v.label} className="aspect-video bg-surface-2 relative group">
             {v.url ? (
               <img src={v.url} alt={v.label} loading="lazy"
                 className="absolute inset-0 h-full w-full object-cover" />
@@ -281,6 +281,20 @@ function CarCard({
               <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
                 <span className="text-mono text-[10px] uppercase tracking-widest">{v.label}</span>
               </div>
+            )}
+
+            {/* Per-view regenerate. Lets users fix a single bad angle (e.g.
+                duplicate side view) without redoing the whole car. */}
+            {status !== "generating" && (
+              <button
+                type="button"
+                onClick={() => onRegenerateAngle(v.angleKey)}
+                disabled={regenerating}
+                title={`Regenerate ${v.label}`}
+                className="absolute top-1.5 right-1.5 inline-flex items-center gap-1 rounded-md bg-background/70 backdrop-blur px-1.5 py-1 text-[10px] text-foreground/90 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-background/90 disabled:opacity-40"
+              >
+                <RefreshCw className="h-3 w-3" />
+              </button>
             )}
           </div>
         ))}
