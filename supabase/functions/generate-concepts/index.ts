@@ -118,24 +118,35 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // Merge preset prompt/tags/constraints with the per-project brief.
-    const mergedTags = Array.from(new Set([
-      ...(Array.isArray(preset?.style_tags) ? preset.style_tags : []),
-      ...(Array.isArray(brief.style_tags) ? brief.style_tags : []),
-    ]));
-    const mergedConstraints = Array.from(new Set([
-      ...(Array.isArray(preset?.constraints) ? preset.constraints : []),
-      ...(Array.isArray(brief.constraints) ? brief.constraints : []),
-    ]));
-    const buildType = brief.build_type || preset?.build_type || null;
+    // When a style preset is used, IT IS AUTHORITATIVE. We deliberately
+    // ignore the per-project brief's tags / constraints / build type so the
+    // same DNA gets applied uniformly to every car the user runs through it
+    // (just like a real shop's signature kit — Pandem, RWB, Liberty Walk).
+    // The brief's free-text prompt is still appended as an optional addendum
+    // for car-specific notes (e.g. "keep the factory headlights").
+    const presetMode = !!preset;
+    const styleTags = presetMode
+      ? (Array.isArray(preset?.style_tags) ? preset.style_tags : [])
+      : (Array.isArray(brief.style_tags) ? brief.style_tags : []);
+    const styleConstraints = presetMode
+      ? (Array.isArray(preset?.constraints) ? preset.constraints : [])
+      : (Array.isArray(brief.constraints) ? brief.constraints : []);
+    const buildType = presetMode
+      ? (preset?.build_type || null)
+      : (brief.build_type || null);
 
     const stylePrompt = [
-      preset?.prompt ? `Style preset — ${preset.name}: ${preset.prompt}` : "",
-      brief.prompt ? `Project brief: ${brief.prompt}` : "",
+      preset?.prompt ? `Style DNA — ${preset.name} (this is the signature kit, apply it to this car): ${preset.prompt}` : "",
+      brief.prompt ? (presetMode ? `Car-specific notes (do not override the style DNA): ${brief.prompt}` : `Project brief: ${brief.prompt}`) : "",
       buildType ? `Build type: ${buildType}.` : "",
-      mergedTags.length ? `Style tags: ${mergedTags.join(", ")}.` : "",
-      mergedConstraints.length ? `Constraints: ${mergedConstraints.join("; ")}.` : "",
+      styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
+      styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
     ].filter(Boolean).join(" ");
+
+    // Pick the variation set. With a preset, all three variations stay within
+    // the preset DNA (only intensity/spec differs) so the user gets three
+    // takes of the *same* style instead of three different shops' styles.
+    const variations = presetMode ? presetVariations(preset) : VARIATIONS;
 
     const inserted: string[] = [];
 
