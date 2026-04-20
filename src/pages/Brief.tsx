@@ -157,7 +157,42 @@ function BriefInner({ projectId }: { projectId: string }) {
       </div>
 
       <div className="glass rounded-xl p-5 space-y-3">
-        <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Styling direction</label>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+            <Palette className="h-3 w-3" /> Style preset (optional)
+          </label>
+          <Link to="/styles" className="text-mono text-[10px] uppercase tracking-widest text-primary hover:underline">
+            Manage styles →
+          </Link>
+        </div>
+        <select
+          value={stylePresetId ?? ""}
+          onChange={(e) => setStylePresetId(e.target.value || null)}
+          className="w-full bg-surface-1 border border-border rounded-md px-3 py-2 text-sm"
+        >
+          <option value="">— None —</option>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.user_id !== user?.id ? " (public)" : ""}
+            </option>
+          ))}
+        </select>
+        {activePreset && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-1.5">
+            <div className="text-xs text-foreground line-clamp-3">{activePreset.prompt || <em className="text-muted-foreground">No preset description.</em>}</div>
+            {(activePreset.style_tags?.length || activePreset.constraints?.length) ? (
+              <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                {activePreset.style_tags?.length ?? 0} tags · {activePreset.constraints?.length ?? 0} constraints will be merged in
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className="glass rounded-xl p-5 space-y-3">
+        <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          Styling direction {activePreset ? "(car-specific addendum)" : ""}
+        </label>
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
