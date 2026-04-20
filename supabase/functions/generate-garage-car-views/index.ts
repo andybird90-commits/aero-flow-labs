@@ -60,8 +60,17 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { garage_car_id } = await req.json() as { garage_car_id?: string };
+    const { garage_car_id, angles: requestedAngles } = await req.json() as {
+      garage_car_id?: string;
+      angles?: string[];
+    };
     if (!garage_car_id) return json({ error: "garage_car_id required" }, 400);
+
+    // Validate optional partial regeneration list. Empty/undefined = all 6.
+    const validKeys = new Set(ANGLES.map((a) => a.key));
+    const partialAngles = Array.isArray(requestedAngles) && requestedAngles.length > 0
+      ? requestedAngles.filter((k) => validKeys.has(k as any))
+      : null;
 
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
