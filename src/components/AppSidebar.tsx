@@ -22,6 +22,8 @@ import {
   FileBox,
   Palette,
   Car,
+  Library as LibraryIcon,
+  Store,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/lib/repo";
@@ -30,6 +32,8 @@ const projectsNav = [
   { title: "Projects", url: "/projects", icon: LayoutGrid },
   { title: "Garage", url: "/garage", icon: Car },
   { title: "Styles", url: "/styles", icon: Palette },
+  { title: "My Library", url: "/library", icon: LibraryIcon },
+  { title: "Marketplace", url: "/marketplace", icon: Store },
 ];
 
 const studioNav = [
