@@ -317,11 +317,23 @@ Deno.serve(async (req) => {
       const bytes = base64ToBytes(m[2]);
       const ext = mime.includes("png") ? "png" : "jpg";
       const path = `${userId}/${concept.project_id}/parts/${concept_id}/${kind}-${angle.key}-${Date.now()}.${ext}`;
-      const { error: upErr } = await admin.storage
-        .from("concept-renders")
-        .upload(path, bytes, { contentType: mime, upsert: true });
+      // Storage occasionally returns 504 Gateway Timeout under load — retry
+      // with exponential backoff before giving up.
+      let upErr: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { error } = await admin.storage
+          .from("concept-renders")
+          .upload(path, bytes, { contentType: mime, upsert: true });
+        if (!error) { upErr = null; break; }
+        upErr = error;
+        const status = (error as any).status ?? (error as any).statusCode;
+        const retriable = status === 504 || status === 503 || status === 502 || status === "504" || status === "503" || status === "502";
+        if (!retriable) break;
+        console.warn(`storage upload attempt ${attempt + 1} got ${status}, retrying...`);
+        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+      }
       if (upErr) {
-        console.error("upload failed:", upErr);
+        console.error("upload failed after retries:", upErr);
         return json({ error: `Upload failed: ${upErr.message}` }, 500);
       }
       const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
