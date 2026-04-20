@@ -159,7 +159,17 @@ Deno.serve(async (req) => {
 
     const stlResp = await fetch(stlUrl);
     if (!stlResp.ok) return json({ error: `Failed to fetch STL: ${stlResp.status}` }, 500);
-    const stlBytes = new Uint8Array(await stlResp.arrayBuffer());
+    const rawStl = new Uint8Array(await stlResp.arrayBuffer());
+
+    // Run a Laplacian smoothing pass to remove Meshy's high-frequency vertex
+    // noise (the lumpy/bumpy surface on what should be flat panels).
+    let stlBytes = rawStl;
+    try {
+      stlBytes = smoothStl(rawStl, { iterations: 3, lambda: 0.5 });
+      console.log(`smoothed STL: ${rawStl.length} → ${stlBytes.length} bytes`);
+    } catch (e) {
+      console.warn("STL smoothing failed, using raw mesh:", e);
+    }
 
     const path = `${userId}/${concept.project_id}/parts/${concept_id}/${part_kind}-${Date.now()}.stl`;
     const { error: upErr } = await admin.storage
