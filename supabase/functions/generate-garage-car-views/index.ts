@@ -89,21 +89,21 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!car) return json({ error: "Garage car not found" }, 404);
 
-    // Mark as generating, clear previous urls
-    await admin.from("garage_cars").update({
+    // Mark as generating. For partial regeneration only clear the requested
+    // columns so the other angles stay visible while one is being redone.
+    const clearPatch: Record<string, any> = {
       generation_status: "generating",
       generation_error: null,
-      ref_front_url: null,
-      ref_front34_url: null,
-      ref_side_url: null,
-      ref_side_opposite_url: null,
-      ref_rear34_url: null,
-      ref_rear_url: null,
-    }).eq("id", garage_car_id);
+    };
+    const anglesToRun = partialAngles
+      ? ANGLES.filter((a) => partialAngles.includes(a.key))
+      : ANGLES;
+    for (const a of anglesToRun) clearPatch[a.column] = null;
+    await admin.from("garage_cars").update(clearPatch).eq("id", garage_car_id);
 
     // Background work — return immediately so the UI can poll.
     // @ts-ignore EdgeRuntime is provided by Deno.
-    EdgeRuntime.waitUntil(runGeneration(admin, car, userId).catch(async (e) => {
+    EdgeRuntime.waitUntil(runGeneration(admin, car, userId, anglesToRun).catch(async (e) => {
       console.error("garage gen failed:", e);
       await admin.from("garage_cars").update({
         generation_status: "failed",
