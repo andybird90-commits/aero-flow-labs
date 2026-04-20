@@ -59,20 +59,28 @@ Deno.serve(async (req) => {
     if (rowErr) return json({ error: rowErr.message }, 500);
     if (!row) return json({ error: "car_stls row not found" }, 404);
 
-    // 3. Download original STL.
+    // 3. Download original mesh (STL or OBJ).
     const { data: file, error: dlErr } = await admin.storage
       .from("car-stls")
       .download(row.stl_path);
     if (dlErr || !file) return json({ error: `Download failed: ${dlErr?.message ?? "unknown"}` }, 500);
 
-    const inputBytes = new Uint8Array(await file.arrayBuffer());
-    if (inputBytes.length === 0) return json({ error: "Empty STL file" }, 400);
+    let inputBytes = new Uint8Array(await file.arrayBuffer());
+    if (inputBytes.length === 0) return json({ error: "Empty mesh file" }, 400);
+
+    // If OBJ, convert to ASCII STL bytes first so repairStl can parse it.
+    const isObj = /\.obj$/i.test(row.stl_path);
+    if (isObj) {
+      const objText = new TextDecoder().decode(inputBytes);
+      const stlText = objToAsciiStl(objText);
+      inputBytes = new TextEncoder().encode(stlText);
+    }
 
     // 4. Repair.
     const result = repairStl(inputBytes);
 
-    // 5. Upload repaired file as <stl_path>.repaired.stl
-    const repairedPath = row.stl_path.replace(/\.stl$/i, "") + ".repaired.stl";
+    // 5. Upload repaired file as <basename>.repaired.stl (always .stl output).
+    const repairedPath = row.stl_path.replace(/\.(stl|obj)$/i, "") + ".repaired.stl";
     const { error: upErr } = await admin.storage
       .from("car-stls")
       .upload(repairedPath, result.bytes, {
