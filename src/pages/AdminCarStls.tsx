@@ -10,23 +10,32 @@
  */
 import { useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { z } from "zod";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useIsAdmin, useCarStls, useUpsertCarStl, useDeleteCarStl, useUpdateCarStlAxis,
-  useCarTemplates, type CarStl, type CarTemplate,
+  useCarTemplates, useCreateCarTemplate, type CarStl, type CarTemplate,
 } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox,
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const newTemplateSchema = z.object({
+  make: z.string().trim().min(1, "Make required").max(60),
+  model: z.string().trim().min(1, "Model required").max(60),
+  trim: z.string().trim().max(60).optional().or(z.literal("")),
+  yearRange: z.string().trim().max(20).optional().or(z.literal("")),
+});
 
 const FORWARD_AXES = [
   { value: "-z", label: "−Z forward (default, three.js / glTF)" },
