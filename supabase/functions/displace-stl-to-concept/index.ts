@@ -41,6 +41,10 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RENDER_SIZE = 512;
 const DISPLACEMENT_CAP_MM = 120;
 const SUBDIV_TARGET_MM = 25; // 5mm is ideal but explodes triangle count; 25mm is a safe baseline.
+// Cap input triangles before subdivision so the worker stays inside its
+// 256 MB / 400ms budget on dense scraped meshes.
+const MAX_INPUT_TRIS = 80_000;
+const MAX_AFTER_SUBDIV_TRIS = 200_000;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -85,10 +89,15 @@ Deno.serve(async (req) => {
     let stockMesh: Mesh = parseStl(stockBytes);
     if (stockMesh.positions.length === 0) return fail(admin, concept.id, "Stock STL parsed empty");
     stockMesh = reorientMesh(stockMesh, (stlRow.forward_axis as ForwardAxis) ?? "-z");
+    stockMesh = decimateIfTooBig(stockMesh, MAX_INPUT_TRIS);
 
     const stockBb = meshBbox(stockMesh);
     const zones = kitZones({ min: stockBb.min, max: stockBb.max });
-    const subdivided = subdivideZones(stockMesh, zones, SUBDIV_TARGET_MM);
+    // Skip subdivision if even the un-subdivided mesh is already dense; the
+    // displacement still works, just with coarser kit detail.
+    const subdivided = stockMesh.indices.length / 3 > MAX_AFTER_SUBDIV_TRIS / 4
+      ? stockMesh
+      : subdivideZones(stockMesh, zones, SUBDIV_TARGET_MM);
 
     // 3. Rasterise stock silhouette per angle + fetch concept silhouette.
     const conceptUrls: Partial<Record<AngleKey, string | null>> = {
@@ -215,6 +224,30 @@ function json(body: unknown, status = 200) {
 async function fail(admin: ReturnType<typeof createClient>, conceptId: string, message: string) {
   await admin.from("concepts").update({ aero_kit_status: "failed", aero_kit_error: message }).eq("id", conceptId);
   return json({ error: message }, 500);
+}
+
+function decimateIfTooBig(mesh: Mesh, maxTris: number): Mesh {
+  const triCount = mesh.indices.length / 3;
+  if (triCount <= maxTris) return mesh;
+  const stride = Math.ceil(triCount / maxTris);
+  const keptCount = Math.floor(triCount / stride);
+  const keptIdx = new Uint32Array(keptCount * 3);
+  const remap = new Map<number, number>();
+  const newPos: number[] = [];
+  for (let i = 0; i < keptCount; i++) {
+    const t = i * stride;
+    for (let k = 0; k < 3; k++) {
+      const old = mesh.indices[t * 3 + k];
+      let nid = remap.get(old);
+      if (nid === undefined) {
+        nid = newPos.length / 3;
+        newPos.push(mesh.positions[old * 3], mesh.positions[old * 3 + 1], mesh.positions[old * 3 + 2]);
+        remap.set(old, nid);
+      }
+      keptIdx[i * 3 + k] = nid;
+    }
+  }
+  return { positions: new Float32Array(newPos), indices: keptIdx };
 }
 
 /**
