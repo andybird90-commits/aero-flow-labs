@@ -100,6 +100,7 @@ function CarStlsInner({ userId }: { userId: string }) {
   const [pendingTemplateId, setPendingTemplateId] = useState<string>("");
   const [pendingAxis, setPendingAxis] = useState<string>("-z");
   const [repairing, setRepairing] = useState<string | null>(null);
+  const [decimating, setDecimating] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Inline new-template form state.
@@ -142,11 +143,37 @@ function CarStlsInner({ userId }: { userId: string }) {
       toast({ title: "STL or OBJ files only", variant: "destructive" });
       return;
     }
+
+    let toUpload = file;
+    // Decimate large meshes client-side so the repair edge function fits
+    // inside the 256 MB worker. Vertex-clustering preserves silhouette.
+    if (file.size > DECIMATE_THRESHOLD_BYTES) {
+      try {
+        setDecimating(file.name);
+        toast({
+          title: "Simplifying mesh…",
+          description: `${(file.size / 1024 / 1024).toFixed(1)} MB is too large to repair as-is. Reducing to ~${DECIMATE_TARGET_TRIANGLES.toLocaleString()} triangles in your browser.`,
+        });
+        const res = await decimateClientSide(file, DECIMATE_TARGET_TRIANGLES);
+        toUpload = res.file;
+        toast({
+          title: "Mesh simplified",
+          description: `${res.triCountIn.toLocaleString()} → ${res.triCountOut.toLocaleString()} tris · ${(res.originalSizeBytes / 1024 / 1024).toFixed(1)} → ${(res.decimatedSizeBytes / 1024 / 1024).toFixed(1)} MB`,
+        });
+      } catch (e: any) {
+        toast({ title: "Couldn’t simplify mesh", description: String(e.message ?? e), variant: "destructive" });
+        setDecimating(null);
+        return;
+      } finally {
+        setDecimating(null);
+      }
+    }
+
     try {
       await upsert.mutateAsync({
         userId,
         carTemplateId: pendingTemplateId,
-        file,
+        file: toUpload,
         forwardAxis: pendingAxis,
       });
       toast({ title: "STL uploaded", description: "Run repair to make it eligible for boolean kits." });
