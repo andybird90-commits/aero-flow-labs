@@ -260,10 +260,21 @@ function BriefInner({ projectId }: { projectId: string }) {
         <Button variant="glass" size="lg" onClick={save} disabled={upsert.isPending}>
           <Save className="mr-2 h-4 w-4" /> Save brief
         </Button>
-        <Button variant="hero" size="lg" asChild disabled={!prompt.trim()}>
-          <Link to={`/concepts?project=${projectId}`} onClick={save}>
-            Continue to concepts <ArrowRight className="ml-2 h-4 w-4" />
-          </Link>
+        <Button
+          variant="hero"
+          size="lg"
+          onClick={continueToConcepts}
+          disabled={!prompt.trim() || continuing || upsert.isPending}
+        >
+          {continuing ? (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Starting generation…
+            </>
+          ) : (
+            <>
+              Continue to concepts <ArrowRight className="ml-2 h-4 w-4" />
+            </>
+          )}
         </Button>
       </div>
     </div>
