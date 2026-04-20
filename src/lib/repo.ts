@@ -1023,9 +1023,13 @@ export function useDeleteGarageCar() {
 export function useGenerateGarageCarViews() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (garageCarId: string) => {
+    mutationFn: async (
+      input: string | { garageCarId: string; angles?: string[] },
+    ) => {
+      const { garageCarId, angles } =
+        typeof input === "string" ? { garageCarId: input, angles: undefined } : input;
       const { data, error } = await supabase.functions.invoke("generate-garage-car-views", {
-        body: { garage_car_id: garageCarId },
+        body: { garage_car_id: garageCarId, angles },
       });
       if (error) throw error;
       return data;

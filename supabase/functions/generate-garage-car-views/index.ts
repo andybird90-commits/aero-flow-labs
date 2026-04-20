@@ -42,7 +42,7 @@ const ANGLES = [
   {
     key: "side_opposite" as const,
     column: "ref_side_opposite_url",
-    framing: "pure side profile view from the passenger side (opposite side), perpendicular to the car, full body in frame — this side may show asymmetric details like the fuel filler cap",
+    framing: "pure side profile from the OPPOSITE side of the car to the previous side reference (i.e. the passenger side in left-hand-drive markets, driver side in right-hand-drive markets — whichever is opposite to the reference image). Mirror-image perspective compared to the reference. Perpendicular camera, full body in frame. This side should show any asymmetric details such as the fuel filler cap on this flank",
   },
   {
     key: "rear34" as const,
@@ -60,8 +60,17 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { garage_car_id } = await req.json() as { garage_car_id?: string };
+    const { garage_car_id, angles: requestedAngles } = await req.json() as {
+      garage_car_id?: string;
+      angles?: string[];
+    };
     if (!garage_car_id) return json({ error: "garage_car_id required" }, 400);
+
+    // Validate optional partial regeneration list. Empty/undefined = all 6.
+    const validKeys = new Set(ANGLES.map((a) => a.key));
+    const partialAngles = Array.isArray(requestedAngles) && requestedAngles.length > 0
+      ? requestedAngles.filter((k) => validKeys.has(k as any))
+      : null;
 
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
@@ -80,21 +89,21 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!car) return json({ error: "Garage car not found" }, 404);
 
-    // Mark as generating, clear previous urls
-    await admin.from("garage_cars").update({
+    // Mark as generating. For partial regeneration only clear the requested
+    // columns so the other angles stay visible while one is being redone.
+    const clearPatch: Record<string, any> = {
       generation_status: "generating",
       generation_error: null,
-      ref_front_url: null,
-      ref_front34_url: null,
-      ref_side_url: null,
-      ref_side_opposite_url: null,
-      ref_rear34_url: null,
-      ref_rear_url: null,
-    }).eq("id", garage_car_id);
+    };
+    const anglesToRun = partialAngles
+      ? ANGLES.filter((a) => partialAngles.includes(a.key))
+      : ANGLES;
+    for (const a of anglesToRun) clearPatch[a.column] = null;
+    await admin.from("garage_cars").update(clearPatch).eq("id", garage_car_id);
 
     // Background work — return immediately so the UI can poll.
     // @ts-ignore EdgeRuntime is provided by Deno.
-    EdgeRuntime.waitUntil(runGeneration(admin, car, userId).catch(async (e) => {
+    EdgeRuntime.waitUntil(runGeneration(admin, car, userId, anglesToRun).catch(async (e) => {
       console.error("garage gen failed:", e);
       await admin.from("garage_cars").update({
         generation_status: "failed",
@@ -109,7 +118,12 @@ Deno.serve(async (req) => {
   }
 });
 
-async function runGeneration(admin: any, car: any, userId: string) {
+async function runGeneration(
+  admin: any,
+  car: any,
+  userId: string,
+  anglesToRun: typeof ANGLES,
+) {
   const carLabel = [
     car.year ? String(car.year) : "",
     car.make,
@@ -120,13 +134,24 @@ async function runGeneration(admin: any, car: any, userId: string) {
   const colorClause = car.color ? `Paint colour: ${car.color}.` : "";
   const notesClause = car.notes ? `Additional notes: ${car.notes}.` : "";
 
-  // Step 1: generate the hero (front 3/4) shot from text. This locks in
-  // identity (paint, wheels, stance, lighting). The other 3 angles will
-  // reuse it as the primary reference for visual consistency.
+  // The hero (front 3/4) image anchors identity for every other angle.
+  // For partial regeneration we may not be regenerating it — in that case
+  // reuse whichever existing reference is available as the visual anchor.
   let heroDataUrl: string | null = null;
+  const willGenerateHero = anglesToRun.some((a) => a.key === "front34");
+  if (!willGenerateHero) {
+    const existingAnchor =
+      car.ref_front34_url ||
+      car.ref_side_url ||
+      car.ref_front_url ||
+      car.ref_rear34_url ||
+      car.ref_rear_url ||
+      car.ref_side_opposite_url;
+    if (existingAnchor) heroDataUrl = existingAnchor; // public https url is fine
+  }
 
-  for (const angle of ANGLES) {
-    const isHero = angle.key === "front34";
+  for (const angle of anglesToRun) {
+    const isHero = angle.key === "front34" && willGenerateHero;
     const promptText = isHero
       ? [
           `Photorealistic studio photograph of a STOCK FACTORY ${carLabel}. ` +

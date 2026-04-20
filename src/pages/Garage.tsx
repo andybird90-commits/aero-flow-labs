@@ -79,10 +79,13 @@ export default function Garage() {
     }
   };
 
-  const handleRegenerate = async (id: string) => {
+  const handleRegenerate = async (id: string, angles?: string[]) => {
     try {
-      await generate.mutateAsync(id);
-      toast({ title: "Regenerating views", description: "Hang tight — ~45s." });
+      await generate.mutateAsync(angles ? { garageCarId: id, angles } : id);
+      toast({
+        title: angles ? "Regenerating that view" : "Regenerating views",
+        description: angles ? "About 10s." : "Hang tight — ~45s.",
+      });
     } catch (e: any) {
       toast({ title: "Regenerate failed", description: e.message, variant: "destructive" });
     }
@@ -133,6 +136,7 @@ export default function Garage() {
                 key={c.id}
                 car={c}
                 onRegenerate={() => handleRegenerate(c.id)}
+                onRegenerateAngle={(angleKey) => handleRegenerate(c.id, [angleKey])}
                 onDelete={() => setConfirmDel(c.id)}
                 regenerating={generate.isPending}
               />
@@ -227,10 +231,11 @@ export default function Garage() {
 }
 
 function CarCard({
-  car, onRegenerate, onDelete, regenerating,
+  car, onRegenerate, onRegenerateAngle, onDelete, regenerating,
 }: {
   car: GarageCar;
   onRegenerate: () => void;
+  onRegenerateAngle: (angleKey: string) => void;
   onDelete: () => void;
   regenerating: boolean;
 }) {
@@ -242,13 +247,13 @@ function CarCard({
     status === "failed" ? "failed" :
     status === "generating" ? "simulating" : "neutral";
 
-  const views = [
-    { url: car.ref_front_url,          label: "Front" },
-    { url: car.ref_front34_url,        label: "Front 3/4" },
-    { url: car.ref_side_url,           label: "Side" },
-    { url: car.ref_side_opposite_url,  label: "Side (opp)" },
-    { url: car.ref_rear34_url,         label: "Rear 3/4" },
-    { url: car.ref_rear_url,           label: "Rear" },
+  const views: { url: string | null; label: string; angleKey: string }[] = [
+    { url: car.ref_front_url,          label: "Front",       angleKey: "front" },
+    { url: car.ref_front34_url,        label: "Front 3/4",   angleKey: "front34" },
+    { url: car.ref_side_url,           label: "Side",        angleKey: "side" },
+    { url: car.ref_side_opposite_url,  label: "Side (opp)",  angleKey: "side_opposite" },
+    { url: car.ref_rear34_url,         label: "Rear 3/4",    angleKey: "rear34" },
+    { url: car.ref_rear_url,           label: "Rear",        angleKey: "rear" },
   ];
 
   return (
@@ -263,7 +268,7 @@ function CarCard({
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-border">
         {views.map((v) => (
-          <div key={v.label} className="aspect-video bg-surface-2 relative">
+          <div key={v.label} className="aspect-video bg-surface-2 relative group">
             {v.url ? (
               <img src={v.url} alt={v.label} loading="lazy"
                 className="absolute inset-0 h-full w-full object-cover" />
@@ -276,6 +281,20 @@ function CarCard({
               <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
                 <span className="text-mono text-[10px] uppercase tracking-widest">{v.label}</span>
               </div>
+            )}
+
+            {/* Per-view regenerate. Lets users fix a single bad angle (e.g.
+                duplicate side view) without redoing the whole car. */}
+            {status !== "generating" && (
+              <button
+                type="button"
+                onClick={() => onRegenerateAngle(v.angleKey)}
+                disabled={regenerating}
+                title={`Regenerate ${v.label}`}
+                className="absolute top-1.5 right-1.5 inline-flex items-center gap-1 rounded-md bg-background/70 backdrop-blur px-1.5 py-1 text-[10px] text-foreground/90 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-background/90 disabled:opacity-40"
+              >
+                <RefreshCw className="h-3 w-3" />
+              </button>
             )}
           </div>
         ))}
