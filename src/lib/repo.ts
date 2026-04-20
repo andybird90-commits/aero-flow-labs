@@ -915,3 +915,80 @@ export function useJobRealtime(userId: string | undefined) {
     return () => { supabase.removeChannel(ch); };
   }, [userId, qc]);
 }
+
+/* ─── GARAGE CARS (user-owned OEM references) ───────────────── */
+export type GarageCar = Database["public"]["Tables"]["garage_cars"]["Row"];
+
+export function useGarageCars(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["garage_cars", userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("garage_cars")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as GarageCar[];
+    },
+    // While anything is generating, refetch frequently so the UI shows
+    // images as soon as the edge function writes them.
+    refetchInterval: (q) => {
+      const rows = q.state.data as GarageCar[] | undefined;
+      return rows?.some((r) => r.generation_status === "generating") ? 4000 : false;
+    },
+  });
+}
+
+export function useCreateGarageCar() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      userId: string;
+      make: string;
+      model: string;
+      year?: number | null;
+      trim?: string | null;
+      color?: string | null;
+      notes?: string | null;
+    }) => {
+      const { data, error } = await supabase.from("garage_cars").insert({
+        user_id: input.userId,
+        make: input.make.trim(),
+        model: input.model.trim(),
+        year: input.year ?? null,
+        trim: input.trim?.trim() || null,
+        color: input.color?.trim() || null,
+        notes: input.notes?.trim() || null,
+      }).select("*").single();
+      if (error) throw error;
+      return data as GarageCar;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["garage_cars"] }),
+  });
+}
+
+export function useDeleteGarageCar() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("garage_cars").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["garage_cars"] }),
+  });
+}
+
+export function useGenerateGarageCarViews() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (garageCarId: string) => {
+      const { data, error } = await supabase.functions.invoke("generate-garage-car-views", {
+        body: { garage_car_id: garageCarId },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["garage_cars"] }),
+  });
+}
