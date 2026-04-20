@@ -89,14 +89,43 @@ function CarStlsInner({ userId }: { userId: string }) {
   const upsert = useUpsertCarStl();
   const del = useDeleteCarStl();
   const updateAxis = useUpdateCarStlAxis();
+  const createTemplate = useCreateCarTemplate();
 
   const [pendingTemplateId, setPendingTemplateId] = useState<string>("");
   const [pendingAxis, setPendingAxis] = useState<string>("-z");
   const [repairing, setRepairing] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Inline new-template form state.
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [newMake, setNewMake] = useState("");
+  const [newModel, setNewModel] = useState("");
+  const [newTrim, setNewTrim] = useState("");
+  const [newYear, setNewYear] = useState("");
+
   const usedTemplateIds = useMemo(() => new Set(rows.map((r) => r.car_template_id)), [rows]);
   const availableTemplates = templates.filter((t) => !usedTemplateIds.has(t.id));
+
+  const submitNewTemplate = async () => {
+    const parsed = newTemplateSchema.safeParse({
+      make: newMake, model: newModel, trim: newTrim, yearRange: newYear,
+    });
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      toast({ title: "Check the form", description: first.message, variant: "destructive" });
+      return;
+    }
+    try {
+      const created = await createTemplate.mutateAsync(parsed.data);
+      toast({ title: "Template added", description: `${created.make} ${created.model} is ready for an STL.` });
+      setPendingTemplateId(created.id);
+      setShowNewForm(false);
+      setNewMake(""); setNewModel(""); setNewTrim(""); setNewYear("");
+    } catch (e: any) {
+      toast({ title: "Couldn’t add template", description: String(e.message ?? e), variant: "destructive" });
+    }
+  };
+
 
   const onPickFile = async (file: File) => {
     if (!pendingTemplateId) {
