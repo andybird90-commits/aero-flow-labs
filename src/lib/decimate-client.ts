@@ -41,19 +41,20 @@ export async function decimateClientSide(
         | { id: number; ok: false; error: string };
       if (msg.id !== id) return;
       w.removeEventListener("message", handler);
-      if (!msg.ok) {
+      if (msg.ok === false) {
         reject(new Error(msg.error));
         return;
       }
+      const result = msg.result;
       const baseName = input.name.replace(/\.(stl|obj)$/i, "");
-      const file = new File([msg.result.bytes], `${baseName}.decimated.stl`, {
+      const file = new File([result.bytes], `${baseName}.decimated.stl`, {
         type: "model/stl",
       });
       resolve({
         file,
-        triCountIn: msg.result.triCountIn,
-        triCountOut: msg.result.triCountOut,
-        vertCountOut: msg.result.vertCountOut,
+        triCountIn: result.triCountIn,
+        triCountOut: result.triCountOut,
+        vertCountOut: result.vertCountOut,
         originalSizeBytes: originalSize,
         decimatedSizeBytes: file.size,
       });
