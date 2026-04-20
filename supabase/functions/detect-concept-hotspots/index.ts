@@ -43,24 +43,29 @@ const ALLOWED_PARTS: Record<ViewKey, Array<{ kind: string; label: string; hint: 
     { kind: "canard", label: "Canards", hint: "small angled fins on the front bumper corners" },
     { kind: "wide_arch", label: "Front arch (L)", hint: "left front fender flare / arch" },
     { kind: "wide_arch", label: "Front arch (R)", hint: "right front fender flare / arch" },
+    { kind: "bonnet_vent", label: "Bonnet vent", hint: "louvred opening or scoop cut into the bonnet/hood" },
+    { kind: "wing_vent", label: "Wing vent (L)", hint: "louvred vent on the left front fender behind the wheel" },
+    { kind: "wing_vent", label: "Wing vent (R)", hint: "louvred vent on the right front fender behind the wheel" },
   ],
   side: [
     { kind: "side_skirt", label: "Side skirt", hint: "side skirt running along the bottom of the doors" },
     { kind: "wide_arch", label: "Front arch", hint: "front fender flare around the front wheel" },
     { kind: "wide_arch", label: "Rear arch", hint: "rear fender flare around the rear wheel" },
-    { kind: "ducktail", label: "Ducktail", hint: "raised lip on the rear deck / boot" },
-    { kind: "wing", label: "Rear wing", hint: "freestanding wing above the rear deck (only if present)" },
+    { kind: "wing_vent", label: "Wing vent", hint: "louvred vent on the front fender behind the wheel arch" },
+    { kind: "bonnet_vent", label: "Bonnet vent", hint: "louvred opening on the bonnet, visible in profile" },
+    { kind: "ducktail", label: "Ducktail", hint: "SHORT INTEGRATED LIP rising directly off the bootlid with NO stalks and NO gap underneath. Skip if the rear blade sits on visible uprights." },
+    { kind: "wing", label: "Rear wing", hint: "SEPARATE AEROFOIL BLADE held above the deck on visible stalks/swan-necks with a clear air gap underneath. Only return if the gap is clearly visible." },
   ],
   rear34: [
     { kind: "diffuser", label: "Diffuser", hint: "rear diffuser under the rear bumper" },
-    { kind: "wing", label: "Rear wing", hint: "freestanding wing above the rear deck" },
-    { kind: "ducktail", label: "Ducktail", hint: "raised lip on the rear deck (only if no big wing)" },
+    { kind: "wing", label: "Rear wing", hint: "SEPARATE AEROFOIL BLADE on stalks/swan-necks above the deck with a clear gap underneath. Do NOT return if the blade is integrated into the bootlid (that's a ducktail)." },
+    { kind: "ducktail", label: "Ducktail", hint: "SHORT INTEGRATED LIP rising off the rear deck/bootlid, NO stalks, NO gap. Mutually exclusive with wing — pick only one." },
     { kind: "wide_arch", label: "Rear arch", hint: "rear fender flare visible on the side" },
   ],
   rear: [
     { kind: "diffuser", label: "Diffuser", hint: "rear diffuser under the rear bumper" },
-    { kind: "wing", label: "Rear wing", hint: "freestanding wing above the rear deck" },
-    { kind: "ducktail", label: "Ducktail", hint: "raised lip on the rear deck (only if no big wing)" },
+    { kind: "wing", label: "Rear wing", hint: "SEPARATE AEROFOIL BLADE on stalks above the deck, daylight visible underneath. Mutually exclusive with ducktail." },
+    { kind: "ducktail", label: "Ducktail", hint: "SHORT LIP integrated into the bootlid surface, no stalks, no gap. Mutually exclusive with wing." },
   ],
 };
 
@@ -113,7 +118,17 @@ Deno.serve(async (req) => {
       "You will be shown a single render of a custom car and asked to locate " +
       "specific body kit parts. Return tight bounding boxes in normalised " +
       "image coordinates (0..1 from the top-left). Only return boxes for " +
-      "parts that are clearly visible. Skip parts that are occluded or absent.";
+      "parts that are clearly visible. Skip parts that are occluded or absent.\n\n" +
+      "CRITICAL DISAMBIGUATION — WING vs DUCKTAIL:\n" +
+      "• A WING is a separate aerofoil blade held above the rear deck on " +
+      "  visible stalks/swan-necks. There is a CLEAR GAP of air (daylight) " +
+      "  between the underside of the blade and the bootlid surface.\n" +
+      "• A DUCKTAIL is a short integrated lip rising directly off the " +
+      "  bootlid/rear-deck panel. It is part of the body itself — NO stalks, " +
+      "  NO daylight underneath, NO separation from the body surface.\n" +
+      "• Never return both for the same car — they are mutually exclusive.\n" +
+      "• If you cannot see daylight under a rear blade, it is a DUCKTAIL.\n" +
+      "• If you can see daylight + uprights, it is a WING.";
 
     const userPrompt =
       `View: ${view}. ` +
@@ -125,7 +140,8 @@ Deno.serve(async (req) => {
       `- Boxes must hug the actual part on the car, not be huge generic regions.\n` +
       `- If a part is not clearly present, OMIT it entirely. Do not guess.\n` +
       `- For symmetric parts (e.g. front arches L/R) return one box per side only ` +
-      `  if both are visible.`;
+      `  if both are visible.\n` +
+      `- Wing and ducktail are MUTUALLY EXCLUSIVE — return at most one of them.`;
 
     const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

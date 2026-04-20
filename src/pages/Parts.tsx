@@ -16,14 +16,16 @@ import { Wand2, RefreshCw, ArrowRight, Wrench, AlertCircle, Sparkles } from "luc
 import { cn } from "@/lib/utils";
 
 const PART_KINDS = [
-  { kind: "splitter",   label: "Front splitter",   defaults: { depth: 80, fence_height: 30, fence_inset: 60 } },
-  { kind: "lip",        label: "Lip extension",    defaults: { depth: 30 } },
-  { kind: "canard",     label: "Canards",          defaults: { angle: 12, count: 1, span: 180 } },
-  { kind: "side_skirt", label: "Side skirts",      defaults: { depth: 70, drop: 25 } },
-  { kind: "wide_arch",  label: "Wide arches",      defaults: { flare: 50 } },
-  { kind: "diffuser",   label: "Rear diffuser",    defaults: { angle: 12, strake_count: 5, strake_height: 60 } },
-  { kind: "ducktail",   label: "Ducktail",         defaults: { height: 38, kick: 10 } },
-  { kind: "wing",       label: "Rear wing",        defaults: { aoa: 8, chord: 280, gurney: 12, span_pct: 78, stand_height: 220 } },
+  { kind: "splitter",    label: "Front splitter",   defaults: { depth: 80, fence_height: 30, fence_inset: 60 } },
+  { kind: "lip",         label: "Lip extension",    defaults: { depth: 30 } },
+  { kind: "canard",      label: "Canards",          defaults: { angle: 12, count: 1, span: 180 } },
+  { kind: "side_skirt",  label: "Side skirts",      defaults: { depth: 70, drop: 25 } },
+  { kind: "wide_arch",   label: "Wide arches",      defaults: { flare: 50 } },
+  { kind: "bonnet_vent", label: "Bonnet vent",      defaults: { length: 240, width: 120, louvre_count: 5, depth: 18 } },
+  { kind: "wing_vent",   label: "Wing vent",        defaults: { length: 180, width: 90,  louvre_count: 4, depth: 14 } },
+  { kind: "diffuser",    label: "Rear diffuser",    defaults: { angle: 12, strake_count: 5, strake_height: 60 } },
+  { kind: "ducktail",    label: "Ducktail",         defaults: { height: 38, kick: 10 } },
+  { kind: "wing",        label: "Rear wing",        defaults: { aoa: 8, chord: 280, gurney: 12, span_pct: 78, stand_height: 220 } },
 ];
 
 export default function Parts() {
