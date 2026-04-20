@@ -44,10 +44,10 @@ const App = () => (
             <Route path="/upload" element={<Navigate to="/brief" replace />} />
             <Route path="/brief" element={<ProtectedRoute><Brief /></ProtectedRoute>} />
             <Route path="/concepts" element={<ProtectedRoute><Concepts /></ProtectedRoute>} />
-            <Route path="/parts" element={<ProtectedRoute><Parts /></ProtectedRoute>} />
-            <Route path="/refine" element={<ProtectedRoute><Refine /></ProtectedRoute>} />
-            <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
-            <Route path="/exports" element={<ProtectedRoute><Exports /></ProtectedRoute>} />
+            <Route path="/parts" element={<Navigate to="/concepts" replace />} />
+            <Route path="/refine" element={<Navigate to="/concepts" replace />} />
+            <Route path="/library" element={<Navigate to="/concepts" replace />} />
+            <Route path="/exports" element={<Navigate to="/concepts" replace />} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/settings/car-stls" element={<ProtectedRoute><AdminCarStls /></ProtectedRoute>} />
 
