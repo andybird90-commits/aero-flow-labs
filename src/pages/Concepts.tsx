@@ -139,7 +139,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
                 onBuildKit={async () => {
                   try {
                     await buildKit.mutateAsync(c.id);
-                    toast({ title: "Aero kit ready", description: "Open the Library to download." });
+                    toast({ title: "Aero kit queued", description: "The build is running in the background." });
                   } catch (e: any) {
                     toast({ title: "Build failed", description: String(e.message ?? e), variant: "destructive" });
                   }
@@ -210,12 +210,17 @@ function ConceptCard({
   onDelete: () => void;
   onBuildKit: () => void;
 }) {
-  const aeroStatus = ((concept as any).aero_kit_status ?? "idle") as AeroKitStatus;
-  const aeroError = (concept as any).aero_kit_error as string | null | undefined;
-  const aeroWarning = (concept as any).aero_kit_warning as string | null | undefined;
+  const initialAeroStatus = ((concept as any).aero_kit_status ?? "idle") as AeroKitStatus;
+  const initialAeroError = (concept as any).aero_kit_error as string | null | undefined;
+  const initialAeroWarning = (concept as any).aero_kit_warning as string | null | undefined;
+  const polledAero = useAeroKitStatus(
+    concept.id,
+    initialAeroStatus !== "idle" && initialAeroStatus !== "ready" && initialAeroStatus !== "failed",
+  );
+  const aeroStatus = ((polledAero.data?.aero_kit_status ?? initialAeroStatus) as AeroKitStatus);
+  const aeroError = polledAero.data?.aero_kit_error ?? initialAeroError;
+  const aeroWarning = polledAero.data?.aero_kit_warning ?? initialAeroWarning;
   const aeroBuilding = aeroStatus !== "idle" && aeroStatus !== "ready" && aeroStatus !== "failed";
-  // Live-poll status while a build is running.
-  useAeroKitStatus(concept.id, aeroBuilding);
   const tone = concept.status === "approved"
     ? "success"
     : concept.status === "rejected"

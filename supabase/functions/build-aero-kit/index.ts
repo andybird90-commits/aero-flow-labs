@@ -1,16 +1,13 @@
 /**
  * build-aero-kit
  *
- * Single entry point the UI calls. Runs:
+ * Single entry point the UI calls. Queues the build immediately, then runs
  *   displace-stl-to-concept → subtract-aero-kit
- * sequentially, updating `concepts.aero_kit_status` after each step.
- *
- * Returns immediately with `started: true` if the run kicked off cleanly.
- * The UI polls `concepts.aero_kit_status` for live progress.
+ * in the background while the UI polls `concepts.aero_kit_status`.
  *
  * Refuses to run if:
  *   - The project's car has no hero STL.
- *   - The hero STL is not repaired or not manifold-clean.
+ *   - The hero STL is not repaired.
  *   - The concept has no renders to compare against.
  *
  * Body: { concept_id: string }
@@ -69,15 +66,6 @@ Deno.serve(async (req) => {
       ? "Hero STL is non-manifold — kit output may have stray or open faces."
       : null;
 
-    // Forward the caller's auth header so child functions resolve the same user.
-    const headers = {
-      "Content-Type": "application/json",
-      Authorization: authHeader,
-    };
-
-    // Reset status and run the displacement step. We await each step rather
-    // than firing-and-forgetting so the orchestrator can surface errors clearly
-    // and keep status transitions correct.
     await admin.from("concepts").update({
       aero_kit_status: "queued",
       aero_kit_error: null,
@@ -85,32 +73,52 @@ Deno.serve(async (req) => {
       aero_kit_url: null,
     }).eq("id", concept.id);
 
-    const dispResp = await fetch(`${SUPABASE_URL}/functions/v1/displace-stl-to-concept`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ concept_id: concept.id }),
-    });
-    if (!dispResp.ok) {
-      const errText = await dispResp.text();
-      return json({ error: `Displacement failed: ${errText.slice(0, 300)}` }, 500);
-    }
-
-    const subResp = await fetch(`${SUPABASE_URL}/functions/v1/subtract-aero-kit`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ concept_id: concept.id }),
-    });
-    if (!subResp.ok) {
-      const errText = await subResp.text();
-      return json({ error: `Subtraction failed: ${errText.slice(0, 300)}` }, 500);
-    }
-
-    const subJson = await subResp.json();
-    return json({ ok: true, ...subJson });
+    EdgeRuntime.waitUntil(runBuildInBackground({ conceptId: concept.id, authHeader }));
+    return json({ started: true, concept_id: concept.id, status: "queued", warning: nonManifoldWarning }, 202);
   } catch (e) {
     return json({ error: String((e as Error).message ?? e) }, 500);
   }
 });
+
+async function runBuildInBackground({ conceptId, authHeader }: { conceptId: string; authHeader: string }) {
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: authHeader,
+  };
+
+  try {
+    const dispResp = await fetch(`${SUPABASE_URL}/functions/v1/displace-stl-to-concept`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ concept_id: conceptId }),
+    });
+    if (!dispResp.ok) {
+      const errText = await dispResp.text();
+      await markFailed(admin, conceptId, `Displacement failed: ${errText.slice(0, 300)}`);
+      return;
+    }
+    await dispResp.text();
+
+    const subResp = await fetch(`${SUPABASE_URL}/functions/v1/subtract-aero-kit`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ concept_id: conceptId }),
+    });
+    if (!subResp.ok) {
+      const errText = await subResp.text();
+      await markFailed(admin, conceptId, `Subtraction failed: ${errText.slice(0, 300)}`);
+      return;
+    }
+    await subResp.text();
+  } catch (e) {
+    await markFailed(admin, conceptId, String((e as Error).message ?? e));
+  }
+}
+
+async function markFailed(admin: ReturnType<typeof createClient>, conceptId: string, message: string) {
+  await admin.from("concepts").update({ aero_kit_status: "failed", aero_kit_error: message }).eq("id", conceptId);
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
