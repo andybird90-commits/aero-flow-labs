@@ -12,7 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2, Maximize2,
+  Sparkles, Check, X, RefreshCw, Star, Wand2, ArrowRight, AlertCircle, MousePointer2, Maximize2, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
@@ -346,14 +346,48 @@ function ConceptCard({
       <div className="relative aspect-[4/3] bg-surface-2 grid-bg-fine">
         {renderViewer("card")}
       </div>
-      <div className="p-3 flex-1">
+      <div className="p-3 flex-1 space-y-2">
         <div className="text-sm font-semibold tracking-tight truncate">{concept.title}</div>
         {concept.direction && (
           <div className="text-mono text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{concept.direction}</div>
         )}
         {pickMode && (
-          <div className="mt-2 text-[10px] text-mono uppercase tracking-widest text-primary/80">
+          <div className="text-[10px] text-mono uppercase tracking-widest text-primary/80">
             Click any highlighted part → downloads as STL
+          </div>
+        )}
+
+        {/* Boolean aero-kit trigger — only when project has a manifold hero STL. */}
+        {(concept.status === "approved" || concept.status === "favourited") && (
+          <div className="pt-2 border-t border-border space-y-2">
+            {heroReady ? (
+              <Button
+                variant="hero"
+                size="sm"
+                className="w-full"
+                disabled={aeroBuilding}
+                onClick={onBuildKit}
+                title="Run displace → subtract → split using the real hero STL"
+              >
+                <Layers className="mr-1.5 h-3.5 w-3.5" />
+                {aeroBuilding ? "Building aero kit…"
+                  : aeroStatus === "ready" ? "Rebuild aero kit"
+                  : "Build aero kit from real STL"}
+              </Button>
+            ) : (
+              <div className="text-[10px] text-mono uppercase tracking-widest text-muted-foreground text-center py-1.5">
+                Upload a hero STL for this car (admin) to enable boolean kit
+              </div>
+            )}
+            <AeroKitProgress status={aeroStatus} error={aeroError} />
+            {aeroStatus === "ready" && (
+              <Link
+                to={`/library?project=${projectId}`}
+                className="block text-center text-mono text-[10px] uppercase tracking-widest text-primary hover:underline"
+              >
+                View kit in Library →
+              </Link>
+            )}
           </div>
         )}
       </div>
