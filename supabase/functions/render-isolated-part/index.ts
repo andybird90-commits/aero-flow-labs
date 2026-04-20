@@ -13,6 +13,7 @@
  * Returns: { renders: { angle: string; url: string }[]; prompt: string }
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { openaiGenerateImage } from "../_shared/openai-image.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,6 +22,7 @@ const corsHeaders = {
 };
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -257,11 +259,31 @@ Deno.serve(async (req) => {
         ...imageUrlsForThisAngle.map((url) => ({ type: "image_url", image_url: { url } })),
       ];
 
-      // Retry up to 3 times — Gemini Pro image often returns transient
-      // 502 "Network connection lost" or empty image responses mid-batch.
+      // Retry up to 3 times — both OpenAI and Gemini occasionally drop
+      // requests with 5xx or empty bodies mid-batch.
       let imgUrl: string | undefined;
       let lastErr = "";
       for (let attempt = 1; attempt <= 3; attempt++) {
+        if (OPENAI_API_KEY) {
+          const result = await openaiGenerateImage({
+            apiKey: OPENAI_API_KEY,
+            prompt: promptText,
+            referenceImages: imageUrlsForThisAngle,
+            size: "1024x1024",
+            quality: "high",
+          });
+          if (result.ok && result.dataUrl) {
+            imgUrl = result.dataUrl;
+            break;
+          }
+          if (result.status === 429) return json({ error: "Rate limit reached. Try again shortly." }, 429);
+          if (result.status === 402 || result.status === 401) return json({ error: "OpenAI credits/auth issue." }, 402);
+          lastErr = `openai ${result.status}: ${result.error}`;
+          console.error(`Image gen failed (attempt ${attempt}/3):`, lastErr);
+          await new Promise((r) => setTimeout(r, 1500 * attempt));
+          continue;
+        }
+
         const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: {
