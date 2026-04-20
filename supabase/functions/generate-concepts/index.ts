@@ -233,10 +233,24 @@ Deno.serve(async (req) => {
         return null;
       }
 
-      const aiJson = await aiResp.json();
+      const rawText = await aiResp.text();
+      if (!rawText) {
+        console.error(`AI gen empty body (${v.title} / ${angle.key})`);
+        return null;
+      }
+      let aiJson: any;
+      try {
+        aiJson = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error(`AI gen JSON parse failed (${v.title} / ${angle.key}):`, rawText.slice(0, 200));
+        return null;
+      }
       const imgUrl: string | undefined =
         aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-      if (!imgUrl?.startsWith("data:image/")) return null;
+      if (!imgUrl?.startsWith("data:image/")) {
+        console.error(`AI gen no image (${v.title} / ${angle.key}):`, JSON.stringify(aiJson).slice(0, 200));
+        return null;
+      }
 
       const [, mime, b64] = imgUrl.match(/^data:(image\/[a-z+]+);base64,(.*)$/i) ?? [];
       if (!b64) return null;
