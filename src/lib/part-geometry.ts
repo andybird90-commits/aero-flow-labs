@@ -159,7 +159,7 @@ function diffuser(p: Params, b: KitBounds): THREE.Group {
 
   const g = new THREE.Group();
   const panel = new THREE.Mesh(
-    new THREE.BoxGeometry(length, 0.025, width),
+    new THREE.BoxGeometry(length, SHELL, width),
     matNeutral(),
   );
   panel.rotation.set(0, 0, angle);
@@ -170,10 +170,10 @@ function diffuser(p: Params, b: KitBounds): THREE.Group {
   for (let i = 1; i <= strakeCount; i++) {
     const z = -width / 2 + i * spacing;
     const strake = new THREE.Mesh(
-      new THREE.BoxGeometry(length * 0.95, strakeH, 0.01),
+      new THREE.BoxGeometry(length * 0.95, strakeH, SHELL),
       matNeutral(),
     );
-    strake.position.set(0, strakeH / 2 + 0.012, z);
+    strake.position.set(0, strakeH / 2 + SHELL, z);
     strake.rotation.set(0, 0, angle);
     g.add(strake);
   }
@@ -200,13 +200,15 @@ function wing(p: Params, b: KitBounds): THREE.Group {
   const spanPct = num(p, "span_pct", 78) / 100;
   const span = b.width * spanPct;
   const standH = num(p, "stand_height", 220) / 1000;
+  const bladeT = 0.008; // wing aerofoil thickness ~8 mm
+  const standT = 0.025; // swan-neck stand thickness ~25 mm
 
   const g = new THREE.Group();
 
   // Two swan-neck stands attaching from above
   for (const side of [-1, 1]) {
     const stand = new THREE.Mesh(
-      new THREE.BoxGeometry(0.04, standH, 0.04),
+      new THREE.BoxGeometry(standT, standH, standT),
       matNeutral(),
     );
     stand.position.set(0, -standH / 2, side * span * 0.42);
@@ -215,7 +217,7 @@ function wing(p: Params, b: KitBounds): THREE.Group {
 
   // Main plane (blade)
   const blade = new THREE.Mesh(
-    new THREE.BoxGeometry(chord, 0.025, span),
+    new THREE.BoxGeometry(chord, bladeT, span),
     matNeutral(),
   );
   blade.rotation.set(0, 0, -aoa);
@@ -224,7 +226,7 @@ function wing(p: Params, b: KitBounds): THREE.Group {
   // End plates
   for (const side of [-1, 1]) {
     const plate = new THREE.Mesh(
-      new THREE.BoxGeometry(chord * 1.05, chord * 0.45, 0.01),
+      new THREE.BoxGeometry(chord * 1.05, chord * 0.45, SHELL),
       matNeutral(),
     );
     plate.position.set(0, 0, side * span / 2);
@@ -235,10 +237,10 @@ function wing(p: Params, b: KitBounds): THREE.Group {
   // Optional gurney lip on the trailing edge
   if (gurney > 0.001) {
     const gur = new THREE.Mesh(
-      new THREE.BoxGeometry(0.012, gurney, span * 0.98),
+      new THREE.BoxGeometry(SHELL, gurney, span * 0.98),
       matNeutral(),
     );
-    gur.position.set(-chord / 2, 0.012 + gurney / 2, 0);
+    gur.position.set(-chord / 2, bladeT + gurney / 2, 0);
     g.add(gur);
   }
   return g;
