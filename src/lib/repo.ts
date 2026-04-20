@@ -362,6 +362,82 @@ export function useCreateProject() {
   });
 }
 
+/**
+ * Spin up a fresh project for a given car_template applying a style preset.
+ * Mirrors useCreateProject() but seeds the design brief with the preset and
+ * the (optional) shared addendum prompt so the same DNA can be applied across
+ * multiple cars in one click.
+ *
+ * Returns { project_id, brief_id } so the caller can immediately invoke
+ * generate-concepts.
+ */
+export function useCreateProjectWithStyle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      userId: string;
+      template: CarTemplate;
+      stylePresetId: string | null;
+      addendumPrompt: string;
+      styleTags: string[];
+      constraints: string[];
+      buildType: string | null;
+      rightsConfirmed: boolean;
+    }) => {
+      const tName = `${input.template.make} ${input.template.model}${input.template.trim ? " " + input.template.trim : ""}`;
+      const { data: car, error: carErr } = await supabase.from("cars").insert({
+        user_id: input.userId,
+        template_id: input.template.id,
+        name: tName,
+      }).select("*").single();
+      if (carErr) throw carErr;
+
+      const { data: project, error: pErr } = await supabase.from("projects").insert({
+        user_id: input.userId,
+        car_id: car.id,
+        name: tName,
+        status: "brief",
+      }).select("*").single();
+      if (pErr) throw pErr;
+
+      const { data: geo, error: geoErr } = await supabase.from("geometries").insert({
+        user_id: input.userId,
+        project_id: project.id,
+        source: "template",
+        underbody_model: "simplified",
+        wheel_rotation: "static",
+        steady_state: true,
+      }).select("*").single();
+      if (geoErr) throw geoErr;
+
+      await supabase.from("concept_sets").insert({
+        user_id: input.userId,
+        project_id: project.id,
+        geometry_id: geo.id,
+        name: "Working set",
+        status: "draft",
+      });
+
+      const { data: brief, error: bErr } = await supabase.from("design_briefs").insert({
+        user_id: input.userId,
+        project_id: project.id,
+        prompt: input.addendumPrompt,
+        style_tags: input.styleTags,
+        constraints: input.constraints,
+        build_type: input.buildType,
+        rights_confirmed: input.rightsConfirmed,
+        style_preset_id: input.stylePresetId,
+      } as any).select("*").single();
+      if (bErr) throw bErr;
+
+      return { project_id: project.id, brief_id: brief.id, project_name: tName };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
 export function useUpdateProject() {
   const qc = useQueryClient();
   return useMutation({
