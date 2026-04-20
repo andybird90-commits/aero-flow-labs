@@ -383,28 +383,44 @@ export function ExtractedPartPreview({
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.8;
 
-      const loader = new STLLoader();
       (async () => {
         try {
           const resp = await fetch(glbUrl);
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const buf = await resp.arrayBuffer();
           if (cancelled) return;
-          // STLLoader's auto-detect can misread ASCII as binary. Sniff the
-          // first ~1KB: if it starts with "solid" AND contains "facet", it's
-          // ASCII — feed it as a string. Otherwise treat as binary.
-          const head = new TextDecoder().decode(buf.slice(0, 1024)).trim().toLowerCase();
-          const isAscii = head.startsWith("solid") && head.includes("facet");
-          const geometry = isAscii
-            ? loader.parse(new TextDecoder().decode(buf))
-            : loader.parse(buf);
-          geometry.computeVertexNormals();
-          const material = new THREE.MeshStandardMaterial({
-            color: 0xb8c2cc,
-            metalness: 0.2,
-            roughness: 0.6,
-          });
-          const model = new THREE.Mesh(geometry, material);
+
+          // Detect format: GLB starts with "glTF" magic bytes; otherwise STL.
+          const head4 = new TextDecoder().decode(buf.slice(0, 4));
+          const isGlb = head4 === "glTF";
+
+          let model: THREE.Object3D;
+          if (isGlb) {
+            const gltfLoader = new GLTFLoader();
+            const gltf: any = await new Promise((resolve, reject) =>
+              gltfLoader.parse(buf, "", resolve, reject),
+            );
+            model = gltf.scene;
+            const clay = new THREE.MeshStandardMaterial({
+              color: 0xb8c2cc, metalness: 0.2, roughness: 0.6,
+            });
+            model.traverse((o) => {
+              const m = o as THREE.Mesh;
+              if (m.isMesh) m.material = clay;
+            });
+          } else {
+            const stlLoader = new STLLoader();
+            const head = new TextDecoder().decode(buf.slice(0, 1024)).trim().toLowerCase();
+            const isAscii = head.startsWith("solid") && head.includes("facet");
+            const geometry = isAscii
+              ? stlLoader.parse(new TextDecoder().decode(buf))
+              : stlLoader.parse(buf);
+            geometry.computeVertexNormals();
+            const material = new THREE.MeshStandardMaterial({
+              color: 0xb8c2cc, metalness: 0.2, roughness: 0.6,
+            });
+            model = new THREE.Mesh(geometry, material);
+          }
           scene.add(model);
 
           const box = new THREE.Box3().setFromObject(model);
@@ -421,9 +437,9 @@ export function ExtractedPartPreview({
           controls.maxDistance = maxDim * 6;
           controls.update();
         } catch (err) {
-          console.error("STL load failed", err);
+          console.error("Mesh load failed", err);
           purgeCachedMesh().catch((purgeErr) => console.error("Failed to purge cached mesh", purgeErr));
-          setError("Cached STL failed to load. Cache cleared — regenerate the part mesh.");
+          setError("Cached mesh failed to load. Cache cleared — regenerate the part mesh.");
           setStage("error");
         }
       })();
