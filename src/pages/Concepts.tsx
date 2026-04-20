@@ -85,6 +85,19 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
     }
   };
 
+  // If we arrived from the Brief page with the auto-generate flag, fire the
+  // generator as soon as the brief has loaded so the page's own button shows
+  // the spinning state (instead of the request being in-flight invisibly).
+  useEffect(() => {
+    const flag = (location.state as any)?.autoGenerate;
+    if (!flag || autoTriggered.current) return;
+    if (!brief || !hasBrief || generating) return;
+    autoTriggered.current = true;
+    navigate(location.pathname + location.search, { replace: true, state: {} });
+    void generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brief, hasBrief]);
+
   return (
     <div className="grid gap-6 p-6 lg:grid-cols-[1fr_360px]">
       <div className="space-y-4">
