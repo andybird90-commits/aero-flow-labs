@@ -367,35 +367,34 @@ Deno.serve(async (req) => {
       return { publicUrl, dataUrl: imgUrl };
     }
 
+    // Shared ref-type guard — refs may be data: URLs (legacy snapshots) or
+    // https: URLs (garage-car bucket assets). Both work with the AI gateway.
+    const isImageRef = (u: string | null | undefined): u is string =>
+      !!u && (u.startsWith("data:image/") || u.startsWith("https://") || u.startsWith("http://"));
+
     try {
-      for (const v of variations) {
+      // Run all 3 style variations in parallel. Each one still does its own
+      // front-3/4 → 5-other-angles fan-out internally, but doing the variations
+      // sequentially was tripling our wall-clock time and tripping the
+      // worker's CPU/wall budget (WORKER_RESOURCE_LIMIT).
+      const variationResults = await Promise.all(variations.map(async (v) => {
         const heroAngle = ANGLES.find((a) => a.key === "front_three_quarter")!;
         const otherAngles = ANGLES.filter((a) => a.key !== "front_three_quarter");
 
-        // 1) Generate the FRONT 3/4 concept first using the user's car snapshot(s)
-        //    as identity reference. This becomes the source of truth for paint,
-        //    wheels, and body kit details. The ref may be a data: URL (legacy
-        //    snapshot) or an https: URL (garage car bucket asset) — both work.
+        // 1) FRONT 3/4 first — anchors paint, wheels and kit details.
         const userFrontRef = snaps.front_three_quarter;
-        const isImageRef = (u: string | null | undefined): u is string =>
-          !!u && (u.startsWith("data:image/") || u.startsWith("https://") || u.startsWith("http://"));
         const frontRefs = isImageRef(userFrontRef) ? [userFrontRef] : [];
         const frontResult = await renderAngle(v, heroAngle, frontRefs, "from_user_car");
-
         if (!frontResult) {
           console.warn("Front 3/4 render failed for variation:", v.title);
-          continue;
+          return null;
         }
 
-        // 2) Generate the OTHER 5 angles in parallel, using the just-generated
-        //    front 3/4 concept as the primary reference. Optionally include the
-        //    user's snapshot for that angle as a secondary geometry hint.
+        // 2) Other 5 angles in parallel, anchored to the front-3/4 concept.
         const otherResults = await Promise.all(otherAngles.map(async (a) => {
           const userAngleRef = snaps[a.key];
           const refs: string[] = [frontResult.dataUrl];
-          if (isImageRef(userAngleRef)) {
-            refs.push(userAngleRef);
-          }
+          if (isImageRef(userAngleRef)) refs.push(userAngleRef);
           const r = await renderAngle(v, a, refs, "from_concept_front");
           return { key: a.key, result: r };
         }));
@@ -406,12 +405,16 @@ Deno.serve(async (req) => {
         for (const { key, result } of otherResults) {
           if (result?.publicUrl) byKey[key] = result.publicUrl;
         }
-
         if (Object.keys(byKey).length === 0) {
           console.warn("All angles failed for variation:", v.title);
-          continue;
+          return null;
         }
+        return { v, byKey };
+      }));
 
+      for (const vr of variationResults) {
+        if (!vr) continue;
+        const { v, byKey } = vr;
         const { data: concept, error: cErr } = await admin
           .from("concepts")
           .insert({
