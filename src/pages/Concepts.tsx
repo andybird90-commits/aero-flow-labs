@@ -509,7 +509,11 @@ function ConceptCard({
           <VisuallyHidden asChild>
             <DialogDescription>Pick parts on a larger render</DialogDescription>
           </VisuallyHidden>
-          <div className="relative w-full h-full bg-surface-2 grid-bg-fine">
+          <div
+            className="relative w-full h-full bg-surface-2 grid-bg-fine group is-zoom"
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+          >
             {renderViewer("zoom")}
           </div>
         </DialogContent>
