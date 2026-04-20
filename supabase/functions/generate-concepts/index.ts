@@ -118,24 +118,35 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // Merge preset prompt/tags/constraints with the per-project brief.
-    const mergedTags = Array.from(new Set([
-      ...(Array.isArray(preset?.style_tags) ? preset.style_tags : []),
-      ...(Array.isArray(brief.style_tags) ? brief.style_tags : []),
-    ]));
-    const mergedConstraints = Array.from(new Set([
-      ...(Array.isArray(preset?.constraints) ? preset.constraints : []),
-      ...(Array.isArray(brief.constraints) ? brief.constraints : []),
-    ]));
-    const buildType = brief.build_type || preset?.build_type || null;
+    // When a style preset is used, IT IS AUTHORITATIVE. We deliberately
+    // ignore the per-project brief's tags / constraints / build type so the
+    // same DNA gets applied uniformly to every car the user runs through it
+    // (just like a real shop's signature kit — Pandem, RWB, Liberty Walk).
+    // The brief's free-text prompt is still appended as an optional addendum
+    // for car-specific notes (e.g. "keep the factory headlights").
+    const presetMode = !!preset;
+    const styleTags = presetMode
+      ? (Array.isArray(preset?.style_tags) ? preset.style_tags : [])
+      : (Array.isArray(brief.style_tags) ? brief.style_tags : []);
+    const styleConstraints = presetMode
+      ? (Array.isArray(preset?.constraints) ? preset.constraints : [])
+      : (Array.isArray(brief.constraints) ? brief.constraints : []);
+    const buildType = presetMode
+      ? (preset?.build_type || null)
+      : (brief.build_type || null);
 
     const stylePrompt = [
-      preset?.prompt ? `Style preset — ${preset.name}: ${preset.prompt}` : "",
-      brief.prompt ? `Project brief: ${brief.prompt}` : "",
+      preset?.prompt ? `Style DNA — ${preset.name} (this is the signature kit, apply it to this car): ${preset.prompt}` : "",
+      brief.prompt ? (presetMode ? `Car-specific notes (do not override the style DNA): ${brief.prompt}` : `Project brief: ${brief.prompt}`) : "",
       buildType ? `Build type: ${buildType}.` : "",
-      mergedTags.length ? `Style tags: ${mergedTags.join(", ")}.` : "",
-      mergedConstraints.length ? `Constraints: ${mergedConstraints.join("; ")}.` : "",
+      styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
+      styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
     ].filter(Boolean).join(" ");
+
+    // Pick the variation set. With a preset, all three variations stay within
+    // the preset DNA (only intensity/spec differs) so the user gets three
+    // takes of the *same* style instead of three different shops' styles.
+    const variations = presetMode ? presetVariations(preset) : VARIATIONS;
 
     const inserted: string[] = [];
 
@@ -290,7 +301,7 @@ Deno.serve(async (req) => {
     }
 
     try {
-      for (const v of VARIATIONS) {
+      for (const v of variations) {
         const frontAngle = ANGLES[0];
         const otherAngles = ANGLES.slice(1);
 
@@ -383,4 +394,35 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+/**
+ * When a style preset is active, all three variations stay inside its DNA.
+ * Only the *intensity* and *spec* changes — never the design language. This
+ * means the user gets three takes of (e.g.) Pandem applied to their car,
+ * not OEM+ vs Pandem vs Widebody-GT.
+ */
+function presetVariations(preset: any): Array<{ title: string; direction: string; modifier: string; emphasis: string }> {
+  const name = preset?.name ?? "preset";
+  const dna = preset?.prompt ?? "";
+  return [
+    {
+      title: `${name} — street spec`,
+      direction: `${name} signature kit applied at a road-friendly intensity. Same design language as the preset, slightly toned down for street use. ${dna}`,
+      modifier: `${name} style body kit, signature design language, road-friendly proportions`,
+      emphasis: `Stay 100% inside the ${name} design language. Do NOT introduce shapes or details from outside the preset DNA.`,
+    },
+    {
+      title: `${name} — full kit`,
+      direction: `${name} signature kit at its full, definitive intensity — exactly as the preset describes. ${dna}`,
+      modifier: `${name} style body kit, full signature kit, definitive proportions, signature wing/arches/splitter as per the preset`,
+      emphasis: `This is the canonical ${name} look on this car. Hit every signature element of the preset.`,
+    },
+    {
+      title: `${name} — track spec`,
+      direction: `${name} signature kit pushed to its most aggressive track-ready spec, while staying recognisably ${name}. Larger wing, deeper splitter, more vents — but using the preset's design vocabulary, not a different one. ${dna}`,
+      modifier: `${name} style body kit, track-spec, larger rear wing, deeper splitter, additional vents and canards in the preset's design language`,
+      emphasis: `Maximum aggression but the silhouette must still read as ${name}. Do NOT swap to a generic GT3 or generic time-attack look.`,
+    },
+  ];
 }
