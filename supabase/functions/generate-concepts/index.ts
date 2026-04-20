@@ -265,70 +265,40 @@ Deno.serve(async (req) => {
         messages[0].content.push({ type: "image_url", image_url: { url: ref } });
       }
 
-      // Image generation: prefer OpenAI gpt-image-1 if a key is set,
-      // otherwise fall back to Lovable AI gateway (Gemini).
-      let imgUrl: string | undefined;
+      const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3.1-flash-image-preview",
+          messages,
+          modalities: ["image", "text"],
+        }),
+      });
 
-      if (OPENAI_API_KEY) {
-        const refs = referenceImages;
-        const result = await openaiGenerateImage({
-          apiKey: OPENAI_API_KEY,
-          prompt: promptText,
-          referenceImages: refs,
-          size: "1536x1024",
-          quality: "high",
-        });
-        if (!result.ok) {
-          console.error(`OpenAI gen failed (${v.title} / ${angle.key}):`, result.status, result.error);
-          if (result.status === 429) throw new Error("__RATE_LIMIT__");
-          if (result.status === 402 || result.status === 401) throw new Error("__NO_CREDITS__");
-          return null;
-        }
-        imgUrl = result.dataUrl;
-      } else {
-        const messages: any[] = [{
-          role: "user",
-          content: [{ type: "text", text: promptText }],
-        }];
-        for (const ref of referenceImages) {
-          messages[0].content.push({ type: "image_url", image_url: { url: ref } });
-        }
-
-        const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-3.1-flash-image-preview",
-            messages,
-            modalities: ["image", "text"],
-          }),
-        });
-
-        if (!aiResp.ok) {
-          const t = await aiResp.text();
-          console.error(`AI gen failed (${v.title} / ${angle.key}):`, aiResp.status, t.slice(0, 200));
-          if (aiResp.status === 429) throw new Error("__RATE_LIMIT__");
-          if (aiResp.status === 402) throw new Error("__NO_CREDITS__");
-          return null;
-        }
-
-        const rawText = await aiResp.text();
-        if (!rawText) {
-          console.error(`AI gen empty body (${v.title} / ${angle.key})`);
-          return null;
-        }
-        let aiJson: any;
-        try {
-          aiJson = JSON.parse(rawText);
-        } catch (parseErr) {
-          console.error(`AI gen JSON parse failed (${v.title} / ${angle.key}):`, rawText.slice(0, 200));
-          return null;
-        }
-        imgUrl = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+      if (!aiResp.ok) {
+        const t = await aiResp.text();
+        console.error(`AI gen failed (${v.title} / ${angle.key}):`, aiResp.status, t.slice(0, 200));
+        if (aiResp.status === 429) throw new Error("__RATE_LIMIT__");
+        if (aiResp.status === 402) throw new Error("__NO_CREDITS__");
+        return null;
       }
+
+      const rawText = await aiResp.text();
+      if (!rawText) {
+        console.error(`AI gen empty body (${v.title} / ${angle.key})`);
+        return null;
+      }
+      let aiJson: any;
+      try {
+        aiJson = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error(`AI gen JSON parse failed (${v.title} / ${angle.key}):`, rawText.slice(0, 200));
+        return null;
+      }
+      const imgUrl: string | undefined = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
       if (!imgUrl?.startsWith("data:image/")) {
         console.error(`Image gen produced no data URL (${v.title} / ${angle.key})`);
