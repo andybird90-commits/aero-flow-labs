@@ -14,10 +14,6 @@ import Projects from "./pages/Projects";
 
 import Brief from "./pages/Brief";
 import Concepts from "./pages/Concepts";
-import Parts from "./pages/Parts";
-import Refine from "./pages/Refine";
-import Library from "./pages/Library";
-import Exports from "./pages/Exports";
 import Settings from "./pages/Settings";
 import AdminCarStls from "./pages/AdminCarStls";
 
