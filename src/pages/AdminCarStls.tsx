@@ -291,10 +291,12 @@ function CarStlsInner({ userId }: { userId: string }) {
           />
           <Button
             variant="hero"
-            disabled={!pendingTemplateId || upsert.isPending}
+            disabled={!pendingTemplateId || upsert.isPending || !!decimating}
             onClick={() => fileInputRef.current?.click()}
           >
-            {upsert.isPending ? (
+            {decimating ? (
+              <><Sparkles className="mr-2 h-4 w-4 animate-pulse" /> Simplifying…</>
+            ) : upsert.isPending ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading…</>
             ) : (
               <><Upload className="mr-2 h-4 w-4" /> Choose STL / OBJ</>
@@ -302,7 +304,7 @@ function CarStlsInner({ userId }: { userId: string }) {
           </Button>
         </div>
         <p className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Accepts .stl or .obj. Forward axis must match how the model's nose points in the file. Default −Z matches the concept renderer.
+          Accepts .stl or .obj. Files over {(DECIMATE_THRESHOLD_BYTES / 1024 / 1024).toFixed(0)} MB are auto-simplified to ~{DECIMATE_TARGET_TRIANGLES.toLocaleString()} triangles in your browser. Forward axis must match how the model's nose points.
         </p>
       </div>
 
