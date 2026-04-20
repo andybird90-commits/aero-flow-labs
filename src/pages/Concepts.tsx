@@ -34,7 +34,11 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const { data: concepts = [], refetch } = useConcepts(projectId);
   const updateConcept = useUpdateConcept();
   const deleteConcept = useDeleteConcept();
+  const buildKit = useBuildAeroKit();
+  const { data: heroStl } = useCarStlForTemplate(project?.car?.template?.id ?? null);
   const [generating, setGenerating] = useState(false);
+
+  const heroReady = !!(heroStl?.repaired_stl_path && heroStl.manifold_clean);
 
   const hasBrief = !!(brief?.prompt && brief.prompt.trim().length > 10);
 
@@ -125,10 +129,19 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
                 key={c.id}
                 projectId={projectId}
                 concept={c}
+                heroReady={heroReady}
                 onApprove={() => updateConcept.mutate({ id: c.id, patch: { status: "approved" } })}
                 onReject={() => updateConcept.mutate({ id: c.id, patch: { status: "rejected" } })}
                 onFavourite={() => updateConcept.mutate({ id: c.id, patch: { status: "favourited" } })}
                 onDelete={() => deleteConcept.mutate(c.id)}
+                onBuildKit={async () => {
+                  try {
+                    await buildKit.mutateAsync(c.id);
+                    toast({ title: "Aero kit ready", description: "Open the Library to download." });
+                  } catch (e: any) {
+                    toast({ title: "Build failed", description: String(e.message ?? e), variant: "destructive" });
+                  }
+                }}
               />
             ))}
           </div>
@@ -184,15 +197,22 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
 }
 
 function ConceptCard({
-  projectId, concept, onApprove, onReject, onFavourite, onDelete,
+  projectId, concept, heroReady, onApprove, onReject, onFavourite, onDelete, onBuildKit,
 }: {
   projectId: string;
   concept: Concept;
+  heroReady: boolean;
   onApprove: () => void;
   onReject: () => void;
   onFavourite: () => void;
   onDelete: () => void;
+  onBuildKit: () => void;
 }) {
+  const aeroStatus = ((concept as any).aero_kit_status ?? "idle") as AeroKitStatus;
+  const aeroError = (concept as any).aero_kit_error as string | null | undefined;
+  const aeroBuilding = aeroStatus !== "idle" && aeroStatus !== "ready" && aeroStatus !== "failed";
+  // Live-poll status while a build is running.
+  useAeroKitStatus(concept.id, aeroBuilding);
   const tone = concept.status === "approved"
     ? "success"
     : concept.status === "rejected"
