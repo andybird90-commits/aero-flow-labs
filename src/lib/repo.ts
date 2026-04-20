@@ -36,6 +36,44 @@ export function useIsAdmin(userId: string | undefined) {
   });
 }
 
+export function useCreateCarTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      make: string;
+      model: string;
+      trim?: string;
+      yearRange?: string;
+    }) => {
+      // Slug must be unique. Build from make/model/trim/year + short random
+      // suffix so admins can re-add similar entries without collisions.
+      const base = [input.make, input.model, input.trim, input.yearRange]
+        .filter(Boolean)
+        .join("-")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      const slug = `${base || "car"}-${Math.random().toString(36).slice(2, 6)}`;
+
+      const { data, error } = await supabase
+        .from("car_templates")
+        .insert({
+          make: input.make.trim(),
+          model: input.model.trim(),
+          trim: input.trim?.trim() || null,
+          year_range: input.yearRange?.trim() || null,
+          slug,
+          supported: true,
+        })
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as CarTemplate;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["car_templates"] }),
+  });
+}
+
 /* ─── CAR STLs (admin-managed reference bodies) ────────────── */
 export function useCarStls() {
   return useQuery({
