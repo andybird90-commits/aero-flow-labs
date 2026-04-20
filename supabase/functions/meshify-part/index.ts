@@ -33,7 +33,7 @@ const MESHY_SINGLE = "https://api.meshy.ai/openapi/v1/image-to-3d";
 const MESHY_MULTI  = "https://api.meshy.ai/openapi/v1/multi-image-to-3d";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   try {
     if (!MESHY_API_KEY) return json({ error: "MESHY_API_KEY is not configured" }, 500);
