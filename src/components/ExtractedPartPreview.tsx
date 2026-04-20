@@ -649,7 +649,7 @@ export function ExtractedPartPreview({
 
         {/* READY: split panel — original concept on the left, 3D mesh on the right */}
         {stage === "ready" && (
-          <div className="flex-1 min-h-0 grid gap-2 md:grid-cols-2">
+          <div className="flex-1 min-h-0 grid gap-2 grid-rows-2 md:grid-rows-1 md:grid-cols-2">
             <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
               {sourceImageUrl ? (
                 <img
