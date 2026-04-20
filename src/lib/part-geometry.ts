@@ -200,8 +200,8 @@ function wing(p: Params, b: KitBounds): THREE.Group {
   const spanPct = num(p, "span_pct", 78) / 100;
   const span = b.width * spanPct;
   const standH = num(p, "stand_height", 220) / 1000;
-  const bladeT = 0.008; // wing aerofoil thickness ~8 mm
-  const standT = 0.025; // swan-neck stand thickness ~25 mm
+  const bladeT = 0.004; // wing aerofoil thickness ~4 mm
+  const standT = 0.012; // swan-neck stand thickness ~12 mm
 
   const g = new THREE.Group();
 
