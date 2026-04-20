@@ -46,7 +46,8 @@ const MIN_COMPONENT_VOLUME_MM3 = 50_000; // 50 cm³
 // Hard cap on triangles we'll process. Hero STLs from scrape sources can be
 // 500k+ tris; running the per-vertex distance test + connected-component split
 // on that scale blows the edge worker's 256 MB / 400ms budget.
-const MAX_DISPLACED_TRIS = 120_000;
+const MAX_DISPLACED_TRIS = 60_000;
+const MAX_KIT_TRIS_FOR_SPLIT = 40_000;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -182,6 +183,7 @@ Deno.serve(async (req) => {
     }
     let kitMesh: Mesh = { positions: new Float32Array(newPos), indices: newIdx };
     kitMesh = weldMesh(kitMesh, 0.5);
+    kitMesh = decimateIfTooBig(kitMesh, MAX_KIT_TRIS_FOR_SPLIT);
 
     await admin.from("concepts")
       .update({ aero_kit_status: "splitting" })
