@@ -30,7 +30,6 @@ import {
   splitConnectedComponents, classifyByZone, meshBboxOf, approxVolume,
   type PartKind,
 } from "../_shared/stl-classify.ts";
-import { smoothStl } from "../_shared/stl-smooth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +43,11 @@ const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TOLERANCE_MM = 2;
 const MIN_COMPONENT_VOLUME_MM3 = 50_000; // 50 cm³
+// Hard cap on triangles we'll process. Hero STLs from scrape sources can be
+// 500k+ tris; running the per-vertex distance test + connected-component split
+// on that scale blows the edge worker's 256 MB / 400ms budget.
+const MAX_DISPLACED_TRIS = 60_000;
+const MAX_KIT_TRIS_FOR_SPLIT = 40_000;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -96,6 +100,12 @@ Deno.serve(async (req) => {
     }
     stockMesh = reorientMesh(stockMesh, (stlRow.forward_axis as ForwardAxis) ?? "-z");
     // Displaced was already in canonical space when written by the displacement step.
+
+    // Decimate inputs uniformly if they're too dense. Stride-sample triangles
+    // — coarser than a real edge-collapse pass, but keeps the worker alive
+    // and the kit shell only needs to be approximate (we re-weld below).
+    displacedMesh = decimateIfTooBig(displacedMesh, MAX_DISPLACED_TRIS);
+    stockMesh = decimateIfTooBig(stockMesh, MAX_DISPLACED_TRIS);
 
     // 2. Spatial hash of stock vertices for fast nearest-neighbour (~O(1) per query).
     const CELL = 100; // mm
@@ -173,6 +183,7 @@ Deno.serve(async (req) => {
     }
     let kitMesh: Mesh = { positions: new Float32Array(newPos), indices: newIdx };
     kitMesh = weldMesh(kitMesh, 0.5);
+    kitMesh = decimateIfTooBig(kitMesh, MAX_KIT_TRIS_FOR_SPLIT);
 
     await admin.from("concepts")
       .update({ aero_kit_status: "splitting" })
@@ -191,8 +202,10 @@ Deno.serve(async (req) => {
 
     const carBb = meshBboxOf(stockMesh);
 
-    // 6. Upload combined kit STL.
-    const combinedSmoothed = smoothStl(writeBinaryStl(kitMesh), { iterations: 2, lambda: 0.5 });
+    // 6. Upload combined kit STL. Skip Laplacian smoothing — its full
+    //    weld + adjacency-Set pass is the single biggest memory hog and
+    //    consistently trips WORKER_RESOURCE_LIMIT on dense meshes.
+    const combinedSmoothed = writeBinaryStl(kitMesh);
     const kitPath = `aero-kits/${concept.id}/kit.stl`;
     const { error: kitUpErr } = await admin.storage.from("car-stls")
       .upload(kitPath, combinedSmoothed, { contentType: "model/stl", upsert: true });
@@ -211,7 +224,7 @@ Deno.serve(async (req) => {
       const kind = classifyByZone(partBb, carBb);
       kindCounts[kind] = (kindCounts[kind] ?? 0) + 1;
       const idx = kindCounts[kind];
-      const partBytes = smoothStl(writeBinaryStl(mesh), { iterations: 2, lambda: 0.4 });
+      const partBytes = writeBinaryStl(mesh);
       const partPath = `aero-kits/${concept.id}/${kind}-${idx}.stl`;
       const { error: pErr } = await admin.storage.from("car-stls")
         .upload(partPath, partBytes, { contentType: "model/stl", upsert: true });
@@ -267,4 +280,33 @@ function json(body: unknown, status = 200) {
 async function fail(admin: ReturnType<typeof createClient>, conceptId: string, message: string) {
   await admin.from("concepts").update({ aero_kit_status: "failed", aero_kit_error: message }).eq("id", conceptId);
   return json({ error: message }, 500);
+}
+
+/**
+ * Cheap uniform triangle decimation: keep every Nth triangle until we're
+ * under `maxTris`. Loses some shell quality but avoids edge-runtime OOM.
+ * Vertices not referenced by kept triangles are pruned.
+ */
+function decimateIfTooBig(mesh: Mesh, maxTris: number): Mesh {
+  const triCount = mesh.indices.length / 3;
+  if (triCount <= maxTris) return mesh;
+  const stride = Math.ceil(triCount / maxTris);
+  const keptCount = Math.floor(triCount / stride);
+  const keptIdx = new Uint32Array(keptCount * 3);
+  const remap = new Map<number, number>();
+  const newPos: number[] = [];
+  for (let i = 0; i < keptCount; i++) {
+    const t = i * stride;
+    for (let k = 0; k < 3; k++) {
+      const old = mesh.indices[t * 3 + k];
+      let nid = remap.get(old);
+      if (nid === undefined) {
+        nid = newPos.length / 3;
+        newPos.push(mesh.positions[old * 3], mesh.positions[old * 3 + 1], mesh.positions[old * 3 + 2]);
+        remap.set(old, nid);
+      }
+      keptIdx[i * 3 + k] = nid;
+    }
+  }
+  return { positions: new Float32Array(newPos), indices: keptIdx };
 }
