@@ -38,46 +38,55 @@ type Kind = typeof ALLOWED_KINDS[number];
  */
 const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
   splitter: {
-    what:  "a single bolt-on carbon-fibre front splitter blade",
+    what:  "a single bolt-on front splitter blade",
     shape: "one flat horizontal plate roughly 1500-1900mm wide and 80-150mm deep, with two small vertical side fences at the outer ends. Looks like a thin floating shelf",
     not:   "Do NOT draw any bumper, grille, headlights, fender, hood, or any part of a car body. Just the standalone splitter plate, like a part on a parts-shop catalogue page.",
   },
   lip: {
-    what:  "a single thin carbon-fibre front lip extension",
-    shape: "a long, narrow, curved sliver about 1500mm wide, 30-60mm tall, banana-shaped in profile. Like a thick smile of carbon",
+    what:  "a single thin front lip extension",
+    shape: "a long, narrow, curved sliver about 1500mm wide, 30-60mm tall, banana-shaped in profile. Like a thick smile",
     not:   "Do NOT draw a bumper, splitter, or any car body. Just the lip strip alone, no fender, no grille.",
   },
   canard: {
-    what:  "a single pair of carbon-fibre canards (dive planes)",
+    what:  "a single pair of canards (dive planes)",
     shape: "two small mirrored triangular fins, each about 200x150mm, with a slight curved sweep. Shown side by side, not on a car",
     not:   "Do NOT draw a bumper, fender, headlights, or any car body. Just the two small fins floating alone.",
   },
   side_skirt: {
-    what:  "a single bolt-on carbon-fibre side skirt blade",
+    what:  "a single bolt-on side skirt blade",
     shape: "one long, low, blade-like panel about 1800-2200mm long, 150-250mm tall, with a slight outward flare at the bottom. Looks like a long thin surfboard",
     not:   "Do NOT draw a door, rocker panel, wheels, fenders, or any car body. Just the standalone skirt blade, like a parts-catalogue product photo.",
   },
   wide_arch: {
-    what:  "a single bolt-on carbon-fibre wheel arch flare (one piece, like an over-fender)",
-    shape: "a curved arc-shaped strip that follows roughly half a wheel-well opening, about 800-1000mm long along the curve, 80-150mm wide, 30-50mm thick. Looks like a thick rainbow / horseshoe of carbon with mounting tabs",
-    not:   "Do NOT draw a fender, bumper, door, headlights, wheel, tyre, or any car body. Just the standalone arc-shaped flare, like a Liberty Walk or Pandem fender flare on a white shop background. NO wheel, NO tyre, NO door.",
+    what:  "a single bolt-on wheel arch flare (one piece, like an over-fender)",
+    shape: "a curved arc-shaped strip that follows roughly half a wheel-well opening, about 800-1000mm long along the curve, 80-150mm wide, 30-50mm thick. Looks like a thick rainbow / horseshoe shape with mounting tabs",
+    not:   "Do NOT draw a fender, bumper, door, headlights, wheel, tyre, or any car body. Just the standalone arc-shaped flare on a white shop background. NO wheel, NO tyre, NO door.",
   },
   diffuser: {
-    what:  "a single bolt-on carbon-fibre rear diffuser panel",
+    what:  "a single bolt-on rear diffuser panel",
     shape: "one angled rectangular underbody panel about 1400mm wide, 400-600mm deep, with 3-7 vertical fins/strakes running front-to-back along its underside",
     not:   "Do NOT draw a bumper, exhaust, taillights, or any car body. Just the standalone diffuser panel with its strakes, like a product shot.",
   },
   ducktail: {
-    what:  "a single bolt-on carbon-fibre ducktail spoiler lip",
+    what:  "a single bolt-on ducktail spoiler lip",
     shape: "one curved trunk-mounted lip spoiler, about 1200-1400mm wide, 40-80mm tall, that gently rises and kicks up at the back. Like a duck's tail seen on its own",
     not:   "Do NOT draw a trunk, rear window, taillights, bumper, or any car body. Just the standalone ducktail piece on a white background.",
   },
   wing: {
-    what:  "a single complete bolt-on carbon-fibre rear wing assembly",
+    what:  "a single complete bolt-on rear wing assembly",
     shape: "one straight aerofoil blade about 1500mm wide and 250-350mm chord, mounted on TWO swan-neck stands rising from below, with TWO flat vertical end plates at each tip. Optional small gurney lip on the trailing edge",
     not:   "Do NOT draw a trunk, rear window, taillights, bumper, or any car body. Just the standalone wing + stands + end plates floating, like a GT-wing product photo.",
   },
 };
+
+// Neutral surface treatment shared by all parts. We deliberately avoid
+// carbon weave, paint flake, gloss reflections etc — Meshy's image-to-3D
+// pipeline produces much cleaner, smoother meshes when the input render
+// shows a uniform matte grey "clay" surface with no high-frequency texture.
+const SURFACE_TREATMENT =
+  "Render the part as a smooth uniform matte light-grey clay model (think Pixar/Blender clay render or an unpainted prototype). " +
+  "ABSOLUTELY NO carbon-fibre weave, NO carbon twill pattern, NO glossy paint, NO metallic flake, NO chrome, NO reflections, NO decals, NO logos, NO surface texture or material detail. " +
+  "Just clean smooth geometry with soft even shading so the SHAPE reads clearly. The goal is a featureless surface that highlights form only.";
 
 // Single hero render only. Gemini Pro image gen is ~50s per call; multiple
 // sequential calls blow past the 150s edge function timeout, and our best
