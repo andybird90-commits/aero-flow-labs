@@ -961,6 +961,26 @@ export function useGarageCars(userId: string | undefined) {
   });
 }
 
+export function useGarageCar(garageCarId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["garage_car", garageCarId],
+    enabled: !!garageCarId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("garage_cars")
+        .select("*")
+        .eq("id", garageCarId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as GarageCar | null;
+    },
+    refetchInterval: (q) => {
+      const row = q.state.data as GarageCar | null | undefined;
+      return row?.generation_status === "generating" ? 4000 : false;
+    },
+  });
+}
+
 export function useCreateGarageCar() {
   const qc = useQueryClient();
   return useMutation({
