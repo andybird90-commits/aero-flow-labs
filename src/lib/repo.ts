@@ -497,6 +497,44 @@ export function useUpdateConcept() {
   });
 }
 
+/** Trigger the boolean aero-kit build for an approved concept. */
+export function useBuildAeroKit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (conceptId: string) => {
+      const { data, error } = await supabase.functions.invoke("build-aero-kit", {
+        body: { concept_id: conceptId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: (_d, conceptId) => {
+      qc.invalidateQueries({ queryKey: ["concepts"] });
+      qc.invalidateQueries({ queryKey: ["concept_parts"] });
+      qc.invalidateQueries({ queryKey: ["concept_aero_status", conceptId] });
+    },
+  });
+}
+
+/** Poll a concept's aero_kit_status while a build is in flight. */
+export function useAeroKitStatus(conceptId: string | undefined, active: boolean) {
+  return useQuery({
+    queryKey: ["concept_aero_status", conceptId],
+    enabled: !!conceptId,
+    refetchInterval: active ? 2000 : false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("concepts")
+        .select("aero_kit_status, aero_kit_url, aero_kit_error")
+        .eq("id", conceptId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { aero_kit_status: string; aero_kit_url: string | null; aero_kit_error: string | null } | null;
+    },
+  });
+}
+
 export function useDeleteConcept() {
   const qc = useQueryClient();
   return useMutation({

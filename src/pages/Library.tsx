@@ -17,14 +17,16 @@ import { PartMeshViewer } from "@/components/PartMeshViewer";
 import {
   useConceptParts, useDeleteConceptPart,
   useActiveConceptSet, useFittedParts, useDeleteFittedPart,
+  useConcepts,
   type ConceptPart, type FittedPart,
 } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Box, Download, Trash2, Sparkles, Wrench, ImageOff, Eye, ArrowRight,
+  Box, Download, Trash2, Sparkles, Wrench, ImageOff, Eye, ArrowRight, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StockVsConceptPanel } from "@/components/StockVsConceptPanel";
+import { SourceBadge, type PartSource } from "@/components/SourceBadge";
 
 export default function LibraryPage() {
   return (
@@ -38,11 +40,20 @@ function LibraryInner({ projectId, project }: { projectId: string; project: any 
   const { data: conceptParts = [], isLoading: cpLoading } = useConceptParts(projectId);
   const { data: conceptSet } = useActiveConceptSet(projectId);
   const { data: fittedParts = [], isLoading: fpLoading } = useFittedParts(conceptSet?.id);
+  const { data: concepts = [] } = useConcepts(projectId);
   const delConcept = useDeleteConceptPart();
   const delFitted = useDeleteFittedPart();
   const { toast } = useToast();
 
   const [previewMesh, setPreviewMesh] = useState<{ url: string; label: string } | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<"all" | PartSource>("all");
+
+  // Concepts with a ready boolean kit. Each shows the combined kit + boolean parts.
+  const aeroKits = concepts.filter((c: any) => c.aero_kit_url && c.aero_kit_status === "ready");
+
+  const filteredConceptParts = sourceFilter === "all"
+    ? conceptParts
+    : conceptParts.filter((p) => ((p.source as PartSource) ?? "extracted") === sourceFilter);
 
   const totalSaved = conceptParts.length + fittedParts.filter((p) => p.enabled).length;
   const meshed = conceptParts.filter((p) => !!p.glb_url).length;
@@ -116,15 +127,58 @@ function LibraryInner({ projectId, project }: { projectId: string; project: any 
         <EmptyLibrary projectId={projectId} />
       )}
 
+      {/* Aero-kit (boolean) section */}
+      {aeroKits.length > 0 && (
+        <Section
+          icon={Layers}
+          title="Aero kit (boolean)"
+          subtitle="Subtracted from your hero STL — printable shells with a panel-accurate mating face."
+        >
+          <div className="space-y-4">
+            {aeroKits.map((c: any) => (
+              <div key={c.id} className="glass rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium truncate">{c.title}</div>
+                  <Button
+                    variant="glass" size="sm"
+                    onClick={() => downloadMesh(c.aero_kit_url, `${project.name ?? "kit"}-aero-kit`)}
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" /> Combined kit STL
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {/* Concept-extracted parts */}
-      {conceptParts.length > 0 && (
+      {filteredConceptParts.length > 0 && (
         <Section
           icon={Sparkles}
           title="Drawn & modeled parts"
           subtitle="Extracted from your concept renders. Click a tile to preview the 3D mesh."
         >
+          {/* Source filter */}
+          <div className="mb-3 flex items-center gap-1.5 flex-wrap">
+            <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground mr-1">Source:</span>
+            {(["all", "parametric", "extracted", "boolean"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSourceFilter(s)}
+                className={cn(
+                  "rounded-full border px-2 py-0.5 text-[10px] text-mono uppercase tracking-widest transition-colors",
+                  sourceFilter === s
+                    ? "border-primary/50 bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {conceptParts.map((p) => (
+            {filteredConceptParts.map((p) => (
               <ConceptPartCard
                 key={p.id}
                 part={p}
