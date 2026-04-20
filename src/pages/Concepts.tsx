@@ -12,7 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Check, X, RefreshCw, Star, Wand2, AlertCircle, MousePointer2, Maximize2, Layers, Download,
+  Sparkles, Check, X, RefreshCw, Star, Wand2, AlertCircle, MousePointer2, Maximize2, Layers, Download, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
