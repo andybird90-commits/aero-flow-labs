@@ -68,12 +68,10 @@ Deno.serve(async (req) => {
     let inputBytes = new Uint8Array(await file.arrayBuffer());
     if (inputBytes.length === 0) return json({ error: "Empty mesh file" }, 400);
 
-    // If OBJ, convert to ASCII STL bytes first so repairStl can parse it.
+    // If OBJ, convert directly to BINARY STL bytes (memory-efficient) so repairStl can parse it.
     const isObj = /\.obj$/i.test(row.stl_path);
     if (isObj) {
-      const objText = new TextDecoder().decode(inputBytes);
-      const stlText = objToAsciiStl(objText);
-      inputBytes = new TextEncoder().encode(stlText);
+      inputBytes = objToBinaryStl(inputBytes);
     }
 
     // 4. Repair.
