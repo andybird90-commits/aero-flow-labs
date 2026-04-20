@@ -114,72 +114,123 @@ function json(body: unknown, status = 200) {
 }
 
 /**
- * Minimal Wavefront OBJ → ASCII STL converter.
+ * Memory-efficient Wavefront OBJ → BINARY STL converter.
  *
- * Handles `v` (vertex) and `f` (face) lines, including faces that reference
- * vertex/normal/texture indices in the `v/vt/vn` form. Faces with more than
- * 3 vertices are fan-triangulated. Per-face normals are computed from the
- * triangle geometry — we don't read the OBJ's `vn` lines because the repair
- * pass re-orients normals anyway.
+ * Streams the OBJ bytes line-by-line (no global split, no big string array)
+ * and writes triangles into a single pre-allocated binary STL buffer.
+ * Faces with > 3 vertices are fan-triangulated. Per-face normals are computed
+ * from geometry — repairStl re-orients them anyway.
+ *
+ * Binary STL layout: 80-byte header + uint32 tri count + 50 bytes per triangle.
  */
-function objToAsciiStl(objText: string): string {
-  const verts: [number, number, number][] = [];
-  const tris: [number, number, number][] = []; // 1-based vertex indices
+function objToBinaryStl(objBytes: Uint8Array): Uint8Array {
+  // Use Float32Array storage for vertices to keep memory tight (~12 B/vertex
+  // vs ~80+ B for [number,number,number] tuples in V8).
+  let vCap = 1 << 16;
+  let vCount = 0;
+  let vx = new Float32Array(vCap);
+  let vy = new Float32Array(vCap);
+  let vz = new Float32Array(vCap);
 
-  const lines = objText.split(/\r?\n/);
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    if (line.startsWith("v ")) {
-      const parts = line.split(/\s+/);
-      const x = parseFloat(parts[1]);
-      const y = parseFloat(parts[2]);
-      const z = parseFloat(parts[3]);
-      if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-        verts.push([x, y, z]);
-      }
-    } else if (line.startsWith("f ")) {
-      const parts = line.split(/\s+/).slice(1);
-      // Each token is "v", "v/vt", "v//vn", or "v/vt/vn". Resolve negative indices.
-      const idx = parts.map((p) => {
-        const n = parseInt(p.split("/")[0], 10);
-        if (!Number.isFinite(n)) return NaN;
-        return n < 0 ? verts.length + n + 1 : n;
-      });
-      // Fan-triangulate.
-      for (let i = 1; i < idx.length - 1; i++) {
-        const a = idx[0], b = idx[i], c = idx[i + 1];
-        if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c)) {
-          tris.push([a, b, c]);
+  // Triangles as flat Int32Array of 1-based vertex indices (3 per tri).
+  let tCap = 1 << 16;
+  let tCount = 0;
+  let tris = new Int32Array(tCap * 3);
+
+  const pushVertex = (x: number, y: number, z: number) => {
+    if (vCount === vCap) {
+      vCap *= 2;
+      const nx = new Float32Array(vCap); nx.set(vx); vx = nx;
+      const ny = new Float32Array(vCap); ny.set(vy); vy = ny;
+      const nz = new Float32Array(vCap); nz.set(vz); vz = nz;
+    }
+    vx[vCount] = x; vy[vCount] = y; vz[vCount] = z;
+    vCount++;
+  };
+  const pushTri = (a: number, b: number, c: number) => {
+    if (tCount === tCap) {
+      tCap *= 2;
+      const nt = new Int32Array(tCap * 3); nt.set(tris); tris = nt;
+    }
+    const o = tCount * 3;
+    tris[o] = a; tris[o + 1] = b; tris[o + 2] = c;
+    tCount++;
+  };
+
+  // Stream line-by-line over the raw bytes (avoid `String.split` blowup).
+  const decoder = new TextDecoder();
+  let lineStart = 0;
+  const len = objBytes.length;
+  const faceIdx: number[] = [];
+  for (let i = 0; i <= len; i++) {
+    const b = i < len ? objBytes[i] : 10; // virtual newline at EOF
+    if (b !== 10 && b !== 13) continue;
+    if (i > lineStart) {
+      // Decode just this line.
+      const line = decoder.decode(objBytes.subarray(lineStart, i));
+      // Cheap dispatch on first non-space char.
+      let p = 0;
+      while (p < line.length && (line.charCodeAt(p) === 32 || line.charCodeAt(p) === 9)) p++;
+      const c0 = line.charCodeAt(p);
+      const c1 = line.charCodeAt(p + 1);
+      // 'v' + space → vertex
+      if (c0 === 118 && (c1 === 32 || c1 === 9)) {
+        const parts = line.substring(p + 2).trim().split(/\s+/);
+        const x = +parts[0], y = +parts[1], z = +parts[2];
+        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+          pushVertex(x, y, z);
+        }
+      } else if (c0 === 102 && (c1 === 32 || c1 === 9)) {
+        // 'f' + space → face
+        faceIdx.length = 0;
+        const parts = line.substring(p + 2).trim().split(/\s+/);
+        for (const tok of parts) {
+          const slash = tok.indexOf("/");
+          const n = parseInt(slash === -1 ? tok : tok.substring(0, slash), 10);
+          if (Number.isFinite(n)) faceIdx.push(n < 0 ? vCount + n + 1 : n);
+        }
+        for (let k = 1; k < faceIdx.length - 1; k++) {
+          pushTri(faceIdx[0], faceIdx[k], faceIdx[k + 1]);
         }
       }
     }
+    lineStart = i + 1;
   }
 
-  if (verts.length === 0 || tris.length === 0) {
+  if (vCount === 0 || tCount === 0) {
     throw new Error("OBJ has no usable vertices or faces.");
   }
 
-  const out: string[] = ["solid converted"];
-  for (const [a, b, c] of tris) {
-    const va = verts[a - 1], vb = verts[b - 1], vc = verts[c - 1];
-    if (!va || !vb || !vc) continue;
-    // Face normal via cross product.
-    const ux = vb[0] - va[0], uy = vb[1] - va[1], uz = vb[2] - va[2];
-    const vx = vc[0] - va[0], vy = vc[1] - va[1], vz = vc[2] - va[2];
-    let nx = uy * vz - uz * vy;
-    let ny = uz * vx - ux * vz;
-    let nz = ux * vy - uy * vx;
-    const len = Math.hypot(nx, ny, nz) || 1;
-    nx /= len; ny /= len; nz /= len;
-    out.push(`facet normal ${nx} ${ny} ${nz}`);
-    out.push("  outer loop");
-    out.push(`    vertex ${va[0]} ${va[1]} ${va[2]}`);
-    out.push(`    vertex ${vb[0]} ${vb[1]} ${vb[2]}`);
-    out.push(`    vertex ${vc[0]} ${vc[1]} ${vc[2]}`);
-    out.push("  endloop");
-    out.push("endfacet");
+  // Allocate binary STL: 80 header + 4 count + 50 per tri.
+  const out = new Uint8Array(84 + tCount * 50);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(80, tCount, true);
+  let off = 84;
+  for (let t = 0; t < tCount; t++) {
+    const o = t * 3;
+    const ai = tris[o] - 1, bi = tris[o + 1] - 1, ci = tris[o + 2] - 1;
+    if (ai < 0 || bi < 0 || ci < 0 || ai >= vCount || bi >= vCount || ci >= vCount) {
+      // Skip malformed; still need to write a placeholder to keep count consistent.
+      // Easier: zero triangle (degenerate) — repair will drop it.
+      off += 50;
+      continue;
+    }
+    const ax = vx[ai], ay = vy[ai], az = vz[ai];
+    const bx = vx[bi], by = vy[bi], bz_ = vz[bi];
+    const cx = vx[ci], cy = vy[ci], cz = vz[ci];
+    const ux = bx - ax, uy = by - ay, uz = bz_ - az;
+    const vvx = cx - ax, vvy = cy - ay, vvz = cz - az;
+    let nx = uy * vvz - uz * vvy;
+    let ny = uz * vvx - ux * vvz;
+    let nz = ux * vvy - uy * vvx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    dv.setFloat32(off, nx, true); dv.setFloat32(off + 4, ny, true); dv.setFloat32(off + 8, nz, true);
+    dv.setFloat32(off + 12, ax, true); dv.setFloat32(off + 16, ay, true); dv.setFloat32(off + 20, az, true);
+    dv.setFloat32(off + 24, bx, true); dv.setFloat32(off + 28, by, true); dv.setFloat32(off + 32, bz_, true);
+    dv.setFloat32(off + 36, cx, true); dv.setFloat32(off + 40, cy, true); dv.setFloat32(off + 44, cz, true);
+    // attribute byte count (uint16) at off+48 stays 0
+    off += 50;
   }
-  out.push("endsolid converted");
-  return out.join("\n");
+  return out;
 }
