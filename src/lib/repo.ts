@@ -204,6 +204,33 @@ export function useCarStlForTemplate(carTemplateId: string | undefined | null) {
   });
 }
 
+/** Resolve the hero STL for a project via its car.template_id, avoiding stale nested project data. */
+export function useHeroStlForProject(projectId: string | undefined | null) {
+  return useQuery({
+    queryKey: ["hero_stl_for_project", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("car:cars(template_id)")
+        .eq("id", projectId!)
+        .maybeSingle();
+      if (projectError) throw projectError;
+
+      const templateId = (project as { car?: { template_id?: string | null } | null } | null)?.car?.template_id;
+      if (!templateId) return null;
+
+      const { data, error } = await supabase
+        .from("car_stls")
+        .select("*")
+        .eq("car_template_id", templateId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as CarStl | null;
+    },
+  });
+}
+
 /**
  * Create a short-lived signed URL for a private object in the `car-stls` bucket.
  * The repaired path is preferred when present; falls back to the raw path.

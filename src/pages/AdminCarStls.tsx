@@ -197,6 +197,7 @@ function CarStlsInner({ userId }: { userId: string }) {
       const stats = (data as any)?.stats;
       qc.invalidateQueries({ queryKey: ["car_stls"] });
       qc.invalidateQueries({ queryKey: ["car_stl_for_template", row.car_template_id] });
+      qc.invalidateQueries({ queryKey: ["hero_stl_for_project"] });
       toast({
         title: stats?.manifold ? "Repair complete · manifold" : "Repair complete · warning: non-manifold",
         description: stats
