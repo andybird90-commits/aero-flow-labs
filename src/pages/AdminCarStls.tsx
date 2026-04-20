@@ -10,23 +10,32 @@
  */
 import { useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { z } from "zod";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useIsAdmin, useCarStls, useUpsertCarStl, useDeleteCarStl, useUpdateCarStlAxis,
-  useCarTemplates, type CarStl, type CarTemplate,
+  useCarTemplates, useCreateCarTemplate, type CarStl, type CarTemplate,
 } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox,
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const newTemplateSchema = z.object({
+  make: z.string().trim().min(1, "Make required").max(60),
+  model: z.string().trim().min(1, "Model required").max(60),
+  trim: z.string().trim().max(60).optional().or(z.literal("")),
+  yearRange: z.string().trim().max(20).optional().or(z.literal("")),
+});
 
 const FORWARD_AXES = [
   { value: "-z", label: "−Z forward (default, three.js / glTF)" },
@@ -80,14 +89,43 @@ function CarStlsInner({ userId }: { userId: string }) {
   const upsert = useUpsertCarStl();
   const del = useDeleteCarStl();
   const updateAxis = useUpdateCarStlAxis();
+  const createTemplate = useCreateCarTemplate();
 
   const [pendingTemplateId, setPendingTemplateId] = useState<string>("");
   const [pendingAxis, setPendingAxis] = useState<string>("-z");
   const [repairing, setRepairing] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Inline new-template form state.
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [newMake, setNewMake] = useState("");
+  const [newModel, setNewModel] = useState("");
+  const [newTrim, setNewTrim] = useState("");
+  const [newYear, setNewYear] = useState("");
+
   const usedTemplateIds = useMemo(() => new Set(rows.map((r) => r.car_template_id)), [rows]);
   const availableTemplates = templates.filter((t) => !usedTemplateIds.has(t.id));
+
+  const submitNewTemplate = async () => {
+    const parsed = newTemplateSchema.safeParse({
+      make: newMake, model: newModel, trim: newTrim, yearRange: newYear,
+    });
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      toast({ title: "Check the form", description: first.message, variant: "destructive" });
+      return;
+    }
+    try {
+      const created = await createTemplate.mutateAsync(parsed.data);
+      toast({ title: "Template added", description: `${created.make} ${created.model} is ready for an STL.` });
+      setPendingTemplateId(created.id);
+      setShowNewForm(false);
+      setNewMake(""); setNewModel(""); setNewTrim(""); setNewYear("");
+    } catch (e: any) {
+      toast({ title: "Couldn’t add template", description: String(e.message ?? e), variant: "destructive" });
+    }
+  };
+
 
   const onPickFile = async (file: File) => {
     if (!pendingTemplateId) {
@@ -149,14 +187,48 @@ function CarStlsInner({ userId }: { userId: string }) {
 
       {/* Upload card */}
       <div className="glass rounded-xl p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Upload className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-semibold tracking-tight">Add a hero STL</h3>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Upload className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold tracking-tight">Add a hero STL</h3>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowNewForm((s) => !s)}
+            className="text-mono text-[10px] uppercase tracking-widest"
+          >
+            {showNewForm ? <><X className="mr-1 h-3 w-3" /> Cancel</> : <><Plus className="mr-1 h-3 w-3" /> New template</>}
+          </Button>
         </div>
+
+        {showNewForm && (
+          <div className="rounded-lg border border-border bg-surface-1/50 p-3 space-y-2">
+            <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Add any car — make &amp; model required
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input placeholder="Make (e.g. BMW)" value={newMake} onChange={(e) => setNewMake(e.target.value)} maxLength={60} />
+              <Input placeholder="Model (e.g. M3)" value={newModel} onChange={(e) => setNewModel(e.target.value)} maxLength={60} />
+              <Input placeholder="Trim (optional, e.g. Competition)" value={newTrim} onChange={(e) => setNewTrim(e.target.value)} maxLength={60} />
+              <Input placeholder="Year range (optional, e.g. 2021-2024)" value={newYear} onChange={(e) => setNewYear(e.target.value)} maxLength={20} />
+            </div>
+            <div className="flex justify-end">
+              <Button variant="hero" size="sm" onClick={submitNewTemplate} disabled={createTemplate.isPending}>
+                {createTemplate.isPending ? (
+                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Adding…</>
+                ) : (
+                  <><Plus className="mr-1.5 h-3.5 w-3.5" /> Add template</>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-[1fr_220px_auto]">
           <Select value={pendingTemplateId} onValueChange={setPendingTemplateId}>
             <SelectTrigger>
-              <SelectValue placeholder={availableTemplates.length ? "Choose car template…" : "All templates have an STL"} />
+              <SelectValue placeholder={availableTemplates.length ? "Choose car template…" : "All templates have an STL — add a new one"} />
             </SelectTrigger>
             <SelectContent>
               {availableTemplates.map((t) => (
