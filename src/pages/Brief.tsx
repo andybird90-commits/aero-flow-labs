@@ -190,14 +190,25 @@ function BriefInner({ projectId }: { projectId: string }) {
       </div>
 
       <div className="glass rounded-xl p-5 space-y-3">
-        <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Styling direction {activePreset ? "(car-specific addendum)" : ""}
-        </label>
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Styling direction {activePreset ? "(optional addendum)" : ""}
+          </label>
+          {activePreset && (
+            <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground/70">
+              Preset covers the styling — leave blank or add car-specific notes
+            </span>
+          )}
+        </div>
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. Sharp time-attack package inspired by late-90s GT cars. Big front splitter with side canards, wide arches but tasteful, clean side skirts, tall single-element rear wing on swan-neck mounts. Keep the factory headlights and shut lines."
-          rows={6}
+          placeholder={
+            activePreset
+              ? "Optional — anything car-specific to add on top of the preset (e.g. keep the factory headlights, no bonnet vents)."
+              : "e.g. Sharp time-attack package inspired by late-90s GT cars. Big front splitter with side canards, wide arches but tasteful, clean side skirts, tall single-element rear wing on swan-neck mounts. Keep the factory headlights and shut lines."
+          }
+          rows={activePreset ? 4 : 6}
           className="bg-surface-1 border-border"
         />
       </div>
