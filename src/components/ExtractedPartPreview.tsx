@@ -647,12 +647,32 @@ export function ExtractedPartPreview({
           </div>
         )}
 
-        {/* READY: GLB viewer */}
+        {/* READY: split panel — original concept on the left, 3D mesh on the right */}
         {stage === "ready" && (
-          <div
-            ref={mountRef}
-            className="w-full aspect-[4/3] rounded-md border border-border bg-surface-0 overflow-hidden"
-          />
+          <div className="flex-1 min-h-0 grid gap-2 md:grid-cols-2">
+            <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
+              {sourceImageUrl ? (
+                <img
+                  src={sourceImageUrl}
+                  alt="Original part on car"
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="text-xs text-muted-foreground font-mono uppercase tracking-widest">
+                  No reference image
+                </div>
+              )}
+              <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+                On car
+              </span>
+            </div>
+            <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden">
+              <div ref={mountRef} className="w-full h-full" />
+              <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+                3D mesh
+              </span>
+            </div>
+          </div>
         )}
 
         {/* ERROR */}
