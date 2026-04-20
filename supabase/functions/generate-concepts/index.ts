@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
     }
 
     try {
-      for (const v of VARIATIONS) {
+      for (const v of variations) {
         const frontAngle = ANGLES[0];
         const otherAngles = ANGLES.slice(1);
 
