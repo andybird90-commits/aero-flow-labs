@@ -418,7 +418,11 @@ function ConceptCard({
       concept.status === "approved" && "border-success/40 ring-1 ring-success/20",
       concept.status === "rejected" && "opacity-50",
     )}>
-      <div className="relative aspect-[4/3] bg-surface-2 grid-bg-fine">
+      <div
+        className="relative aspect-[4/3] bg-surface-2 grid-bg-fine group"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
         {renderViewer("card")}
       </div>
       <div className="p-3 flex-1 space-y-2">
