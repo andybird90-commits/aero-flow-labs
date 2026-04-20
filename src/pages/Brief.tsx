@@ -65,27 +65,76 @@ function BriefInner({ projectId }: { projectId: string }) {
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   };
 
+  const persist = async () => {
+    if (!user) return null;
+    const allConstraints = [...constraints];
+    if (customConstraint.trim()) allConstraints.push(customConstraint.trim());
+    const saved = await upsert.mutateAsync({
+      userId: user.id,
+      projectId,
+      id: brief?.id,
+      patch: {
+        prompt,
+        style_tags: styleTags,
+        build_type: buildType || null,
+        constraints: allConstraints,
+        rights_confirmed: rights,
+      },
+    });
+    setCustomConstraint("");
+    return saved;
+  };
+
   const save = async () => {
-    if (!user) return;
     try {
-      const allConstraints = [...constraints];
-      if (customConstraint.trim()) allConstraints.push(customConstraint.trim());
-      await upsert.mutateAsync({
-        userId: user.id,
-        projectId,
-        id: brief?.id,
-        patch: {
-          prompt,
-          style_tags: styleTags,
-          build_type: buildType || null,
-          constraints: allConstraints,
-          rights_confirmed: rights,
-        },
-      });
-      setCustomConstraint("");
+      await persist();
       toast({ title: "Brief saved" });
     } catch (e: any) {
       toast({ title: "Couldn't save brief", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const continueToConcepts = async () => {
+    if (!prompt.trim() || !user) return;
+    setContinuing(true);
+    try {
+      const saved = await persist();
+      const briefId = (saved as any)?.id ?? brief?.id;
+      if (!briefId) throw new Error("Could not save brief");
+
+      // Navigate immediately so the user sees concepts appear as they generate.
+      navigate(`/concepts?project=${projectId}`);
+
+      // Kick off generation in the background — the Concepts page polls/refetches.
+      supabase.functions
+        .invoke("generate-concepts", {
+          body: {
+            project_id: projectId,
+            brief_id: briefId,
+            snapshot_data_url: null,
+            snapshots: {},
+          },
+        })
+        .then(({ data, error }) => {
+          if (error || (data as any)?.error) {
+            toast({
+              title: "Generation failed",
+              description: String(error?.message ?? (data as any)?.error ?? "Unknown error"),
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Concepts generated",
+              description: `${(data as any)?.count ?? "Several"} concept variations created.`,
+            });
+          }
+        });
+
+      toast({ title: "Generating concepts…", description: "This usually takes 20–40 seconds." });
+    } catch (e: any) {
+      toast({ title: "Couldn't continue", description: e.message, variant: "destructive" });
+    } finally {
+      setContinuing(false);
     }
   };
 
