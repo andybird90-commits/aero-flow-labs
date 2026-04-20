@@ -74,7 +74,6 @@ Deno.serve(async (req) => {
       .from("car_stls").select("*").eq("car_template_id", templateId).maybeSingle();
     if (sErr || !stlRow) return json({ error: "Hero STL not uploaded for this car" }, 400);
     if (!stlRow.repaired_stl_path) return json({ error: "Hero STL not repaired yet" }, 400);
-    if (!stlRow.manifold_clean) return json({ error: "Hero STL is non-manifold; boolean kit disabled" }, 400);
 
     await admin.from("concepts").update({ aero_kit_status: "displacing", aero_kit_error: null }).eq("id", concept.id);
 
