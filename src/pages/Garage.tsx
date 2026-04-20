@@ -72,7 +72,7 @@ export default function Garage() {
       await generate.mutateAsync(car.id);
       toast({
         title: "Car added",
-        description: "Generating 4 reference views… this takes ~30s.",
+        description: "Generating 6 reference views… this takes ~45s.",
       });
     } catch (e: any) {
       toast({ title: "Couldn't add car", description: e.message, variant: "destructive" });
@@ -82,7 +82,7 @@ export default function Garage() {
   const handleRegenerate = async (id: string) => {
     try {
       await generate.mutateAsync(id);
-      toast({ title: "Regenerating views", description: "Hang tight — ~30s." });
+      toast({ title: "Regenerating views", description: "Hang tight — ~45s." });
     } catch (e: any) {
       toast({ title: "Regenerate failed", description: e.message, variant: "destructive" });
     }
@@ -243,10 +243,12 @@ function CarCard({
     status === "generating" ? "simulating" : "neutral";
 
   const views = [
-    { url: car.ref_front34_url, label: "Front 3/4" },
-    { url: car.ref_side_url,    label: "Side" },
-    { url: car.ref_rear34_url,  label: "Rear 3/4" },
-    { url: car.ref_rear_url,    label: "Rear" },
+    { url: car.ref_front_url,          label: "Front" },
+    { url: car.ref_front34_url,        label: "Front 3/4" },
+    { url: car.ref_side_url,           label: "Side" },
+    { url: car.ref_side_opposite_url,  label: "Side (opp)" },
+    { url: car.ref_rear34_url,         label: "Rear 3/4" },
+    { url: car.ref_rear_url,           label: "Rear" },
   ];
 
   return (
