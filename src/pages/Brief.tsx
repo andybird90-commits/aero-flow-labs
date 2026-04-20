@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useBrief, useUpsertBrief, useStylePresets, useCarTemplates, useCreateProjectWithStyle, type DesignBrief } from "@/lib/repo";
+import { useBrief, useUpsertBrief, useStylePresets, type DesignBrief } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette, Sparkles, Car as CarIcon, Check } from "lucide-react";
+import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
