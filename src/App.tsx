@@ -41,6 +41,7 @@ const App = () => (
             <Route path="/upload" element={<Navigate to="/brief" replace />} />
             <Route path="/brief" element={<ProtectedRoute><Brief /></ProtectedRoute>} />
             <Route path="/concepts" element={<ProtectedRoute><Concepts /></ProtectedRoute>} />
+            <Route path="/styles" element={<ProtectedRoute><Styles /></ProtectedRoute>} />
             <Route path="/parts" element={<Navigate to="/concepts" replace />} />
             <Route path="/refine" element={<Navigate to="/concepts" replace />} />
             <Route path="/library" element={<Navigate to="/concepts" replace />} />

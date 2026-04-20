@@ -20,11 +20,15 @@ import {
   Settings,
   Hexagon,
   FileBox,
+  Palette,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/lib/repo";
 
-const projectsNav = [{ title: "Projects", url: "/projects", icon: LayoutGrid }];
+const projectsNav = [
+  { title: "Projects", url: "/projects", icon: LayoutGrid },
+  { title: "Styles", url: "/styles", icon: Palette },
+];
 
 const studioNav = [
   { title: "Design Brief", url: "/brief", icon: FileText },
