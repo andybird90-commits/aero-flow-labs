@@ -103,7 +103,7 @@ function BriefInner({ projectId }: { projectId: string }) {
   };
 
   const continueToConcepts = async () => {
-    if (!prompt.trim() || !user) return;
+    if ((!prompt.trim() && !stylePresetId) || !user) return;
     setContinuing(true);
     try {
       const saved = await persist();
