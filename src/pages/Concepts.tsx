@@ -3,7 +3,11 @@ import { Link } from "react-router-dom";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
-import { useBrief, useConcepts, useUpdateConcept, useDeleteConcept, type Concept } from "@/lib/repo";
+import {
+  useBrief, useConcepts, useUpdateConcept, useDeleteConcept,
+  useBuildAeroKit, useAeroKitStatus, useCarStlForTemplate, type Concept,
+} from "@/lib/repo";
+import { AeroKitProgress, type AeroKitStatus } from "@/components/AeroKitProgress";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
