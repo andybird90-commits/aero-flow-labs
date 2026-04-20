@@ -39,6 +39,7 @@ export default function Brief() {
 function BriefInner({ projectId }: { projectId: string }) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { data: brief } = useBrief(projectId);
   const upsert = useUpsertBrief();
 
@@ -48,6 +49,7 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [constraints, setConstraints] = useState<string[]>([]);
   const [customConstraint, setCustomConstraint] = useState("");
   const [rights, setRights] = useState(false);
+  const [continuing, setContinuing] = useState(false);
 
   useEffect(() => {
     if (brief) {
