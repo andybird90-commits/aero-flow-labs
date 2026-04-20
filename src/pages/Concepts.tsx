@@ -381,7 +381,7 @@ function ConceptCard({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); goNext(); }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 grid place-items-center h-9 w-9 rounded-full bg-surface-0/80 backdrop-blur border border-border text-muted-foreground hover:text-foreground hover:bg-surface-0 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 grid place-items-center h-9 w-9 rounded-full bg-surface-0/80 backdrop-blur border border-border text-muted-foreground hover:text-foreground hover:bg-surface-0 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 group-[.is-zoom]:opacity-100"
             aria-label="Next angle"
             title="Next angle (→)"
           >
