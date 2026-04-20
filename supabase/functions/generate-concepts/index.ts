@@ -197,32 +197,17 @@ Deno.serve(async (req) => {
           .eq("id", gcId)
           .maybeSingle();
         if (gc) {
-          const fetchAsDataUrl = async (u: string | null): Promise<string | null> => {
-            if (!u) return null;
-            try {
-              const r = await fetch(u);
-              if (!r.ok) return null;
-              const buf = new Uint8Array(await r.arrayBuffer());
-              const mime = r.headers.get("content-type") ?? "image/png";
-              let s = "";
-              for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
-              return `data:${mime};base64,${btoa(s)}`;
-            } catch { return null; }
-          };
-          const [fr, f34, s, sOpp, r34, r] = await Promise.all([
-            fetchAsDataUrl((gc as any).ref_front_url),
-            fetchAsDataUrl((gc as any).ref_front34_url),
-            fetchAsDataUrl((gc as any).ref_side_url),
-            fetchAsDataUrl((gc as any).ref_side_opposite_url),
-            fetchAsDataUrl((gc as any).ref_rear34_url),
-            fetchAsDataUrl((gc as any).ref_rear_url),
-          ]);
-          if (fr)   garageRefs.front = fr;
-          if (f34)  garageRefs.front_three_quarter = f34;
-          if (s)    garageRefs.side = s;
-          if (sOpp) garageRefs.side_opposite = sOpp;
-          if (r34)  garageRefs.rear_three_quarter = r34;
-          if (r)    garageRefs.rear = r;
+          // Pass the public bucket URLs straight to the AI gateway. We used to
+          // fetch + base64 each one here, which burned 6 round-trips and several
+          // MB of memory before the first AI call — pushing the worker past its
+          // CPU/wall-time budget (WORKER_RESOURCE_LIMIT). The gateway accepts
+          // https URLs in image_url.url, so this is a no-op for quality.
+          if ((gc as any).ref_front_url)          garageRefs.front               = (gc as any).ref_front_url;
+          if ((gc as any).ref_front34_url)        garageRefs.front_three_quarter = (gc as any).ref_front34_url;
+          if ((gc as any).ref_side_url)           garageRefs.side                = (gc as any).ref_side_url;
+          if ((gc as any).ref_side_opposite_url)  garageRefs.side_opposite       = (gc as any).ref_side_opposite_url;
+          if ((gc as any).ref_rear34_url)         garageRefs.rear_three_quarter  = (gc as any).ref_rear34_url;
+          if ((gc as any).ref_rear_url)           garageRefs.rear                = (gc as any).ref_rear_url;
           console.log("generate-concepts: using garage car refs =", Object.keys(garageRefs));
         }
       }
