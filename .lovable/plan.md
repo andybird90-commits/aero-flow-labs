@@ -1,86 +1,81 @@
 
 
-## Real-STL displacement pipeline (aero kit from ground-truth body)
+## Make the workflow runnable: displacement + boolean + trigger UI
 
-You have real STLs for a handful of hero cars and they're "messy but full". Best move: **start from your real STL and push its surface outward where the concept image shows aero.** No alignment problem (the STL is already the truth), no manifold roulette between two AI meshes, and the kit's mating face is panel-accurate by construction.
-
-### How it works
-
-```text
-Hero car STL (ground truth) ──► repair/normalise ──► oriented base mesh
-                                                            │
-Approved concept (4 angles) ──► silhouette + depth maps ────┤
-                                                            ▼
-                                               Surface displacement
-                                          (push base outward where the
-                                           concept silhouette extends
-                                           beyond the stock body)
-                                                            │
-                                                            ▼
-                                            displaced.stl (full aero car)
-                                                            │
-                              boolean: displaced − base_dilated(2mm)
-                                                            ▼
-                                             aero_kit.stl (printable shell)
-                                                            │
-                                                            ▼
-                                       split into connected components
-                                       → splitter / wing / arches / etc.
-```
-
-The displacement step replaces "two independent AI meshes" (the hard problem) with "one known mesh nudged outward" (a tractable problem).
+Goal: turn the existing pieces into a one-click flow. After approving a concept, click **Build aero kit from real STL** and get a downloadable kit on the Library page.
 
 ### What gets built
 
-**1. Hero-car STL library**
-- New `car_stls` table linking `car_template_id` → STL in a new private `car-stls` bucket, with metadata (orientation axis, wheelbase reference points, "manifold-clean" flag).
-- A small admin page (`/settings/car-stls`, gated by `admin` role you already have) to upload an STL per template, set its forward axis, and run a one-click repair pass.
-- Repair pass = edge function `repair-car-stl`: vertex weld, hole-fill, normal-orient, optional decimation to ~200k tris. Saves a `repaired_stl_path` next to the original so the source stays untouched.
+**1. Edge function: `displace-stl-to-concept`**
+- Input: `concept_id`. Resolves project → car_template → repaired hero STL.
+- Loads stock STL, subdivides front-bumper / rear-bumper / arches / underfloor zones to ~5 mm spacing so wings and lips have surface to push into.
+- Headlessly renders the STL silhouette from the same 4 fixed cameras the concept generator uses (reuses `src/lib/stl-render.ts` logic, ported to Deno + a server-side rasteriser).
+- Computes per-view "aero delta" mask = pixels where the concept silhouette extends past the stock silhouette.
+- Back-projects each delta into 3D and applies a bounded outward displacement (cap 120 mm) to base vertices whose camera-space projection falls inside the delta mask.
+- Writes `displaced.stl` to the `car-stls` bucket under `displaced/{concept_id}.stl`.
+- Updates `concepts.aero_kit_status = 'displaced'`.
 
-**2. New edge function: `displace-stl-to-concept`**
-- Input: `concept_id` (we already know the project → car_template → STL).
-- Loads repaired hero STL.
-- Renders the STL from the same 4 camera angles your concept renders use (front, rear, side, rear-3/4) at known intrinsics → produces stock silhouettes/depth.
-- Computes per-view "aero delta" = where the concept silhouette extends beyond the stock silhouette (splitter lip, wing, flares, ducktail kick, skirt drop).
-- Back-projects each delta into 3D and applies it as a **bounded outward displacement** on the base STL's vertices (capped at e.g. 120 mm so glitches can't blow up the mesh).
-- Outputs `displaced.stl`.
+**2. Edge function: `subtract-aero-kit`**
+- Input: `concept_id`. Loads `displaced.stl` + repaired stock STL.
+- Uses **manifold-3d** (WASM) to compute `displaced − dilate(stock, 2 mm)`.
+- Cleans: drops fragments < 50 cm³, welds, runs existing Laplacian smoother.
+- Splits result into connected components.
+- Classifies each by bbox position (front-low → splitter, rear-high → wing, rear-low → diffuser, side-low → side_skirt, over wheel → wide_arch, mid-rear → ducktail).
+- Uploads combined `aero_kit.stl` and per-part STLs.
+- Inserts a `concept_parts` row per component with `source: 'boolean'` and the classified `kind`.
+- Sets `concepts.aero_kit_url` + `aero_kit_status = 'ready'`. On any failure, writes `aero_kit_status = 'failed'` + `aero_kit_error`.
 
-**3. New edge function: `subtract-aero-kit`**
-- Input: `concept_id`. Loads `displaced.stl` and the repaired base STL.
-- Runs `displaced − dilate(base, 2mm)` via **manifold-3d** (WASM) — works reliably here because both meshes share topology lineage; no ICP gymnastics.
-- Removes fragments < 50 cm³, welds, smooths (existing Laplacian pass).
-- Splits remaining geometry into connected components and classifies each by bounding-box position (front/rear/side/roof/under) into your existing part kinds (`splitter`, `diffuser`, `side_skirt`, `wide_arch`, `wing`, `ducktail`, `bonnet_vent`).
-- Saves combined `aero_kit.stl` plus per-part STLs as `concept_parts` rows tagged `source: 'boolean'`.
+**3. Orchestrator edge function: `build-aero-kit`**
+- Single entry point the UI calls. Runs `displace-stl-to-concept` → `subtract-aero-kit` sequentially, updating `aero_kit_status` after each step (`displacing` → `subtracting` → `splitting` → `ready`).
+- Refuses to run if the hero STL is missing or `manifold_clean = false`, returning a clear reason.
 
-**4. UI changes**
-- **Concepts page**: approval action becomes "Approve → Build kit from real STL" when the project's car has a `car_stls` entry. Shows a 3-step progress strip: `Displace`, `Subtract`, `Split`. Falls back to the existing per-part extraction flow when no hero STL exists for that car.
-- **Library page**: new "Aero kit (boolean)" section showing the combined kit and each split component, with a per-part "source" badge (`Boolean` / `Extracted` / `Parametric`).
-- **Parts page**: keeps the parametric kit. Adds a `Source: parametric / boolean` toggle so you can flip between the dial-tweakable parametric version and the AI-extracted real-shape one.
-- **Exports**: gains "Full aero kit (single STL)" alongside per-part files.
+**4. UI: trigger on the Concepts page**
+- For each concept card, when the project's car has a `manifold_clean` hero STL:
+  - Show a new **Build aero kit from real STL** button next to the existing **Approve** action.
+  - Clicking it calls `build-aero-kit` and shows a 3-step progress strip: `Displace · Subtract · Split` with the current step highlighted (driven by polling `aero_kit_status`).
+  - On `ready`, show **View kit in Library** linking to `/library?project=...`.
+  - On `failed`, show the error and a **Retry** button.
+- When no hero STL exists, the button is replaced with a tooltip: "Upload a hero STL for this car (admin) to enable boolean kit generation."
 
-**5. Schema additions** (one migration)
-- New table `car_stls` (`id`, `car_template_id`, `user_id`, `stl_path`, `repaired_stl_path`, `forward_axis`, `manifold_clean bool`, timestamps).
-- New private bucket `car-stls` with admin-write / authenticated-read RLS.
-- `concepts.aero_kit_url text`, `concepts.aero_kit_status text`, `concepts.aero_kit_error text`.
-- `concept_parts.source text default 'extracted'` (`parametric` | `extracted` | `boolean`).
+**5. UI: Library page additions**
+- New **Aero kit (boolean)** section above the existing parts grid, visible only when `concepts.aero_kit_url` is set.
+- Shows the combined kit in a `PartMeshViewer` plus each split component as its own card with a `Boolean` source badge (orange) alongside existing `Extracted` (blue) and `Parametric` (green) badges.
+- Per-component download + delete; combined-kit download.
 
-### Trade-offs to know
+**6. UI: source badges + filter**
+- Add a small `Source: All / Parametric / Extracted / Boolean` filter chip row at the top of the Library parts grid.
+- Existing parts get badges based on their `source` column (already in schema).
 
-- **Repair quality matters more than anything else.** Your STLs are "messy but full" — the repair pass needs to actually produce a manifold or the boolean step throws. Built-in fallback: if repair can't reach manifold, we mark the STL `manifold_clean: false` and the boolean flow refuses to run for that car (the per-part extraction flow still works, so users aren't blocked).
-- **Camera registration.** The displacement step assumes the concept renders are taken with predictable cameras — they are today (your 4-angle generator uses fixed framings), so this is fine, but any change to that framing breaks displacement until re-tuned.
-- **Resolution.** Per-vertex displacement is only as fine as the base STL's tessellation around aero hotspots. We pre-subdivide front bumper / rear bumper / arches / underfloor regions to ~5 mm spacing before displacing so wings and lips have surface to push out.
-- **Pose drift between concept and STL.** Concept renderer uses the same orientation conventions as the STL (forward = -Z). We expose `forward_axis` on `car_stls` so cars exported from different DCC tools can be corrected without re-uploading.
+### Files touched
 
-### Rollout order
+```text
+supabase/functions/
+  displace-stl-to-concept/index.ts      (new)
+  subtract-aero-kit/index.ts            (new)
+  build-aero-kit/index.ts               (new orchestrator)
+  _shared/stl-render-server.ts          (new — Deno-side silhouette rasteriser)
+  _shared/stl-subdivide.ts              (new — zone-targeted subdivision)
+  _shared/stl-classify.ts               (new — bbox-zone → part kind)
 
-1. `car_stls` table + bucket + admin upload page + `repair-car-stl` edge function. (Foundation — get one hero car cleanly imported end-to-end.)
-2. Render-from-STL helper (re-uses your existing 3D renderer headlessly) so you can see the stock silhouette next to the concept silhouette as a sanity check before any displacement runs.
-3. `displace-stl-to-concept` + viewer for the displaced mesh on the Library page.
-4. `subtract-aero-kit` + connected-component split + per-part classification.
-5. Concepts/Parts/Library/Exports UI wiring + `source` toggle.
+src/lib/repo.ts                         (+ useBuildAeroKit, useAeroKitStatus poll)
+src/pages/Concepts.tsx                  (+ build-kit button, progress strip)
+src/pages/Library.tsx                   (+ aero-kit section, source filter)
+src/components/AeroKitProgress.tsx      (new — 3-step strip)
+src/components/SourceBadge.tsx          (new)
+```
 
-### What this does not change
+No schema changes — `aero_kit_status / url / error` and `concept_parts.source` already exist.
 
-- Per-part extraction (`extract-part-from-concept`) and the parametric kit both stay. The boolean flow is purely additive — it lights up when the project's car has a hero STL, and you can ignore it otherwise.
-- Meshy/Rodin choice for per-part extraction is a separate decision; this plan doesn't depend on it.
+### Trade-offs
+
+- **manifold-3d in Deno**: runs as WASM in edge functions, ~3 MB cold-start cost. Acceptable for a click-triggered flow, not for per-keystroke UX. The orchestrator will be 5–30 s end-to-end depending on STL size.
+- **Server-side silhouette render**: needs a software rasteriser (no WebGL in Deno). We'll project triangles and rasterise depth on a 1024×1024 buffer per camera — pure TS, ~1 s per view, no native deps.
+- **Repair fallback**: if a stock STL fails to reach manifold, the build button stays disabled rather than running and crashing inside manifold-3d. Per-part extraction (existing flow) remains the fallback path.
+
+### How you'll use it after this lands
+
+1. (Already done) Upload + repair hero STL on `/settings/car-stls`.
+2. Generate concepts on `/concepts`, approve the one you like.
+3. Click **Build aero kit from real STL** on that concept card.
+4. Watch the 3-step strip; on `ready`, click through to **Library** to download `aero_kit.stl` or any individual split part.
 
