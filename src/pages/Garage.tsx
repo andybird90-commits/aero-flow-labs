@@ -98,7 +98,7 @@ export default function Garage() {
             </div>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Garage</h1>
             <p className="mt-1.5 text-muted-foreground">
-              Your OEM reference cars. The AI uses these 4 views as the identity
+              Your OEM reference cars. The AI uses these 6 views as the identity
               anchor whenever a linked project generates concepts.
             </p>
           </div>
@@ -147,7 +147,7 @@ export default function Garage() {
           <DialogHeader>
             <DialogTitle>Add a car to your garage</DialogTitle>
             <DialogDescription>
-              The AI will generate 4 canonical views from your description.
+              The AI will generate 6 canonical views from your description.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
@@ -261,7 +261,7 @@ function CarCard({
         <StatusChip tone={tone as any} size="sm">{status}</StatusChip>
       </div>
 
-      <div className="grid grid-cols-2 gap-px bg-border">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-border">
         {views.map((v) => (
           <div key={v.label} className="aspect-video bg-surface-2 relative">
             {v.url ? (
