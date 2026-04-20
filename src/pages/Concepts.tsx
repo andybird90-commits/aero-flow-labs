@@ -46,7 +46,14 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const heroReady = !!heroStl?.repaired_stl_path;
   const heroNonManifold = heroReady && !heroStl?.manifold_clean;
 
-  const hasBrief = !!(brief?.prompt && brief.prompt.trim().length > 10);
+  const hasPromptText = !!(brief?.prompt && brief.prompt.trim().length > 10);
+  const hasStylePresetText = !!(activePreset?.prompt && activePreset.prompt.trim().length > 10);
+  const hasStyleTags =
+    ((brief?.style_tags?.length ?? 0) > 0) ||
+    ((activePreset?.style_tags?.length ?? 0) > 0);
+  // A brief is "ready" if there's a written prompt, an attached style preset
+  // with its own description, or at least one style tag selected.
+  const hasBrief = hasPromptText || hasStylePresetText || hasStyleTags;
 
   const generate = async () => {
     if (!user || !brief) return;
