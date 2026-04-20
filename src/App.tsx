@@ -16,6 +16,7 @@ import Brief from "./pages/Brief";
 import Concepts from "./pages/Concepts";
 import Settings from "./pages/Settings";
 import AdminCarStls from "./pages/AdminCarStls";
+import Styles from "./pages/Styles";
 
 function RealtimeBridge() {
   const { user } = useAuth();
