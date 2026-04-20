@@ -51,9 +51,7 @@ const App = () => (
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/settings/car-stls" element={<ProtectedRoute><AdminCarStls /></ProtectedRoute>} />
 
-            <Route path="/garage" element={<ProtectedRoute><Garage /></ProtectedRoute>} />
-            {/* Legacy redirects (note: /garage above is the real Garage page) */}
-            <Route path="/garage" element={<Navigate to="/projects" replace />} />
+            {/* Legacy redirects */}
             <Route path="/build" element={<Navigate to="/projects" replace />} />
             <Route path="/geometry" element={<Navigate to="/brief" replace />} />
             <Route path="/simulation" element={<Navigate to="/concepts" replace />} />
