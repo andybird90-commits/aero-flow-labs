@@ -16,6 +16,7 @@
  *   { action: "status", concept_id, part_kind, task_id }
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { smoothStl } from "../_shared/stl-smooth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -76,14 +77,16 @@ Deno.serve(async (req) => {
         return json({ error: "image_urls required" }, 400);
       }
       // Use multi-image-to-3d when we have >1 angle, else single.
+      // Quad topology @ 50k polys produces much smoother flowing surfaces than
+      // triangle @ 30k — fewer faceted lumps on diffuser fins / splitter edges.
       const useMulti = image_urls.length > 1;
       const endpoint = useMulti ? MESHY_MULTI : MESHY_SINGLE;
       const payload = useMulti
         ? {
             image_urls,
             ai_model: "meshy-6",
-            topology: "triangle",
-            target_polycount: 30000,
+            topology: "quad",
+            target_polycount: 50000,
             should_remesh: true,
             should_texture: true,
             enable_pbr: true,
@@ -92,8 +95,8 @@ Deno.serve(async (req) => {
         : {
             image_url: image_urls[0],
             ai_model: "meshy-6",
-            topology: "triangle",
-            target_polycount: 30000,
+            topology: "quad",
+            target_polycount: 50000,
             should_remesh: true,
             should_texture: true,
             enable_pbr: true,
@@ -156,7 +159,17 @@ Deno.serve(async (req) => {
 
     const stlResp = await fetch(stlUrl);
     if (!stlResp.ok) return json({ error: `Failed to fetch STL: ${stlResp.status}` }, 500);
-    const stlBytes = new Uint8Array(await stlResp.arrayBuffer());
+    const rawStl = new Uint8Array(await stlResp.arrayBuffer());
+
+    // Run a Laplacian smoothing pass to remove Meshy's high-frequency vertex
+    // noise (the lumpy/bumpy surface on what should be flat panels).
+    let stlBytes = rawStl;
+    try {
+      stlBytes = smoothStl(rawStl, { iterations: 3, lambda: 0.5 });
+      console.log(`smoothed STL: ${rawStl.length} → ${stlBytes.length} bytes`);
+    } catch (e) {
+      console.warn("STL smoothing failed, using raw mesh:", e);
+    }
 
     const path = `${userId}/${concept.project_id}/parts/${concept_id}/${part_kind}-${Date.now()}.stl`;
     const { error: upErr } = await admin.storage
