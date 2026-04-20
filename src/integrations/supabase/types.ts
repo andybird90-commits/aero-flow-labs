@@ -272,6 +272,7 @@ export type Database = {
           aero_kit_error: string | null
           aero_kit_status: string
           aero_kit_url: string | null
+          aero_kit_warning: string | null
           ai_notes: string | null
           concept_set_id: string | null
           created_at: string
@@ -296,6 +297,7 @@ export type Database = {
           aero_kit_error?: string | null
           aero_kit_status?: string
           aero_kit_url?: string | null
+          aero_kit_warning?: string | null
           ai_notes?: string | null
           concept_set_id?: string | null
           created_at?: string
@@ -320,6 +322,7 @@ export type Database = {
           aero_kit_error?: string | null
           aero_kit_status?: string
           aero_kit_url?: string | null
+          aero_kit_warning?: string | null
           ai_notes?: string | null
           concept_set_id?: string | null
           created_at?: string
