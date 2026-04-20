@@ -284,9 +284,11 @@ export type Database = {
           preview_mesh_status: string
           preview_mesh_url: string | null
           project_id: string
+          render_front_direct_url: string | null
           render_front_url: string | null
           render_rear_url: string | null
           render_rear34_url: string | null
+          render_side_opposite_url: string | null
           render_side_url: string | null
           status: Database["public"]["Enums"]["concept_status"]
           title: string
@@ -309,9 +311,11 @@ export type Database = {
           preview_mesh_status?: string
           preview_mesh_url?: string | null
           project_id: string
+          render_front_direct_url?: string | null
           render_front_url?: string | null
           render_rear_url?: string | null
           render_rear34_url?: string | null
+          render_side_opposite_url?: string | null
           render_side_url?: string | null
           status?: Database["public"]["Enums"]["concept_status"]
           title?: string
@@ -334,9 +338,11 @@ export type Database = {
           preview_mesh_status?: string
           preview_mesh_url?: string | null
           project_id?: string
+          render_front_direct_url?: string | null
           render_front_url?: string | null
           render_rear_url?: string | null
           render_rear34_url?: string | null
+          render_side_opposite_url?: string | null
           render_side_url?: string | null
           status?: Database["public"]["Enums"]["concept_status"]
           title?: string
@@ -534,9 +540,11 @@ export type Database = {
           make: string
           model: string
           notes: string | null
+          ref_front_url: string | null
           ref_front34_url: string | null
           ref_rear_url: string | null
           ref_rear34_url: string | null
+          ref_side_opposite_url: string | null
           ref_side_url: string | null
           trim: string | null
           updated_at: string
@@ -552,9 +560,11 @@ export type Database = {
           make: string
           model: string
           notes?: string | null
+          ref_front_url?: string | null
           ref_front34_url?: string | null
           ref_rear_url?: string | null
           ref_rear34_url?: string | null
+          ref_side_opposite_url?: string | null
           ref_side_url?: string | null
           trim?: string | null
           updated_at?: string
@@ -570,9 +580,11 @@ export type Database = {
           make?: string
           model?: string
           notes?: string | null
+          ref_front_url?: string | null
           ref_front34_url?: string | null
           ref_rear_url?: string | null
           ref_rear34_url?: string | null
+          ref_side_opposite_url?: string | null
           ref_side_url?: string | null
           trim?: string | null
           updated_at?: string

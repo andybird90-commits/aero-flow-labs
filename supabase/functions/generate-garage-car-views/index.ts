@@ -27,17 +27,27 @@ const ANGLES = [
   {
     key: "front34" as const,
     column: "ref_front34_url",
-    framing: "front three-quarter view, slight low angle, full car visible",
+    framing: "front three-quarter view from the driver's side, slight low angle, full car visible",
+  },
+  {
+    key: "front" as const,
+    column: "ref_front_url",
+    framing: "direct front view, perpendicular to the car, headlights and grille fully visible, full width in frame",
   },
   {
     key: "side" as const,
     column: "ref_side_url",
-    framing: "pure side profile view, perpendicular to the car, full body in frame",
+    framing: "pure side profile view from the driver's side, perpendicular to the car, full body in frame",
+  },
+  {
+    key: "side_opposite" as const,
+    column: "ref_side_opposite_url",
+    framing: "pure side profile view from the passenger side (opposite side), perpendicular to the car, full body in frame — this side may show asymmetric details like the fuel filler cap",
   },
   {
     key: "rear34" as const,
     column: "ref_rear34_url",
-    framing: "rear three-quarter view from the opposite side, full car visible",
+    framing: "rear three-quarter view from the passenger side, full car visible",
   },
   {
     key: "rear" as const,
@@ -74,8 +84,10 @@ Deno.serve(async (req) => {
     await admin.from("garage_cars").update({
       generation_status: "generating",
       generation_error: null,
+      ref_front_url: null,
       ref_front34_url: null,
       ref_side_url: null,
+      ref_side_opposite_url: null,
       ref_rear34_url: null,
       ref_rear_url: null,
     }).eq("id", garage_car_id);

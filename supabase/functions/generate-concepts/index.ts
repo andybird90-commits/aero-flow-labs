@@ -30,7 +30,13 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-type AngleKey = "front_three_quarter" | "side" | "rear_three_quarter" | "rear";
+type AngleKey =
+  | "front"
+  | "front_three_quarter"
+  | "side"
+  | "side_opposite"
+  | "rear_three_quarter"
+  | "rear";
 
 interface Body {
   project_id: string;
@@ -185,9 +191,9 @@ Deno.serve(async (req) => {
         .maybeSingle();
       const gcId = (proj as any)?.garage_car_id;
       if (gcId) {
-        const { data: gc } = await admin
+          const { data: gc } = await admin
           .from("garage_cars")
-          .select("ref_front34_url, ref_side_url, ref_rear34_url, ref_rear_url")
+          .select("ref_front_url, ref_front34_url, ref_side_url, ref_side_opposite_url, ref_rear34_url, ref_rear_url")
           .eq("id", gcId)
           .maybeSingle();
         if (gc) {
@@ -203,16 +209,20 @@ Deno.serve(async (req) => {
               return `data:${mime};base64,${btoa(s)}`;
             } catch { return null; }
           };
-          const [f, s, r34, r] = await Promise.all([
+          const [fr, f34, s, sOpp, r34, r] = await Promise.all([
+            fetchAsDataUrl((gc as any).ref_front_url),
             fetchAsDataUrl((gc as any).ref_front34_url),
             fetchAsDataUrl((gc as any).ref_side_url),
+            fetchAsDataUrl((gc as any).ref_side_opposite_url),
             fetchAsDataUrl((gc as any).ref_rear34_url),
             fetchAsDataUrl((gc as any).ref_rear_url),
           ]);
-          if (f)   garageRefs.front_three_quarter = f;
-          if (s)   garageRefs.side = s;
-          if (r34) garageRefs.rear_three_quarter = r34;
-          if (r)   garageRefs.rear = r;
+          if (fr)   garageRefs.front = fr;
+          if (f34)  garageRefs.front_three_quarter = f34;
+          if (s)    garageRefs.side = s;
+          if (sOpp) garageRefs.side_opposite = sOpp;
+          if (r34)  garageRefs.rear_three_quarter = r34;
+          if (r)    garageRefs.rear = r;
           console.log("generate-concepts: using garage car refs =", Object.keys(garageRefs));
         }
       }
@@ -220,19 +230,25 @@ Deno.serve(async (req) => {
 
     // Normalise snapshots: garage-car refs win, then per-angle map, then legacy single image.
     const snaps: Record<AngleKey, string | null> = {
+      front:               garageRefs.front ?? body.snapshots?.front ?? null,
       front_three_quarter: garageRefs.front_three_quarter ?? body.snapshots?.front_three_quarter ?? body.snapshot_data_url ?? null,
       side:                garageRefs.side ?? body.snapshots?.side ?? null,
+      side_opposite:       garageRefs.side_opposite ?? body.snapshots?.side_opposite ?? null,
       rear_three_quarter:  garageRefs.rear_three_quarter ?? body.snapshots?.rear_three_quarter ?? null,
       rear:                garageRefs.rear ?? body.snapshots?.rear ?? body.snapshots?.rear_three_quarter ?? null,
     };
 
     const ANGLES: Array<{ key: AngleKey; label: string; framing: string }> = [
       { key: "front_three_quarter", label: "front three-quarter",
-        framing: "three-quarter front view, slight low angle, full car in frame" },
+        framing: "three-quarter front view from the driver's side, slight low angle, full car in frame" },
+      { key: "front", label: "front",
+        framing: "direct front view, perpendicular to the car, headlights and grille fully visible, full width in frame" },
       { key: "side", label: "side profile",
-        framing: "pure side profile view, perpendicular to the car, full body in frame" },
+        framing: "pure side profile view from the driver's side, perpendicular to the car, full body in frame" },
+      { key: "side_opposite", label: "side profile (opposite)",
+        framing: "pure side profile view from the passenger side, perpendicular to the car, full body in frame — show any asymmetric details like the fuel filler cap on this side" },
       { key: "rear_three_quarter", label: "rear three-quarter",
-        framing: "three-quarter rear view from the opposite side, full car in frame" },
+        framing: "three-quarter rear view from the passenger side, full car in frame" },
       { key: "rear", label: "rear",
         framing: "direct rear view showing the full back of the car, taillights visible" },
     ];
@@ -368,41 +384,44 @@ Deno.serve(async (req) => {
 
     try {
       for (const v of variations) {
-        const frontAngle = ANGLES[0];
-        const otherAngles = ANGLES.slice(1);
+        const heroAngle = ANGLES.find((a) => a.key === "front_three_quarter")!;
+        const otherAngles = ANGLES.filter((a) => a.key !== "front_three_quarter");
 
-        // 1) Generate the FRONT concept first using the user's car snapshot(s)
+        // 1) Generate the FRONT 3/4 concept first using the user's car snapshot(s)
         //    as identity reference. This becomes the source of truth for paint,
         //    wheels, and body kit details.
         const userFrontRef = snaps.front_three_quarter;
         const frontRefs = userFrontRef && userFrontRef.startsWith("data:image/")
           ? [userFrontRef]
           : [];
-        const frontResult = await renderAngle(v, frontAngle, frontRefs, "from_user_car");
+        const frontResult = await renderAngle(v, heroAngle, frontRefs, "from_user_car");
 
         if (!frontResult) {
-          console.warn("Front render failed for variation:", v.title);
+          console.warn("Front 3/4 render failed for variation:", v.title);
           continue;
         }
 
-        // 2) Generate the OTHER 3 angles in parallel, using the just-generated
-        //    front concept as the primary reference. Optionally include the
+        // 2) Generate the OTHER 5 angles in parallel, using the just-generated
+        //    front 3/4 concept as the primary reference. Optionally include the
         //    user's snapshot for that angle as a secondary geometry hint.
-        const otherResults = await Promise.all(otherAngles.map((a) => {
+        const otherResults = await Promise.all(otherAngles.map(async (a) => {
           const userAngleRef = snaps[a.key];
           const refs: string[] = [frontResult.dataUrl];
           if (userAngleRef && userAngleRef.startsWith("data:image/")) {
             refs.push(userAngleRef);
           }
-          return renderAngle(v, a, refs, "from_concept_front");
+          const r = await renderAngle(v, a, refs, "from_concept_front");
+          return { key: a.key, result: r };
         }));
 
-        const front = frontResult.publicUrl;
-        const side = otherResults[0]?.publicUrl ?? null;
-        const rear34 = otherResults[1]?.publicUrl ?? null;
-        const rear = otherResults[2]?.publicUrl ?? null;
+        const byKey: Partial<Record<AngleKey, string>> = {
+          front_three_quarter: frontResult.publicUrl,
+        };
+        for (const { key, result } of otherResults) {
+          if (result?.publicUrl) byKey[key] = result.publicUrl;
+        }
 
-        if (!front && !side && !rear34 && !rear) {
+        if (Object.keys(byKey).length === 0) {
           console.warn("All angles failed for variation:", v.title);
           continue;
         }
@@ -416,10 +435,13 @@ Deno.serve(async (req) => {
             title: v.title,
             direction: v.direction,
             status: "pending",
-            render_front_url: front,
-            render_side_url: side,
-            render_rear34_url: rear34,
-            render_rear_url: rear,
+            // Note: render_front_url historically held the front 3/4 view.
+            render_front_url:         byKey.front_three_quarter ?? null,
+            render_front_direct_url:  byKey.front ?? null,
+            render_side_url:          byKey.side ?? null,
+            render_side_opposite_url: byKey.side_opposite ?? null,
+            render_rear34_url:        byKey.rear_three_quarter ?? null,
+            render_rear_url:          byKey.rear ?? null,
             ai_notes: stylePrompt.slice(0, 500),
           })
           .select("id")

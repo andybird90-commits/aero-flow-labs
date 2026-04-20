@@ -72,7 +72,7 @@ export default function Garage() {
       await generate.mutateAsync(car.id);
       toast({
         title: "Car added",
-        description: "Generating 4 reference views… this takes ~30s.",
+        description: "Generating 6 reference views… this takes ~45s.",
       });
     } catch (e: any) {
       toast({ title: "Couldn't add car", description: e.message, variant: "destructive" });
@@ -82,7 +82,7 @@ export default function Garage() {
   const handleRegenerate = async (id: string) => {
     try {
       await generate.mutateAsync(id);
-      toast({ title: "Regenerating views", description: "Hang tight — ~30s." });
+      toast({ title: "Regenerating views", description: "Hang tight — ~45s." });
     } catch (e: any) {
       toast({ title: "Regenerate failed", description: e.message, variant: "destructive" });
     }
@@ -98,7 +98,7 @@ export default function Garage() {
             </div>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Garage</h1>
             <p className="mt-1.5 text-muted-foreground">
-              Your OEM reference cars. The AI uses these 4 views as the identity
+              Your OEM reference cars. The AI uses these 6 views as the identity
               anchor whenever a linked project generates concepts.
             </p>
           </div>
@@ -147,7 +147,7 @@ export default function Garage() {
           <DialogHeader>
             <DialogTitle>Add a car to your garage</DialogTitle>
             <DialogDescription>
-              The AI will generate 4 canonical views from your description.
+              The AI will generate 6 canonical views from your description.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
@@ -243,10 +243,12 @@ function CarCard({
     status === "generating" ? "simulating" : "neutral";
 
   const views = [
-    { url: car.ref_front34_url, label: "Front 3/4" },
-    { url: car.ref_side_url,    label: "Side" },
-    { url: car.ref_rear34_url,  label: "Rear 3/4" },
-    { url: car.ref_rear_url,    label: "Rear" },
+    { url: car.ref_front_url,          label: "Front" },
+    { url: car.ref_front34_url,        label: "Front 3/4" },
+    { url: car.ref_side_url,           label: "Side" },
+    { url: car.ref_side_opposite_url,  label: "Side (opp)" },
+    { url: car.ref_rear34_url,         label: "Rear 3/4" },
+    { url: car.ref_rear_url,           label: "Rear" },
   ];
 
   return (
@@ -259,7 +261,7 @@ function CarCard({
         <StatusChip tone={tone as any} size="sm">{status}</StatusChip>
       </div>
 
-      <div className="grid grid-cols-2 gap-px bg-border">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-border">
         {views.map((v) => (
           <div key={v.label} className="aspect-video bg-surface-2 relative">
             {v.url ? (
