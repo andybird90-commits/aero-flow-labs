@@ -38,7 +38,9 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const { data: heroStl } = useCarStlForTemplate(project?.car?.template?.id ?? null);
   const [generating, setGenerating] = useState(false);
 
-  const heroReady = !!(heroStl?.repaired_stl_path && heroStl.manifold_clean);
+  // Manifold is no longer required — non-manifold meshes build with a warning.
+  const heroReady = !!heroStl?.repaired_stl_path;
+  const heroNonManifold = heroReady && !heroStl?.manifold_clean;
 
   const hasBrief = !!(brief?.prompt && brief.prompt.trim().length > 10);
 
