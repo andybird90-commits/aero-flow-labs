@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,7 +8,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useBrief, useUpsertBrief, type DesignBrief } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowRight, Save, Tag, Wrench } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { ArrowRight, Save, Tag, Wrench, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const STYLE_TAGS = [
