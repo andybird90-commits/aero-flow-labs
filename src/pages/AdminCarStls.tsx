@@ -9,6 +9,7 @@
  * instead of the upload UI.
  */
 import { useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Navigate } from "react-router-dom";
 import { z } from "zod";
 import { AppLayout } from "@/components/AppLayout";
@@ -90,6 +91,7 @@ export default function AdminCarStls() {
 
 function CarStlsInner({ userId }: { userId: string }) {
   const { toast } = useToast();
+  const qc = useQueryClient();
   const { data: templates = [] } = useCarTemplates();
   const { data: rows = [], isLoading } = useCarStls();
   const upsert = useUpsertCarStl();
@@ -193,6 +195,8 @@ function CarStlsInner({ userId }: { userId: string }) {
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       const stats = (data as any)?.stats;
+      qc.invalidateQueries({ queryKey: ["car_stls"] });
+      qc.invalidateQueries({ queryKey: ["car_stl_for_template", row.car_template_id] });
       toast({
         title: stats?.manifold ? "Repair complete · manifold" : "Repair complete · NOT manifold",
         description: stats
