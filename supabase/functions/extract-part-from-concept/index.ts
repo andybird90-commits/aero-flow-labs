@@ -23,30 +23,35 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ALLOWED_KINDS = [
   "splitter", "lip", "canard", "side_skirt",
   "wide_arch", "diffuser", "ducktail", "wing",
+  "bonnet_vent", "wing_vent",
 ] as const;
 type Kind = typeof ALLOWED_KINDS[number];
 
 const DEFAULT_PARAMS: Record<Kind, Record<string, number>> = {
-  splitter:   { depth: 80,  fence_height: 30, fence_inset: 60 },
-  lip:        { depth: 30 },
-  canard:     { angle: 12,  count: 1, span: 180 },
-  side_skirt: { depth: 70,  drop: 25 },
-  wide_arch:  { flare: 50 },
-  diffuser:   { angle: 12,  strake_count: 5, strake_height: 60 },
-  ducktail:   { height: 38, kick: 10 },
-  wing:       { aoa: 8, chord: 280, gurney: 12, span_pct: 78, stand_height: 220 },
+  splitter:    { depth: 80,  fence_height: 30, fence_inset: 60 },
+  lip:         { depth: 30 },
+  canard:      { angle: 12,  count: 1, span: 180 },
+  side_skirt:  { depth: 70,  drop: 25 },
+  wide_arch:   { flare: 50 },
+  diffuser:    { angle: 12,  strake_count: 5, strake_height: 60 },
+  ducktail:    { height: 38, kick: 10 },
+  wing:        { aoa: 8, chord: 280, gurney: 12, span_pct: 78, stand_height: 220 },
+  bonnet_vent: { length: 240, width: 120, louvre_count: 5, depth: 18 },
+  wing_vent:   { length: 180, width: 90,  louvre_count: 4, depth: 14 },
 };
 
 /** Per-part hint about which renders matter most. */
 const PART_VIEW_HINT: Record<Kind, string> = {
-  splitter:   "Look at the FRONT 3/4 view. The splitter is the flat blade protruding forward at the bottom of the front bumper.",
-  lip:        "Look at the FRONT 3/4 view. The lip is a thin extension below the splitter / front bumper.",
-  canard:     "Look at the FRONT 3/4 view. Canards are small angled foils on the lower front bumper sides.",
-  side_skirt: "Look at the SIDE view. Side skirts are long blades along the rocker panel between the wheels.",
-  wide_arch:  "Look at FRONT 3/4 and REAR 3/4 views. Wide arches are bolt-on flares around the wheel openings.",
-  diffuser:   "Look at the REAR or REAR 3/4 view. The diffuser is the angled panel under the rear bumper, often with vertical strakes.",
-  ducktail:   "Look at the REAR or SIDE view. A ducktail is a small lip rising off the rear deck/trunk.",
-  wing:       "Look at the REAR 3/4 or REAR view. Estimate angle of attack, chord, span as % of car width, stand height.",
+  splitter:    "Look at the FRONT 3/4 view. The splitter is the flat blade protruding forward at the bottom of the front bumper.",
+  lip:         "Look at the FRONT 3/4 view. The lip is a thin extension below the splitter / front bumper.",
+  canard:      "Look at the FRONT 3/4 view. Canards are small angled foils on the lower front bumper sides.",
+  side_skirt:  "Look at the SIDE view. Side skirts are long blades along the rocker panel between the wheels.",
+  wide_arch:   "Look at FRONT 3/4 and REAR 3/4 views. Wide arches are bolt-on flares around the wheel openings.",
+  diffuser:    "Look at the REAR or REAR 3/4 view. The diffuser is the angled panel under the rear bumper, often with vertical strakes.",
+  ducktail:    "Look at the REAR or SIDE view. A DUCKTAIL is a SHORT INTEGRATED LIP rising directly off the bootlid/rear deck — it touches the body and has NO stalks/uprights/gap underneath. If you can see daylight under a blade, that is a WING, not a ducktail.",
+  wing:        "Look at the REAR 3/4 or REAR view. A WING is a SEPARATE AEROFOIL BLADE held above the rear deck on visible stalks/swan-necks with a clear gap of air underneath. If there is no gap and no stalks, it is a ducktail, NOT a wing. Estimate angle of attack, chord, span as % of car width, stand height.",
+  bonnet_vent: "Look at the FRONT 3/4 view. A bonnet vent is a louvred opening or scoop cut into the bonnet/hood for engine-bay heat extraction.",
+  wing_vent:   "Look at the FRONT 3/4 or SIDE view. A wing vent (fender vent) is a louvred opening on the front fender/wing panel behind the wheel arch.",
 };
 
 const PARAM_SCHEMA: Record<Kind, Record<string, { type: "number"; description: string }>> = {
@@ -76,7 +81,7 @@ const PARAM_SCHEMA: Record<Kind, Record<string, { type: "number"; description: s
     strake_height: { type: "number", description: "Strake height in mm (30-120)" },
   },
   ducktail: {
-    height: { type: "number", description: "Ducktail height in mm (15-90)" },
+    height: { type: "number", description: "Ducktail lip height above the deck in mm (15-90). Must be small — if it looks taller than ~90mm or sits on stalks, it's a wing." },
     kick:   { type: "number", description: "Kick angle in degrees (0-30)" },
   },
   wing: {
@@ -84,7 +89,19 @@ const PARAM_SCHEMA: Record<Kind, Record<string, { type: "number"; description: s
     chord:        { type: "number", description: "Wing chord in mm (180-420)" },
     gurney:       { type: "number", description: "Gurney lip in mm (0-30)" },
     span_pct:     { type: "number", description: "Span as % of car width (60-100)" },
-    stand_height: { type: "number", description: "Swan-neck stand height in mm (80-320)" },
+    stand_height: { type: "number", description: "Swan-neck stand height in mm (80-320). MUST be > 0 — a wing always has visible stand height. If there is no gap below the blade, this is not a wing." },
+  },
+  bonnet_vent: {
+    length:       { type: "number", description: "Vent length along the bonnet in mm (120-400)" },
+    width:        { type: "number", description: "Vent width across the bonnet in mm (60-260)" },
+    louvre_count: { type: "number", description: "Number of louvre slats (3-9)" },
+    depth:        { type: "number", description: "Recess/scoop depth in mm (8-40)" },
+  },
+  wing_vent: {
+    length:       { type: "number", description: "Vent length along the fender in mm (80-260)" },
+    width:        { type: "number", description: "Vent height on the fender in mm (40-160)" },
+    louvre_count: { type: "number", description: "Number of louvre slats (2-7)" },
+    depth:        { type: "number", description: "Recess depth in mm (6-30)" },
   },
 };
 
