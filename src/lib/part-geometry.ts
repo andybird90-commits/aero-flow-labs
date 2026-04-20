@@ -55,7 +55,7 @@ const matNeutral = () => new THREE.MeshStandardMaterial({ color: 0x111418 });
  * Real fibreglass / carbon body kit parts are ~3–6 mm thick.
  * We standardise on 5 mm so exported STLs print/read as panels,
  * not chunky billet blocks. */
-const SHELL = 0.005;
+const SHELL = 0.002;
 
 /* ─── splitter: flat blade with optional side fences ───────── */
 function splitter(p: Params, b: KitBounds): THREE.Group {
