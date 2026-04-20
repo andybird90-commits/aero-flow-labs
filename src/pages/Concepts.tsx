@@ -58,7 +58,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const generate = async () => {
     if (!user || !brief) return;
     if (!hasBrief) {
-      toast({ title: "Add a design brief first", variant: "destructive" });
+      toast({ title: "Add a design brief or style preset first", variant: "destructive" });
       return;
     }
     setGenerating(true);
