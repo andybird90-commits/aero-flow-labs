@@ -210,6 +210,7 @@ function ConceptCard({
 }) {
   const aeroStatus = ((concept as any).aero_kit_status ?? "idle") as AeroKitStatus;
   const aeroError = (concept as any).aero_kit_error as string | null | undefined;
+  const aeroWarning = (concept as any).aero_kit_warning as string | null | undefined;
   const aeroBuilding = aeroStatus !== "idle" && aeroStatus !== "ready" && aeroStatus !== "failed";
   // Live-poll status while a build is running.
   useAeroKitStatus(concept.id, aeroBuilding);
