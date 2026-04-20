@@ -30,7 +30,6 @@ import {
   splitConnectedComponents, classifyByZone, meshBboxOf, approxVolume,
   type PartKind,
 } from "../_shared/stl-classify.ts";
-import { smoothStl } from "../_shared/stl-smooth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +43,10 @@ const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TOLERANCE_MM = 2;
 const MIN_COMPONENT_VOLUME_MM3 = 50_000; // 50 cm³
+// Hard cap on triangles we'll process. Hero STLs from scrape sources can be
+// 500k+ tris; running the per-vertex distance test + connected-component split
+// on that scale blows the edge worker's 256 MB / 400ms budget.
+const MAX_DISPLACED_TRIS = 120_000;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -96,6 +99,12 @@ Deno.serve(async (req) => {
     }
     stockMesh = reorientMesh(stockMesh, (stlRow.forward_axis as ForwardAxis) ?? "-z");
     // Displaced was already in canonical space when written by the displacement step.
+
+    // Decimate inputs uniformly if they're too dense. Stride-sample triangles
+    // — coarser than a real edge-collapse pass, but keeps the worker alive
+    // and the kit shell only needs to be approximate (we re-weld below).
+    displacedMesh = decimateIfTooBig(displacedMesh, MAX_DISPLACED_TRIS);
+    stockMesh = decimateIfTooBig(stockMesh, MAX_DISPLACED_TRIS);
 
     // 2. Spatial hash of stock vertices for fast nearest-neighbour (~O(1) per query).
     const CELL = 100; // mm
@@ -191,8 +200,10 @@ Deno.serve(async (req) => {
 
     const carBb = meshBboxOf(stockMesh);
 
-    // 6. Upload combined kit STL.
-    const combinedSmoothed = smoothStl(writeBinaryStl(kitMesh), { iterations: 2, lambda: 0.5 });
+    // 6. Upload combined kit STL. Skip Laplacian smoothing — its full
+    //    weld + adjacency-Set pass is the single biggest memory hog and
+    //    consistently trips WORKER_RESOURCE_LIMIT on dense meshes.
+    const combinedSmoothed = writeBinaryStl(kitMesh);
     const kitPath = `aero-kits/${concept.id}/kit.stl`;
     const { error: kitUpErr } = await admin.storage.from("car-stls")
       .upload(kitPath, combinedSmoothed, { contentType: "model/stl", upsert: true });
@@ -211,7 +222,7 @@ Deno.serve(async (req) => {
       const kind = classifyByZone(partBb, carBb);
       kindCounts[kind] = (kindCounts[kind] ?? 0) + 1;
       const idx = kindCounts[kind];
-      const partBytes = smoothStl(writeBinaryStl(mesh), { iterations: 2, lambda: 0.4 });
+      const partBytes = writeBinaryStl(mesh);
       const partPath = `aero-kits/${concept.id}/${kind}-${idx}.stl`;
       const { error: pErr } = await admin.storage.from("car-stls")
         .upload(partPath, partBytes, { contentType: "model/stl", upsert: true });
