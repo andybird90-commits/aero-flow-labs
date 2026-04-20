@@ -85,10 +85,10 @@ Deno.serve(async (req) => {
       .update({ preview_mesh_status: "generating", preview_mesh_error: null })
       .eq("id", concept_id);
 
-    console.log("generate-concept-mesh: starting Meshy multi-image job for concept", concept_id, "with", angleUrls.length, "angles");
+    console.log("generate-concept-mesh: starting Rodin Gen-2 job for concept", concept_id, "with", angleUrls.length, "angles");
 
     // @ts-ignore - EdgeRuntime is available in Supabase edge runtime
-    EdgeRuntime.waitUntil(runMeshyJob({
+    EdgeRuntime.waitUntil(runRodinJob({
       admin,
       concept_id,
       userId,
