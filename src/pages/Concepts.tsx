@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
 import {
   useBrief, useConcepts, useUpdateConcept, useDeleteConcept,
-  useBuildAeroKit, useAeroKitStatus, useCarStlForTemplate, type Concept,
+  useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, type Concept,
 } from "@/lib/repo";
 import { AeroKitProgress, type AeroKitStatus } from "@/components/AeroKitProgress";
 import { useAuth } from "@/hooks/useAuth";
@@ -35,7 +35,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const updateConcept = useUpdateConcept();
   const deleteConcept = useDeleteConcept();
   const buildKit = useBuildAeroKit();
-  const { data: heroStl } = useCarStlForTemplate(project?.car?.template?.id ?? null);
+  const { data: heroStl } = useHeroStlForProject(projectId);
   const [generating, setGenerating] = useState(false);
 
   // Manifold is no longer required — non-manifold meshes build with a warning.
