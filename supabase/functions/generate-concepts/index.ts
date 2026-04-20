@@ -393,7 +393,7 @@ Deno.serve(async (req) => {
         const otherResults = await Promise.all(otherAngles.map(async (a) => {
           const userAngleRef = snaps[a.key];
           const refs: string[] = [frontResult.dataUrl];
-          if (userAngleRef && userAngleRef.startsWith("data:image/")) {
+          if (isImageRef(userAngleRef)) {
             refs.push(userAngleRef);
           }
           const r = await renderAngle(v, a, refs, "from_concept_front");
