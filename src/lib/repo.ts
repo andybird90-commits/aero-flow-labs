@@ -1033,3 +1033,205 @@ export function useGenerateGarageCarViews() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["garage_cars"] }),
   });
 }
+
+/* ─── LIBRARY + MARKETPLACE ────────────────────────────────── */
+
+export type LibraryItemKind = "concept_image" | "aero_kit_mesh" | "concept_part_mesh";
+export type LibraryVisibility = "private" | "public";
+export type MarketplaceListingStatus = "draft" | "active" | "paused";
+
+export interface LibraryItem {
+  id: string;
+  user_id: string;
+  kind: LibraryItemKind;
+  title: string;
+  description: string | null;
+  thumbnail_url: string | null;
+  asset_url: string | null;
+  asset_mime: string | null;
+  visibility: LibraryVisibility;
+  project_id: string | null;
+  concept_id: string | null;
+  concept_part_id: string | null;
+  metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MarketplaceListing {
+  id: string;
+  library_item_id: string;
+  user_id: string;
+  price_cents: number;
+  currency: string;
+  status: MarketplaceListingStatus;
+  title: string | null;
+  description: string | null;
+  view_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MarketplaceListingWithItem extends MarketplaceListing {
+  library_items: LibraryItem | null;
+}
+
+/** All library items for the current signed-in user, plus any active listing. */
+export function useMyLibrary(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["library_items", userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("library_items")
+        .select("*, marketplace_listings(*)")
+        .eq("user_id", userId!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Array<LibraryItem & { marketplace_listings: MarketplaceListing[] }>;
+    },
+  });
+}
+
+export function useUpdateLibraryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      visibility?: LibraryVisibility;
+      title?: string;
+      description?: string | null;
+    }) => {
+      const { id, ...patch } = input;
+      const { data, error } = await (supabase as any)
+        .from("library_items")
+        .update(patch)
+        .eq("id", id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as LibraryItem;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["library_items"] });
+      qc.invalidateQueries({ queryKey: ["marketplace"] });
+    },
+  });
+}
+
+export function useDeleteLibraryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any).from("library_items").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["library_items"] });
+      qc.invalidateQueries({ queryKey: ["marketplace"] });
+    },
+  });
+}
+
+/**
+ * Publish (or update) a marketplace listing for a library item. Also flips the
+ * underlying library_item.visibility to 'public' so it's discoverable.
+ */
+export function usePublishListing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      library_item_id: string;
+      user_id: string;
+      price_cents: number;
+      title?: string | null;
+      description?: string | null;
+    }) => {
+      // Upsert listing (one per library item via unique index)
+      const { data: existing } = await (supabase as any)
+        .from("marketplace_listings")
+        .select("id")
+        .eq("library_item_id", input.library_item_id)
+        .maybeSingle();
+
+      if (existing?.id) {
+        const { error } = await (supabase as any)
+          .from("marketplace_listings")
+          .update({
+            price_cents: input.price_cents,
+            title: input.title ?? null,
+            description: input.description ?? null,
+            status: "active" as MarketplaceListingStatus,
+          })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await (supabase as any)
+          .from("marketplace_listings")
+          .insert({
+            library_item_id: input.library_item_id,
+            user_id: input.user_id,
+            price_cents: input.price_cents,
+            title: input.title ?? null,
+            description: input.description ?? null,
+            status: "active" as MarketplaceListingStatus,
+          });
+        if (error) throw error;
+      }
+
+      const { error: libErr } = await (supabase as any)
+        .from("library_items")
+        .update({ visibility: "public" as LibraryVisibility })
+        .eq("id", input.library_item_id);
+      if (libErr) throw libErr;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["library_items"] });
+      qc.invalidateQueries({ queryKey: ["marketplace"] });
+    },
+  });
+}
+
+/** Pause a listing and flip the library item back to private. */
+export function useUnpublishListing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { listing_id: string; library_item_id: string }) => {
+      const { error: lErr } = await (supabase as any)
+        .from("marketplace_listings")
+        .update({ status: "paused" as MarketplaceListingStatus })
+        .eq("id", input.listing_id);
+      if (lErr) throw lErr;
+      const { error: libErr } = await (supabase as any)
+        .from("library_items")
+        .update({ visibility: "private" as LibraryVisibility })
+        .eq("id", input.library_item_id);
+      if (libErr) throw libErr;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["library_items"] });
+      qc.invalidateQueries({ queryKey: ["marketplace"] });
+    },
+  });
+}
+
+/** Public-readable: all active listings + their (public) library item. */
+export function useMarketplaceListings(filters?: { kind?: LibraryItemKind | "all" }) {
+  return useQuery({
+    queryKey: ["marketplace", filters?.kind ?? "all"],
+    queryFn: async () => {
+      let query = (supabase as any)
+        .from("marketplace_listings")
+        .select("*, library_items!inner(*)")
+        .eq("status", "active")
+        .order("created_at", { ascending: false });
+      if (filters?.kind && filters.kind !== "all") {
+        query = query.eq("library_items.kind", filters.kind);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []) as MarketplaceListingWithItem[];
+    },
+  });
+}
+

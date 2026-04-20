@@ -649,6 +649,110 @@ export type Database = {
           },
         ]
       }
+      library_items: {
+        Row: {
+          asset_mime: string | null
+          asset_url: string | null
+          concept_id: string | null
+          concept_part_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          kind: Database["public"]["Enums"]["library_item_kind"]
+          metadata: Json
+          project_id: string | null
+          thumbnail_url: string | null
+          title: string
+          updated_at: string
+          user_id: string
+          visibility: Database["public"]["Enums"]["library_visibility"]
+        }
+        Insert: {
+          asset_mime?: string | null
+          asset_url?: string | null
+          concept_id?: string | null
+          concept_part_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          kind: Database["public"]["Enums"]["library_item_kind"]
+          metadata?: Json
+          project_id?: string | null
+          thumbnail_url?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+          visibility?: Database["public"]["Enums"]["library_visibility"]
+        }
+        Update: {
+          asset_mime?: string | null
+          asset_url?: string | null
+          concept_id?: string | null
+          concept_part_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          kind?: Database["public"]["Enums"]["library_item_kind"]
+          metadata?: Json
+          project_id?: string | null
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+          visibility?: Database["public"]["Enums"]["library_visibility"]
+        }
+        Relationships: []
+      }
+      marketplace_listings: {
+        Row: {
+          created_at: string
+          currency: string
+          description: string | null
+          id: string
+          library_item_id: string
+          price_cents: number
+          status: Database["public"]["Enums"]["marketplace_listing_status"]
+          title: string | null
+          updated_at: string
+          user_id: string
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          description?: string | null
+          id?: string
+          library_item_id: string
+          price_cents?: number
+          status?: Database["public"]["Enums"]["marketplace_listing_status"]
+          title?: string | null
+          updated_at?: string
+          user_id: string
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          description?: string | null
+          id?: string
+          library_item_id?: string
+          price_cents?: number
+          status?: Database["public"]["Enums"]["marketplace_listing_status"]
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+          view_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_listings_library_item_id_fkey"
+            columns: ["library_item_id"]
+            isOneToOne: false
+            referencedRelation: "library_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parts_generation_jobs: {
         Row: {
           completed_at: string | null
@@ -904,6 +1008,9 @@ export type Database = {
         | "completed"
         | "failed"
         | "cancelled"
+      library_item_kind: "concept_image" | "aero_kit_mesh" | "concept_part_mesh"
+      library_visibility: "private" | "public"
+      marketplace_listing_status: "draft" | "active" | "paused"
       parts_job_state:
         | "queued"
         | "analyzing"
@@ -1072,6 +1179,13 @@ export const Constants = {
         "failed",
         "cancelled",
       ],
+      library_item_kind: [
+        "concept_image",
+        "aero_kit_mesh",
+        "concept_part_mesh",
+      ],
+      library_visibility: ["private", "public"],
+      marketplace_listing_status: ["draft", "active", "paused"],
       parts_job_state: [
         "queued",
         "analyzing",

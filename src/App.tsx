@@ -18,6 +18,8 @@ import Settings from "./pages/Settings";
 import AdminCarStls from "./pages/AdminCarStls";
 import Styles from "./pages/Styles";
 import Garage from "./pages/Garage";
+import Library from "./pages/Library";
+import Marketplace from "./pages/Marketplace";
 
 function RealtimeBridge() {
   const { user } = useAuth();
@@ -46,7 +48,8 @@ const App = () => (
             <Route path="/garage" element={<ProtectedRoute><Garage /></ProtectedRoute>} />
             <Route path="/parts" element={<Navigate to="/concepts" replace />} />
             <Route path="/refine" element={<Navigate to="/concepts" replace />} />
-            <Route path="/library" element={<Navigate to="/concepts" replace />} />
+            <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
+            <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/exports" element={<Navigate to="/concepts" replace />} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/settings/car-stls" element={<ProtectedRoute><AdminCarStls /></ProtectedRoute>} />
