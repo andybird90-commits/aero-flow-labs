@@ -231,10 +231,11 @@ export default function Garage() {
 }
 
 function CarCard({
-  car, onRegenerate, onDelete, regenerating,
+  car, onRegenerate, onRegenerateAngle, onDelete, regenerating,
 }: {
   car: GarageCar;
   onRegenerate: () => void;
+  onRegenerateAngle: (angleKey: string) => void;
   onDelete: () => void;
   regenerating: boolean;
 }) {
@@ -246,13 +247,13 @@ function CarCard({
     status === "failed" ? "failed" :
     status === "generating" ? "simulating" : "neutral";
 
-  const views = [
-    { url: car.ref_front_url,          label: "Front" },
-    { url: car.ref_front34_url,        label: "Front 3/4" },
-    { url: car.ref_side_url,           label: "Side" },
-    { url: car.ref_side_opposite_url,  label: "Side (opp)" },
-    { url: car.ref_rear34_url,         label: "Rear 3/4" },
-    { url: car.ref_rear_url,           label: "Rear" },
+  const views: { url: string | null; label: string; angleKey: string }[] = [
+    { url: car.ref_front_url,          label: "Front",       angleKey: "front" },
+    { url: car.ref_front34_url,        label: "Front 3/4",   angleKey: "front34" },
+    { url: car.ref_side_url,           label: "Side",        angleKey: "side" },
+    { url: car.ref_side_opposite_url,  label: "Side (opp)",  angleKey: "side_opposite" },
+    { url: car.ref_rear34_url,         label: "Rear 3/4",    angleKey: "rear34" },
+    { url: car.ref_rear_url,           label: "Rear",        angleKey: "rear" },
   ];
 
   return (
