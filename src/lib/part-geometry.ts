@@ -35,15 +35,17 @@ const num = (p: Params, k: string, fallback: number): number => {
  */
 export function buildPartMesh(kind: string, params: Params, bounds: KitBounds = DEFAULT_BOUNDS): THREE.Object3D {
   switch (kind) {
-    case "splitter":   return splitter(params, bounds);
-    case "lip":        return lip(params, bounds);
-    case "canard":     return canards(params, bounds);
-    case "side_skirt": return sideSkirts(params, bounds);
-    case "wide_arch":  return wideArches(params, bounds);
-    case "diffuser":   return diffuser(params, bounds);
-    case "ducktail":   return ducktail(params, bounds);
-    case "wing":       return wing(params, bounds);
-    default:           return placeholder(kind);
+    case "splitter":    return splitter(params, bounds);
+    case "lip":         return lip(params, bounds);
+    case "canard":      return canards(params, bounds);
+    case "side_skirt":  return sideSkirts(params, bounds);
+    case "wide_arch":   return wideArches(params, bounds);
+    case "diffuser":    return diffuser(params, bounds);
+    case "ducktail":    return ducktail(params, bounds);
+    case "wing":        return wing(params, bounds);
+    case "bonnet_vent": return louvredVent(params, bounds);
+    case "wing_vent":   return louvredVent(params, bounds);
+    default:            return placeholder(kind);
   }
 }
 
