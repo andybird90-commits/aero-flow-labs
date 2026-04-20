@@ -374,11 +374,12 @@ Deno.serve(async (req) => {
 
         // 1) Generate the FRONT 3/4 concept first using the user's car snapshot(s)
         //    as identity reference. This becomes the source of truth for paint,
-        //    wheels, and body kit details.
+        //    wheels, and body kit details. The ref may be a data: URL (legacy
+        //    snapshot) or an https: URL (garage car bucket asset) — both work.
         const userFrontRef = snaps.front_three_quarter;
-        const frontRefs = userFrontRef && userFrontRef.startsWith("data:image/")
-          ? [userFrontRef]
-          : [];
+        const isImageRef = (u: string | null | undefined): u is string =>
+          !!u && (u.startsWith("data:image/") || u.startsWith("https://") || u.startsWith("http://"));
+        const frontRefs = isImageRef(userFrontRef) ? [userFrontRef] : [];
         const frontResult = await renderAngle(v, heroAngle, frontRefs, "from_user_car");
 
         if (!frontResult) {
