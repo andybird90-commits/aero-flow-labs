@@ -38,6 +38,9 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const buildKit = useBuildAeroKit();
   const { data: heroStl } = useHeroStlForProject(projectId);
   const [generating, setGenerating] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const autoTriggered = useRef(false);
 
   // Manifold is no longer required — non-manifold meshes build with a warning.
   const heroReady = !!heroStl?.repaired_stl_path;
