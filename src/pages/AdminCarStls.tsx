@@ -25,10 +25,16 @@ import {
 } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { decimateClientSide } from "@/lib/decimate-client";
 import {
-  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X,
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Anything above this gets vertex-clustering decimated in a Web Worker
+// before upload so the edge worker can repair it within its 256 MB cap.
+const DECIMATE_THRESHOLD_BYTES = 20 * 1024 * 1024;
+const DECIMATE_TARGET_TRIANGLES = 200_000;
 
 const newTemplateSchema = z.object({
   make: z.string().trim().min(1, "Make required").max(60),
@@ -94,6 +100,7 @@ function CarStlsInner({ userId }: { userId: string }) {
   const [pendingTemplateId, setPendingTemplateId] = useState<string>("");
   const [pendingAxis, setPendingAxis] = useState<string>("-z");
   const [repairing, setRepairing] = useState<string | null>(null);
+  const [decimating, setDecimating] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Inline new-template form state.
@@ -136,11 +143,37 @@ function CarStlsInner({ userId }: { userId: string }) {
       toast({ title: "STL or OBJ files only", variant: "destructive" });
       return;
     }
+
+    let toUpload = file;
+    // Decimate large meshes client-side so the repair edge function fits
+    // inside the 256 MB worker. Vertex-clustering preserves silhouette.
+    if (file.size > DECIMATE_THRESHOLD_BYTES) {
+      try {
+        setDecimating(file.name);
+        toast({
+          title: "Simplifying mesh…",
+          description: `${(file.size / 1024 / 1024).toFixed(1)} MB is too large to repair as-is. Reducing to ~${DECIMATE_TARGET_TRIANGLES.toLocaleString()} triangles in your browser.`,
+        });
+        const res = await decimateClientSide(file, DECIMATE_TARGET_TRIANGLES);
+        toUpload = res.file;
+        toast({
+          title: "Mesh simplified",
+          description: `${res.triCountIn.toLocaleString()} → ${res.triCountOut.toLocaleString()} tris · ${(res.originalSizeBytes / 1024 / 1024).toFixed(1)} → ${(res.decimatedSizeBytes / 1024 / 1024).toFixed(1)} MB`,
+        });
+      } catch (e: any) {
+        toast({ title: "Couldn’t simplify mesh", description: String(e.message ?? e), variant: "destructive" });
+        setDecimating(null);
+        return;
+      } finally {
+        setDecimating(null);
+      }
+    }
+
     try {
       await upsert.mutateAsync({
         userId,
         carTemplateId: pendingTemplateId,
-        file,
+        file: toUpload,
         forwardAxis: pendingAxis,
       });
       toast({ title: "STL uploaded", description: "Run repair to make it eligible for boolean kits." });
@@ -258,10 +291,12 @@ function CarStlsInner({ userId }: { userId: string }) {
           />
           <Button
             variant="hero"
-            disabled={!pendingTemplateId || upsert.isPending}
+            disabled={!pendingTemplateId || upsert.isPending || !!decimating}
             onClick={() => fileInputRef.current?.click()}
           >
-            {upsert.isPending ? (
+            {decimating ? (
+              <><Sparkles className="mr-2 h-4 w-4 animate-pulse" /> Simplifying…</>
+            ) : upsert.isPending ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading…</>
             ) : (
               <><Upload className="mr-2 h-4 w-4" /> Choose STL / OBJ</>
@@ -269,7 +304,7 @@ function CarStlsInner({ userId }: { userId: string }) {
           </Button>
         </div>
         <p className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Accepts .stl or .obj. Forward axis must match how the model's nose points in the file. Default −Z matches the concept renderer.
+          Accepts .stl or .obj. Files over {(DECIMATE_THRESHOLD_BYTES / 1024 / 1024).toFixed(0)} MB are auto-simplified to ~{DECIMATE_TARGET_TRIANGLES.toLocaleString()} triangles in your browser. Forward axis must match how the model's nose points.
         </p>
       </div>
 
