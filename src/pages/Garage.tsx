@@ -239,8 +239,8 @@ function CarCard({
   const status = car.generation_status;
   const tone =
     status === "ready" ? "success" :
-    status === "failed" ? "danger" :
-    status === "generating" ? "preview" : "neutral";
+    status === "failed" ? "failed" :
+    status === "generating" ? "simulating" : "neutral";
 
   const views = [
     { url: car.ref_front34_url, label: "Front 3/4" },
