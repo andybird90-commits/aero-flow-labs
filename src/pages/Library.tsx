@@ -104,15 +104,18 @@ export default function LibraryPage() {
 
   return (
     <AppLayout>
-      <PageHeader
-        eyebrow="My Library"
-        title="Your saved assets"
-        description="Every concept image, aero kit, and 3D part you've generated — across all projects. Make any of them public to list on the Marketplace."
-      >
-        <Button variant="glass" size="sm" asChild>
-          <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
-        </Button>
-      </PageHeader>
+      <div className="px-6 pt-6">
+        <PageHeader
+          eyebrow="My Library"
+          title="Your saved assets"
+          description="Every concept image, aero kit, and 3D part you've generated — across all projects. Make any of them public to list on the Marketplace."
+          actions={
+            <Button variant="glass" size="sm" asChild>
+              <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
+            </Button>
+          }
+        />
+      </div>
 
       <div className="p-6 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
