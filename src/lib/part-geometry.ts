@@ -51,11 +51,17 @@ export function buildPartMesh(kind: string, params: Params, bounds: KitBounds = 
 
 const matNeutral = () => new THREE.MeshStandardMaterial({ color: 0x111418 });
 
+/* ─── PART WALL THICKNESS ──────────────────────────────────────
+ * Real fibreglass / carbon body kit parts are ~3–6 mm thick.
+ * We standardise on 5 mm so exported STLs print/read as panels,
+ * not chunky billet blocks. */
+const SHELL = 0.005;
+
 /* ─── splitter: flat blade with optional side fences ───────── */
 function splitter(p: Params, b: KitBounds): THREE.Group {
   const depth = num(p, "depth", 80) / 1000;
   const width = b.width * 0.95;
-  const thickness = 0.022;
+  const thickness = SHELL;
   const fenceH = num(p, "fence_height", 30) / 1000;
   const fenceInset = num(p, "fence_inset", 60) / 1000;
 
@@ -64,7 +70,7 @@ function splitter(p: Params, b: KitBounds): THREE.Group {
   if (fenceH > 0.005) {
     for (const side of [-1, 1]) {
       const fence = new THREE.Mesh(
-        new THREE.BoxGeometry(depth * 0.9, fenceH, 0.012),
+        new THREE.BoxGeometry(depth * 0.9, fenceH, SHELL),
         matNeutral(),
       );
       fence.position.set(0, fenceH / 2 + thickness / 2, side * (width / 2 - fenceInset));
@@ -78,7 +84,7 @@ function splitter(p: Params, b: KitBounds): THREE.Group {
 function lip(p: Params, b: KitBounds): THREE.Mesh {
   const depth = num(p, "depth", 30) / 1000;
   const width = b.width * 0.92;
-  return new THREE.Mesh(new THREE.BoxGeometry(depth, 0.012, width), matNeutral());
+  return new THREE.Mesh(new THREE.BoxGeometry(depth, SHELL, width), matNeutral());
 }
 
 /* ─── canards: thin angled foils, optional double pair ───── */
@@ -87,11 +93,10 @@ function canards(p: Params, b: KitBounds): THREE.Group {
   const count = Math.round(num(p, "count", 1));
   const span = num(p, "span", 180) / 1000;
   const chord = span * 0.7;
-  const t = 0.01;
   const g = new THREE.Group();
   for (const side of [-1, 1]) {
     for (let i = 0; i < count; i++) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(chord, t, span), matNeutral());
+      const m = new THREE.Mesh(new THREE.BoxGeometry(chord, SHELL, span), matNeutral());
       m.position.set(0, -i * 0.06, side * (b.width / 2 - 0.05));
       m.rotation.set(angle * side, 0, 0);
       g.add(m);
@@ -100,7 +105,10 @@ function canards(p: Params, b: KitBounds): THREE.Group {
   return g;
 }
 
-/* ─── side skirts: long blades with optional vertical drop ── */
+/* ─── side skirts: long blades with optional vertical drop ──
+ * `depth` here = vertical face height of the skirt (how tall it sits on the
+ * door sill). The skirt itself is a thin SHELL-thick panel hanging off the
+ * side of the car — NOT a 40 mm slab as it used to be. */
 function sideSkirts(p: Params, b: KitBounds): THREE.Group {
   const depth = num(p, "depth", 70) / 1000;
   const drop = num(p, "drop", 25) / 1000;
@@ -108,17 +116,17 @@ function sideSkirts(p: Params, b: KitBounds): THREE.Group {
   const g = new THREE.Group();
   for (const side of [-1, 1]) {
     const blade = new THREE.Mesh(
-      new THREE.BoxGeometry(length, depth, 0.04),
+      new THREE.BoxGeometry(length, depth, SHELL),
       matNeutral(),
     );
     blade.position.set(0, 0, side * (b.width / 2));
     g.add(blade);
     if (drop > 0.005) {
       const lower = new THREE.Mesh(
-        new THREE.BoxGeometry(length * 0.95, drop, 0.025),
+        new THREE.BoxGeometry(length * 0.95, drop, SHELL),
         matNeutral(),
       );
-      lower.position.set(0, -depth / 2 - drop / 2, side * (b.width / 2 + 0.01));
+      lower.position.set(0, -depth / 2 - drop / 2, side * (b.width / 2 + 0.005));
       g.add(lower);
     }
   }
