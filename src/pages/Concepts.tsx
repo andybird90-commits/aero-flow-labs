@@ -380,7 +380,7 @@ function ConceptCard({
                 Upload a hero STL for this car (admin) to enable boolean kit
               </div>
             )}
-            <AeroKitProgress status={aeroStatus} error={aeroError} />
+            <AeroKitProgress status={aeroStatus} error={aeroError} warning={aeroWarning} />
             {aeroStatus === "ready" && (
               <Link
                 to={`/library?project=${projectId}`}
