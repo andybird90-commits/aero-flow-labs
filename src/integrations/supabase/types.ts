@@ -14,6 +14,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      car_stls: {
+        Row: {
+          bbox_max_mm: Json | null
+          bbox_min_mm: Json | null
+          car_template_id: string
+          created_at: string
+          forward_axis: string
+          id: string
+          manifold_clean: boolean
+          notes: string | null
+          repaired_stl_path: string | null
+          stl_path: string
+          triangle_count: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bbox_max_mm?: Json | null
+          bbox_min_mm?: Json | null
+          car_template_id: string
+          created_at?: string
+          forward_axis?: string
+          id?: string
+          manifold_clean?: boolean
+          notes?: string | null
+          repaired_stl_path?: string | null
+          stl_path: string
+          triangle_count?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bbox_max_mm?: Json | null
+          bbox_min_mm?: Json | null
+          car_template_id?: string
+          created_at?: string
+          forward_axis?: string
+          id?: string
+          manifold_clean?: boolean
+          notes?: string | null
+          repaired_stl_path?: string | null
+          stl_path?: string
+          triangle_count?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "car_stls_car_template_id_fkey"
+            columns: ["car_template_id"]
+            isOneToOne: true
+            referencedRelation: "car_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       car_templates: {
         Row: {
           cd_stock: number | null
@@ -125,6 +181,7 @@ export type Database = {
           label: string | null
           project_id: string
           render_urls: Json
+          source: string
           updated_at: string
           user_id: string
         }
@@ -137,6 +194,7 @@ export type Database = {
           label?: string | null
           project_id: string
           render_urls?: Json
+          source?: string
           updated_at?: string
           user_id: string
         }
@@ -149,6 +207,7 @@ export type Database = {
           label?: string | null
           project_id?: string
           render_urls?: Json
+          source?: string
           updated_at?: string
           user_id?: string
         }
@@ -210,6 +269,9 @@ export type Database = {
       }
       concepts: {
         Row: {
+          aero_kit_error: string | null
+          aero_kit_status: string
+          aero_kit_url: string | null
           ai_notes: string | null
           concept_set_id: string | null
           created_at: string
@@ -231,6 +293,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          aero_kit_error?: string | null
+          aero_kit_status?: string
+          aero_kit_url?: string | null
           ai_notes?: string | null
           concept_set_id?: string | null
           created_at?: string
@@ -252,6 +317,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          aero_kit_error?: string | null
+          aero_kit_status?: string
+          aero_kit_url?: string | null
           ai_notes?: string | null
           concept_set_id?: string | null
           created_at?: string

@@ -18,6 +18,104 @@ export type DesignBrief    = Database["public"]["Tables"]["design_briefs"]["Row"
 export type Concept        = Database["public"]["Tables"]["concepts"]["Row"];
 export type PartsJob       = Database["public"]["Tables"]["parts_generation_jobs"]["Row"];
 export type ExportRow      = Database["public"]["Tables"]["exports"]["Row"];
+export type CarStl         = Database["public"]["Tables"]["car_stls"]["Row"];
+
+/* ─── ROLES ────────────────────────────────────────────────── */
+export function useIsAdmin(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["is_admin", userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("has_role", {
+        _user_id: userId!,
+        _role: "admin",
+      });
+      if (error) throw error;
+      return !!data;
+    },
+  });
+}
+
+/* ─── CAR STLs (admin-managed reference bodies) ────────────── */
+export function useCarStls() {
+  return useQuery({
+    queryKey: ["car_stls"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("car_stls")
+        .select("*, car_template:car_templates(*)")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as (CarStl & { car_template: CarTemplate | null })[];
+    },
+  });
+}
+
+export function useUpsertCarStl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      userId: string;
+      carTemplateId: string;
+      file: File;
+      forwardAxis: string;
+    }) => {
+      const path = `${input.carTemplateId}/${Date.now()}-${input.file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      const { error: upErr } = await supabase.storage
+        .from("car-stls")
+        .upload(path, input.file, { contentType: "model/stl", upsert: false });
+      if (upErr) throw upErr;
+
+      // Upsert by car_template_id (unique). Replace stl_path; clear repaired side.
+      const { data, error } = await supabase
+        .from("car_stls")
+        .upsert(
+          {
+            car_template_id: input.carTemplateId,
+            user_id: input.userId,
+            stl_path: path,
+            forward_axis: input.forwardAxis,
+            repaired_stl_path: null,
+            manifold_clean: false,
+            triangle_count: null,
+            bbox_min_mm: null,
+            bbox_max_mm: null,
+          },
+          { onConflict: "car_template_id" },
+        )
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as CarStl;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["car_stls"] }),
+  });
+}
+
+export function useDeleteCarStl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (row: CarStl) => {
+      // Best-effort remove of both files (admins only — RLS enforces).
+      const paths = [row.stl_path, row.repaired_stl_path].filter(Boolean) as string[];
+      if (paths.length) await supabase.storage.from("car-stls").remove(paths);
+      const { error } = await supabase.from("car_stls").delete().eq("id", row.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["car_stls"] }),
+  });
+}
+
+export function useUpdateCarStlAxis() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, forward_axis }: { id: string; forward_axis: string }) => {
+      const { error } = await supabase.from("car_stls").update({ forward_axis }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["car_stls"] }),
+  });
+}
 
 /* ─── PROFILE ──────────────────────────────────────────────── */
 export function useProfile(userId: string | undefined) {

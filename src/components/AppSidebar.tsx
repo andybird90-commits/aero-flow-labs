@@ -22,7 +22,10 @@ import {
   FileDown,
   Settings,
   Hexagon,
+  FileBox,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useIsAdmin } from "@/lib/repo";
 
 const projectsNav = [{ title: "Projects", url: "/projects", icon: LayoutGrid }];
 
@@ -35,6 +38,7 @@ const studioNav = [
 ];
 
 const systemNav = [{ title: "Settings", url: "/settings", icon: Settings }];
+const adminNav = [{ title: "Hero-car STLs", url: "/settings/car-stls", icon: FileBox }];
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -42,6 +46,8 @@ export function AppSidebar() {
   const location = useLocation();
   const [search] = useSearchParams();
   const projectId = search.get("project");
+  const { user } = useAuth();
+  const { data: isAdmin } = useIsAdmin(user?.id);
   const isActive = (path: string) => location.pathname === path;
 
   // Preserve project context across studio navigation
@@ -120,6 +126,17 @@ export function AppSidebar() {
             <SidebarMenu>{renderItems(systemNav)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-mono text-[10px] uppercase tracking-widest">
+              Admin
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>{renderItems(adminNav)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
