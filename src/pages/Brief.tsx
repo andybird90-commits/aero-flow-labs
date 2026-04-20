@@ -232,6 +232,9 @@ function BriefInner({ projectId }: { projectId: string }) {
       </div>
 
       <div className="glass rounded-xl p-5 space-y-3">
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Styling direction {activePreset ? "(optional addendum)" : ""}
           </label>
           {activePreset && (
             <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground/70">
