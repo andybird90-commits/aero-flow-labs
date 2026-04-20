@@ -19,7 +19,7 @@
  *   // dataUrls = { front_three_quarter, side, rear_three_quarter, rear }
  */
 import * as THREE from "three";
-import { STLLoader } from "three-stdlib";
+import { STLLoader, OBJLoader } from "three-stdlib";
 
 export type AngleKey =
   | "front_three_quarter"
@@ -68,10 +68,51 @@ const geomCache = new Map<string, THREE.BufferGeometry>();
 async function loadGeometry(url: string): Promise<THREE.BufferGeometry> {
   const cached = geomCache.get(url);
   if (cached) return cached;
-  const loader = new STLLoader();
-  const geo = await new Promise<THREE.BufferGeometry>((resolve, reject) => {
-    loader.load(url, (g) => resolve(g), undefined, (e) => reject(e));
-  });
+
+  // Detect OBJ vs STL from the URL path (signed URLs keep the extension before "?token=").
+  const pathPart = url.split("?")[0].toLowerCase();
+  const isObj = pathPart.endsWith(".obj");
+
+  let geo: THREE.BufferGeometry;
+  if (isObj) {
+    const loader = new OBJLoader();
+    const group = await new Promise<THREE.Group>((resolve, reject) => {
+      loader.load(url, (g) => resolve(g), undefined, (e) => reject(e));
+    });
+    // Merge every mesh's geometry into one BufferGeometry.
+    const geos: THREE.BufferGeometry[] = [];
+    group.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) {
+        const g = (obj as THREE.Mesh).geometry as THREE.BufferGeometry;
+        // Bake the mesh's local transform into the geometry before merging.
+        const cloned = g.clone();
+        cloned.applyMatrix4((obj as THREE.Mesh).matrixWorld);
+        // Drop attributes other than position so the merge is uniform.
+        const stripped = new THREE.BufferGeometry();
+        stripped.setAttribute("position", cloned.getAttribute("position"));
+        if (cloned.getIndex()) stripped.setIndex(cloned.getIndex());
+        geos.push(stripped.toNonIndexed());
+      }
+    });
+    if (geos.length === 0) throw new Error("OBJ contained no meshes.");
+    // Concatenate position arrays manually (simpler than BufferGeometryUtils import).
+    const total = geos.reduce((n, g) => n + (g.getAttribute("position").array as Float32Array).length, 0);
+    const positions = new Float32Array(total);
+    let offset = 0;
+    for (const g of geos) {
+      const arr = g.getAttribute("position").array as Float32Array;
+      positions.set(arr, offset);
+      offset += arr.length;
+    }
+    geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  } else {
+    const loader = new STLLoader();
+    geo = await new Promise<THREE.BufferGeometry>((resolve, reject) => {
+      loader.load(url, (g) => resolve(g), undefined, (e) => reject(e));
+    });
+  }
+
   geo.computeVertexNormals();
   geomCache.set(url, geo);
   return geo;

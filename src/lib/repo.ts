@@ -98,10 +98,16 @@ export function useUpsertCarStl() {
       file: File;
       forwardAxis: string;
     }) => {
-      const path = `${input.carTemplateId}/${Date.now()}-${input.file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const ext = (safeName.split(".").pop() ?? "").toLowerCase();
+      if (ext !== "stl" && ext !== "obj") {
+        throw new Error("Only .stl or .obj files are supported.");
+      }
+      const path = `${input.carTemplateId}/${Date.now()}-${safeName}`;
+      const contentType = ext === "obj" ? "model/obj" : "model/stl";
       const { error: upErr } = await supabase.storage
         .from("car-stls")
-        .upload(path, input.file, { contentType: "model/stl", upsert: false });
+        .upload(path, input.file, { contentType, upsert: false });
       if (upErr) throw upErr;
 
       // Upsert by car_template_id (unique). Replace stl_path; clear repaired side.
