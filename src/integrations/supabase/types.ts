@@ -534,9 +534,11 @@ export type Database = {
           make: string
           model: string
           notes: string | null
+          ref_front_url: string | null
           ref_front34_url: string | null
           ref_rear_url: string | null
           ref_rear34_url: string | null
+          ref_side_opposite_url: string | null
           ref_side_url: string | null
           trim: string | null
           updated_at: string
@@ -552,9 +554,11 @@ export type Database = {
           make: string
           model: string
           notes?: string | null
+          ref_front_url?: string | null
           ref_front34_url?: string | null
           ref_rear_url?: string | null
           ref_rear34_url?: string | null
+          ref_side_opposite_url?: string | null
           ref_side_url?: string | null
           trim?: string | null
           updated_at?: string
@@ -570,9 +574,11 @@ export type Database = {
           make?: string
           model?: string
           notes?: string | null
+          ref_front_url?: string | null
           ref_front34_url?: string | null
           ref_rear_url?: string | null
           ref_rear34_url?: string | null
+          ref_side_opposite_url?: string | null
           ref_side_url?: string | null
           trim?: string | null
           updated_at?: string
