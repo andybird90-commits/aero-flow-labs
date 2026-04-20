@@ -25,10 +25,16 @@ import {
 } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { decimateClientSide } from "@/lib/decimate-client";
 import {
-  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X,
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Anything above this gets vertex-clustering decimated in a Web Worker
+// before upload so the edge worker can repair it within its 256 MB cap.
+const DECIMATE_THRESHOLD_BYTES = 20 * 1024 * 1024;
+const DECIMATE_TARGET_TRIANGLES = 200_000;
 
 const newTemplateSchema = z.object({
   make: z.string().trim().min(1, "Make required").max(60),
