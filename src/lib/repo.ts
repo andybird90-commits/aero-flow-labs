@@ -19,6 +19,7 @@ export type Concept        = Database["public"]["Tables"]["concepts"]["Row"];
 export type PartsJob       = Database["public"]["Tables"]["parts_generation_jobs"]["Row"];
 export type ExportRow      = Database["public"]["Tables"]["exports"]["Row"];
 export type CarStl         = Database["public"]["Tables"]["car_stls"]["Row"];
+export type StylePreset    = Database["public"]["Tables"]["style_presets"]["Row"];
 
 /* ─── ROLES ────────────────────────────────────────────────── */
 export function useIsAdmin(userId: string | undefined) {
