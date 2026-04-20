@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useBrief, useUpsertBrief, useStylePresets, useCarTemplates, useCreateProjectWithStyle, type DesignBrief } from "@/lib/repo";
+import { useBrief, useUpsertBrief, useStylePresets, type DesignBrief } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette, Sparkles, Car as CarIcon, Check } from "lucide-react";
+import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -53,12 +53,6 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [rights, setRights] = useState(false);
   const [continuing, setContinuing] = useState(false);
   const [stylePresetId, setStylePresetId] = useState<string | null>(null);
-  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
-  const [bulkRunning, setBulkRunning] = useState(false);
-
-  const { data: templates = [] } = useCarTemplates();
-  const supportedTemplates = templates.filter((t: any) => t.supported);
-  const createWithStyle = useCreateProjectWithStyle();
 
   const activePreset = presets.find((p) => p.id === stylePresetId) ?? null;
 
@@ -128,66 +122,6 @@ function BriefInner({ projectId }: { projectId: string }) {
     }
   };
 
-  const toggleTemplate = (id: string) => {
-    setSelectedTemplateIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
-
-  const generateForSelected = async () => {
-    if (!user || !stylePresetId || selectedTemplateIds.length === 0) return;
-    const picks = supportedTemplates.filter((t: any) => selectedTemplateIds.includes(t.id));
-    if (picks.length === 0) return;
-
-    setBulkRunning(true);
-    const created: { project_id: string; brief_id: string; project_name: string }[] = [];
-    try {
-      for (const tmpl of picks) {
-        const res = await createWithStyle.mutateAsync({
-          userId: user.id,
-          template: tmpl as any,
-          stylePresetId,
-          addendumPrompt: prompt.trim(),
-          styleTags,
-          constraints: [...constraints, ...(customConstraint.trim() ? [customConstraint.trim()] : [])],
-          buildType: buildType || null,
-          rightsConfirmed: rights,
-        });
-        created.push(res);
-      }
-
-      for (const c of created) {
-        supabase.functions.invoke("generate-concepts", {
-          body: {
-            project_id: c.project_id,
-            brief_id: c.brief_id,
-            snapshot_data_url: null,
-            snapshots: {},
-          },
-        }).then(({ error, data }) => {
-          if (error || (data as any)?.error) {
-            toast({
-              title: `Generation failed for ${c.project_name}`,
-              description: String(error?.message ?? (data as any)?.error ?? "Unknown error"),
-              variant: "destructive",
-            });
-          }
-        });
-      }
-
-      toast({
-        title: `Generating ${created.length} project${created.length === 1 ? "" : "s"}…`,
-        description: "Concepts will appear in each project as they finish.",
-      });
-      setSelectedTemplateIds([]);
-      navigate("/projects");
-    } catch (e: any) {
-      toast({ title: "Couldn't queue generations", description: e.message, variant: "destructive" });
-    } finally {
-      setBulkRunning(false);
-    }
-  };
-
   return (
     <div className="mx-auto max-w-4xl p-6 space-y-6">
       <div>
@@ -231,88 +165,6 @@ function BriefInner({ projectId }: { projectId: string }) {
         )}
       </div>
 
-      {activePreset && (
-        <div className="glass rounded-xl p-5 space-y-4 ring-1 ring-primary/20">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <label className="text-mono text-[10px] uppercase tracking-widest text-primary flex items-center gap-1.5">
-                <Sparkles className="h-3 w-3" /> Apply this style to
-              </label>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Pick one or more cars — the same <span className="text-foreground">{activePreset.name}</span> DNA will be
-                generated for each. Each car becomes its own project.
-              </p>
-            </div>
-            <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              {selectedTemplateIds.length} selected
-            </div>
-          </div>
-
-          {supportedTemplates.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border bg-surface-1 px-4 py-6 text-center text-sm text-muted-foreground">
-              No supported car templates yet.
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {supportedTemplates.map((t: any) => {
-                const on = selectedTemplateIds.includes(t.id);
-                const label = `${t.make} ${t.model}${t.trim ? " " + t.trim : ""}`;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => toggleTemplate(t.id)}
-                    className={cn(
-                      "group relative text-left rounded-md border px-3 py-2.5 text-sm transition-colors",
-                      on
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border bg-surface-1 text-foreground hover:border-border/80 hover:bg-surface-2",
-                    )}
-                  >
-                    <div className="flex items-start gap-2">
-                      <CarIcon className={cn("h-4 w-4 mt-0.5 shrink-0", on ? "text-primary" : "text-muted-foreground")} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium">{label}</div>
-                        {t.year_range && (
-                          <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground truncate">
-                            {t.year_range}
-                          </div>
-                        )}
-                      </div>
-                      {on && <Check className="h-4 w-4 text-primary shrink-0" />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
-            <div className="text-xs text-muted-foreground">
-              {selectedTemplateIds.length === 0
-                ? "Select at least one car to generate."
-                : `Will create ${selectedTemplateIds.length} new project${selectedTemplateIds.length === 1 ? "" : "s"}.`}
-            </div>
-            <Button
-              variant="hero"
-              size="lg"
-              onClick={generateForSelected}
-              disabled={selectedTemplateIds.length === 0 || bulkRunning}
-            >
-              {bulkRunning ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Queuing…
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Generate {activePreset.name} for {selectedTemplateIds.length || ""} car{selectedTemplateIds.length === 1 ? "" : "s"}
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
       <div className="glass rounded-xl p-5 space-y-3">
         <div className="flex items-baseline justify-between gap-3 flex-wrap">
           <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
