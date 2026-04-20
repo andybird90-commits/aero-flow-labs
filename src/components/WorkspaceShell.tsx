@@ -18,6 +18,7 @@ import {
   Plus,
   Star,
   Clock,
+  Car,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCurrentProject } from "@/hooks/useCurrentProject";
