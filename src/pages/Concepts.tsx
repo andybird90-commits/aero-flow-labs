@@ -131,7 +131,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
             <AlertCircle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
             <div className="text-sm">
               <p className="text-muted-foreground">
-                Add a design brief first.{" "}
+                Add a design brief or pick a style preset first.{" "}
                 <Link to={`/brief?project=${projectId}`} className="text-primary hover:underline">
                   Go to Brief
                 </Link>
