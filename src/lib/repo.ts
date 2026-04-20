@@ -312,11 +312,31 @@ export function useProject(projectId: string | undefined) {
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { userId: string; name: string; carName?: string }) => {
+    mutationFn: async (input: {
+      userId: string;
+      name: string;
+      carName?: string;
+      garageCarId?: string | null;
+    }) => {
+      // If a garage car is provided, derive a sensible default car name from it.
+      let derivedCarName = input.carName ?? "Untitled vehicle";
+      if (input.garageCarId) {
+        const { data: gc } = await supabase
+          .from("garage_cars")
+          .select("year, make, model, trim")
+          .eq("id", input.garageCarId)
+          .maybeSingle();
+        if (gc) {
+          derivedCarName =
+            [gc.year, gc.make, gc.model, gc.trim].filter(Boolean).join(" ") ||
+            derivedCarName;
+        }
+      }
+
       // Create a minimal car shell (no template required for the new flow).
       const { data: car, error: carErr } = await supabase.from("cars").insert({
         user_id: input.userId,
-        name: input.carName ?? "Untitled vehicle",
+        name: derivedCarName,
       }).select("*").single();
       if (carErr) throw carErr;
 
@@ -325,7 +345,8 @@ export function useCreateProject() {
         car_id: car.id,
         name: input.name,
         status: "draft",
-      }).select("*").single();
+        garage_car_id: input.garageCarId ?? null,
+      } as any).select("*").single();
       if (pErr) throw pErr;
 
       const { data: geo, error: geoErr } = await supabase.from("geometries").insert({

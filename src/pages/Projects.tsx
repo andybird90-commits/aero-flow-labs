@@ -19,6 +19,11 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
@@ -35,10 +40,26 @@ export default function Projects() {
   const update = useUpdateProject();
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
+  const [openNew, setOpenNew] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newGarageCarId, setNewGarageCarId] = useState<string>(NONE_VALUE);
+
+  const openNewDialog = () => {
+    setNewName("");
+    setNewGarageCarId(NONE_VALUE);
+    setOpenNew(true);
+  };
+
   const handleCreate = async () => {
     if (!user) return;
+    const name = newName.trim() || "Untitled project";
     try {
-      const p = await create.mutateAsync({ userId: user.id, name: "Untitled project" });
+      const p = await create.mutateAsync({
+        userId: user.id,
+        name,
+        garageCarId: newGarageCarId === NONE_VALUE ? null : newGarageCarId,
+      });
+      setOpenNew(false);
       toast({ title: "Project created", description: "Write your design brief to get started." });
       navigate(`/brief?project=${p.id}`);
     } catch (e: any) {
@@ -70,7 +91,7 @@ export default function Projects() {
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Projects</h1>
             <p className="mt-1.5 text-muted-foreground">Each project starts with a design brief — the AI generates concepts from there.</p>
           </div>
-          <Button variant="hero" size="lg" onClick={handleCreate} disabled={create.isPending}>
+          <Button variant="hero" size="lg" onClick={openNewDialog}>
             <Plus className="mr-2 h-4 w-4" /> New project
           </Button>
         </div>
@@ -88,7 +109,7 @@ export default function Projects() {
             </div>
             <h2 className="text-xl font-semibold tracking-tight">No projects yet</h2>
             <p className="mt-2 text-muted-foreground">Create your first body kit project — it takes a minute.</p>
-            <Button variant="hero" size="lg" className="mt-6" onClick={handleCreate} disabled={create.isPending}>
+            <Button variant="hero" size="lg" className="mt-6" onClick={openNewDialog}>
               <Plus className="mr-2 h-4 w-4" /> New project
             </Button>
           </div>
@@ -162,6 +183,67 @@ export default function Projects() {
           </div>
         )}
       </div>
+
+      {/* New project dialog */}
+      <Dialog open={openNew} onOpenChange={setOpenNew}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>New project</DialogTitle>
+            <DialogDescription>
+              Give it a name and pick a garage car to use as the OEM identity reference.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="proj-name">Project name</Label>
+              <Input
+                id="proj-name"
+                autoFocus
+                placeholder="e.g. M3 GT-spec aero"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !create.isPending) handleCreate();
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <CarIcon className="h-3.5 w-3.5" /> Garage car (optional)
+              </Label>
+              <Select value={newGarageCarId} onValueChange={setNewGarageCarId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_VALUE}>— None —</SelectItem>
+                  {garageCars.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {[g.year, g.make, g.model, g.trim].filter(Boolean).join(" ")}
+                      {g.generation_status !== "ready" ? `  · ${g.generation_status}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {garageCars.length === 0 && (
+                <p className="text-mono text-[10px] text-muted-foreground">
+                  No garage cars yet —{" "}
+                  <Link to="/garage" className="text-primary hover:underline">
+                    add one
+                  </Link>{" "}
+                  to lock concept identity.
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpenNew(false)}>Cancel</Button>
+            <Button variant="hero" onClick={handleCreate} disabled={create.isPending}>
+              <Sparkles className="mr-2 h-4 w-4" /> Create project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!confirmId} onOpenChange={(o) => !o && setConfirmId(null)}>
         <AlertDialogContent>
