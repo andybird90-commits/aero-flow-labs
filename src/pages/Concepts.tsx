@@ -31,6 +31,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const { user } = useAuth();
   const { toast } = useToast();
   const { data: brief } = useBrief(projectId);
+  const { data: activePreset } = useStylePreset((brief as any)?.style_preset_id ?? null);
   const { data: concepts = [], refetch } = useConcepts(projectId);
   const updateConcept = useUpdateConcept();
   const deleteConcept = useDeleteConcept();
