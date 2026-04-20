@@ -16,6 +16,7 @@ import Brief from "./pages/Brief";
 import Concepts from "./pages/Concepts";
 import Settings from "./pages/Settings";
 import AdminCarStls from "./pages/AdminCarStls";
+import Styles from "./pages/Styles";
 
 function RealtimeBridge() {
   const { user } = useAuth();
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/upload" element={<Navigate to="/brief" replace />} />
             <Route path="/brief" element={<ProtectedRoute><Brief /></ProtectedRoute>} />
             <Route path="/concepts" element={<ProtectedRoute><Concepts /></ProtectedRoute>} />
+            <Route path="/styles" element={<ProtectedRoute><Styles /></ProtectedRoute>} />
             <Route path="/parts" element={<Navigate to="/concepts" replace />} />
             <Route path="/refine" element={<Navigate to="/concepts" replace />} />
             <Route path="/library" element={<Navigate to="/concepts" replace />} />

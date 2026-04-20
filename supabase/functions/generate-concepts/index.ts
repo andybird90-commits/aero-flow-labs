@@ -97,6 +97,17 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (bErr || !brief) return json({ error: "Brief not found" }, 404);
 
+    // Optional style preset — RLS allows owner OR public, so service role read is fine.
+    let preset: any = null;
+    if ((brief as any).style_preset_id) {
+      const { data: p } = await admin
+        .from("style_presets")
+        .select("*")
+        .eq("id", (brief as any).style_preset_id)
+        .maybeSingle();
+      preset = p;
+    }
+
     // Resolve concept_set
     const { data: cs } = await admin
       .from("concept_sets")
@@ -107,15 +118,23 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    // Merge preset prompt/tags/constraints with the per-project brief.
+    const mergedTags = Array.from(new Set([
+      ...(Array.isArray(preset?.style_tags) ? preset.style_tags : []),
+      ...(Array.isArray(brief.style_tags) ? brief.style_tags : []),
+    ]));
+    const mergedConstraints = Array.from(new Set([
+      ...(Array.isArray(preset?.constraints) ? preset.constraints : []),
+      ...(Array.isArray(brief.constraints) ? brief.constraints : []),
+    ]));
+    const buildType = brief.build_type || preset?.build_type || null;
+
     const stylePrompt = [
-      brief.prompt,
-      brief.build_type ? `Build type: ${brief.build_type}.` : "",
-      Array.isArray(brief.style_tags) && brief.style_tags.length
-        ? `Style tags: ${brief.style_tags.join(", ")}.`
-        : "",
-      Array.isArray(brief.constraints) && brief.constraints.length
-        ? `Constraints: ${brief.constraints.join("; ")}.`
-        : "",
+      preset?.prompt ? `Style preset — ${preset.name}: ${preset.prompt}` : "",
+      brief.prompt ? `Project brief: ${brief.prompt}` : "",
+      buildType ? `Build type: ${buildType}.` : "",
+      mergedTags.length ? `Style tags: ${mergedTags.join(", ")}.` : "",
+      mergedConstraints.length ? `Constraints: ${mergedConstraints.join("; ")}.` : "",
     ].filter(Boolean).join(" ");
 
     const inserted: string[] = [];

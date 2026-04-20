@@ -19,6 +19,7 @@ export type Concept        = Database["public"]["Tables"]["concepts"]["Row"];
 export type PartsJob       = Database["public"]["Tables"]["parts_generation_jobs"]["Row"];
 export type ExportRow      = Database["public"]["Tables"]["exports"]["Row"];
 export type CarStl         = Database["public"]["Tables"]["car_stls"]["Row"];
+export type StylePreset    = Database["public"]["Tables"]["style_presets"]["Row"];
 
 /* ─── ROLES ────────────────────────────────────────────────── */
 export function useIsAdmin(userId: string | undefined) {
@@ -467,6 +468,96 @@ export function useUpsertBrief() {
       return data as DesignBrief;
     },
     onSuccess: (d) => qc.invalidateQueries({ queryKey: ["brief", d.project_id] }),
+  });
+}
+
+/* ─── STYLE PRESETS (reusable styling DNA across cars) ─────── */
+export function useStylePresets(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["style_presets", userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      // RLS returns own + public automatically.
+      const { data, error } = await supabase
+        .from("style_presets")
+        .select("*")
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as StylePreset[];
+    },
+  });
+}
+
+export function useStylePreset(id: string | undefined | null) {
+  return useQuery({
+    queryKey: ["style_preset", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("style_presets")
+        .select("*")
+        .eq("id", id!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as StylePreset | null;
+    },
+  });
+}
+
+export function useCreateStylePreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { userId: string; name: string }) => {
+      const base = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const slug = `${base || "style"}-${Math.random().toString(36).slice(2, 6)}`;
+      const { data, error } = await supabase
+        .from("style_presets")
+        .insert({
+          user_id: input.userId,
+          name: input.name.trim() || "Untitled style",
+          slug,
+          prompt: "",
+          style_tags: [],
+          constraints: [],
+        })
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as StylePreset;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["style_presets"] }),
+  });
+}
+
+export function useUpdateStylePreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; patch: Partial<StylePreset> }) => {
+      const { data, error } = await supabase
+        .from("style_presets")
+        .update(input.patch)
+        .eq("id", input.id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as StylePreset;
+    },
+    onSuccess: (d) => {
+      qc.invalidateQueries({ queryKey: ["style_presets"] });
+      qc.invalidateQueries({ queryKey: ["style_preset", d.id] });
+    },
+  });
+}
+
+export function useDeleteStylePreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("style_presets").delete().eq("id", id);
+      if (error) throw error;
+      return id;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["style_presets"] }),
   });
 }
 

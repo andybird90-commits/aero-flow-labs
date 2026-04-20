@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
 import {
   useBrief, useConcepts, useUpdateConcept, useDeleteConcept,
-  useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, type Concept,
+  useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, useStylePreset, type Concept,
 } from "@/lib/repo";
 import { AeroKitProgress, type AeroKitStatus } from "@/components/AeroKitProgress";
 import { useAuth } from "@/hooks/useAuth";
@@ -31,6 +31,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const { user } = useAuth();
   const { toast } = useToast();
   const { data: brief } = useBrief(projectId);
+  const { data: activePreset } = useStylePreset((brief as any)?.style_preset_id ?? null);
   const { data: concepts = [], refetch } = useConcepts(projectId);
   const updateConcept = useUpdateConcept();
   const deleteConcept = useDeleteConcept();
@@ -155,6 +156,12 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
       <div className="space-y-4 lg:sticky lg:top-32 lg:self-start">
         <div className="glass rounded-xl p-4">
           <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Brief summary</div>
+          {activePreset && (
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] text-primary">
+              <Sparkles className="h-3 w-3" />
+              <span className="font-medium">Style: {activePreset.name}</span>
+            </div>
+          )}
           <p className="mt-2 text-sm text-muted-foreground line-clamp-[12]">
             {brief?.prompt || <em className="text-muted-foreground/60">No brief yet.</em>}
           </p>

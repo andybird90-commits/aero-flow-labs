@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useBrief, useUpsertBrief, type DesignBrief } from "@/lib/repo";
+import { useBrief, useUpsertBrief, useStylePresets, type DesignBrief } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight, Save, Tag, Wrench, RefreshCw } from "lucide-react";
+import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette } from "lucide-react";
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 const STYLE_TAGS = [
@@ -41,6 +42,7 @@ function BriefInner({ projectId }: { projectId: string }) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { data: brief } = useBrief(projectId);
+  const { data: presets = [] } = useStylePresets(user?.id);
   const upsert = useUpsertBrief();
 
   const [prompt, setPrompt] = useState("");
@@ -50,6 +52,9 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [customConstraint, setCustomConstraint] = useState("");
   const [rights, setRights] = useState(false);
   const [continuing, setContinuing] = useState(false);
+  const [stylePresetId, setStylePresetId] = useState<string | null>(null);
+
+  const activePreset = presets.find((p) => p.id === stylePresetId) ?? null;
 
   useEffect(() => {
     if (brief) {
@@ -58,8 +63,10 @@ function BriefInner({ projectId }: { projectId: string }) {
       setBuildType(brief.build_type ?? "");
       setConstraints(brief.constraints ?? []);
       setRights(brief.rights_confirmed ?? false);
+      setStylePresetId((brief as any).style_preset_id ?? null);
     }
   }, [brief]);
+
 
   const toggle = (arr: string[], v: string, set: (a: string[]) => void) => {
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
@@ -79,7 +86,8 @@ function BriefInner({ projectId }: { projectId: string }) {
         build_type: buildType || null,
         constraints: allConstraints,
         rights_confirmed: rights,
-      },
+        style_preset_id: stylePresetId,
+      } as any,
     });
     setCustomConstraint("");
     return saved;
@@ -149,7 +157,42 @@ function BriefInner({ projectId }: { projectId: string }) {
       </div>
 
       <div className="glass rounded-xl p-5 space-y-3">
-        <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Styling direction</label>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+            <Palette className="h-3 w-3" /> Style preset (optional)
+          </label>
+          <Link to="/styles" className="text-mono text-[10px] uppercase tracking-widest text-primary hover:underline">
+            Manage styles →
+          </Link>
+        </div>
+        <select
+          value={stylePresetId ?? ""}
+          onChange={(e) => setStylePresetId(e.target.value || null)}
+          className="w-full bg-surface-1 border border-border rounded-md px-3 py-2 text-sm"
+        >
+          <option value="">— None —</option>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.user_id !== user?.id ? " (public)" : ""}
+            </option>
+          ))}
+        </select>
+        {activePreset && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-1.5">
+            <div className="text-xs text-foreground line-clamp-3">{activePreset.prompt || <em className="text-muted-foreground">No preset description.</em>}</div>
+            {(activePreset.style_tags?.length || activePreset.constraints?.length) ? (
+              <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                {activePreset.style_tags?.length ?? 0} tags · {activePreset.constraints?.length ?? 0} constraints will be merged in
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className="glass rounded-xl p-5 space-y-3">
+        <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          Styling direction {activePreset ? "(car-specific addendum)" : ""}
+        </label>
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}

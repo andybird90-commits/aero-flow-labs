@@ -370,6 +370,7 @@ export type Database = {
           prompt: string
           reference_image_paths: string[]
           rights_confirmed: boolean
+          style_preset_id: string | null
           style_tags: string[]
           updated_at: string
           user_id: string
@@ -383,6 +384,7 @@ export type Database = {
           prompt?: string
           reference_image_paths?: string[]
           rights_confirmed?: boolean
+          style_preset_id?: string | null
           style_tags?: string[]
           updated_at?: string
           user_id: string
@@ -396,6 +398,7 @@ export type Database = {
           prompt?: string
           reference_image_paths?: string[]
           rights_confirmed?: boolean
+          style_preset_id?: string | null
           style_tags?: string[]
           updated_at?: string
           user_id?: string
@@ -406,6 +409,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "design_briefs_style_preset_id_fkey"
+            columns: ["style_preset_id"]
+            isOneToOne: false
+            referencedRelation: "style_presets"
             referencedColumns: ["id"]
           },
         ]
@@ -706,6 +716,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      style_presets: {
+        Row: {
+          build_type: string | null
+          constraints: string[]
+          cover_image_url: string | null
+          created_at: string
+          id: string
+          is_public: boolean
+          name: string
+          prompt: string
+          slug: string
+          style_tags: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          build_type?: string | null
+          constraints?: string[]
+          cover_image_url?: string | null
+          created_at?: string
+          id?: string
+          is_public?: boolean
+          name: string
+          prompt?: string
+          slug: string
+          style_tags?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          build_type?: string | null
+          constraints?: string[]
+          cover_image_url?: string | null
+          created_at?: string
+          id?: string
+          is_public?: boolean
+          name?: string
+          prompt?: string
+          slug?: string
+          style_tags?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
