@@ -24,6 +24,7 @@ import {
   Box, Download, Trash2, Sparkles, Wrench, ImageOff, Eye, ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StockVsConceptPanel } from "@/components/StockVsConceptPanel";
 
 export default function LibraryPage() {
   return (
@@ -104,6 +105,12 @@ function LibraryInner({ projectId, project }: { projectId: string; project: any 
       {isLoading && (
         <div className="text-center text-muted-foreground py-12">Loading library…</div>
       )}
+
+      {/* Stock-vs-concept silhouette comparison (only renders if hero STL exists). */}
+      <StockVsConceptPanel
+        projectId={projectId}
+        carTemplateId={project?.car?.template?.id ?? null}
+      />
 
       {!isLoading && totalSaved === 0 && (
         <EmptyLibrary projectId={projectId} />

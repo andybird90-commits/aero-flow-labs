@@ -155,6 +155,43 @@ export function useUpdateCarStlAxis() {
   });
 }
 
+/** Fetch the hero STL row for a given car template (one or none). */
+export function useCarStlForTemplate(carTemplateId: string | undefined | null) {
+  return useQuery({
+    queryKey: ["car_stl_for_template", carTemplateId],
+    enabled: !!carTemplateId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("car_stls")
+        .select("*")
+        .eq("car_template_id", carTemplateId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as CarStl | null;
+    },
+  });
+}
+
+/**
+ * Create a short-lived signed URL for a private object in the `car-stls` bucket.
+ * The repaired path is preferred when present; falls back to the raw path.
+ */
+export function useSignedCarStlUrl(row: CarStl | null | undefined) {
+  return useQuery({
+    queryKey: ["signed_car_stl_url", row?.id, row?.repaired_stl_path ?? row?.stl_path],
+    enabled: !!row,
+    queryFn: async () => {
+      const path = row!.repaired_stl_path ?? row!.stl_path;
+      const { data, error } = await supabase.storage
+        .from("car-stls")
+        .createSignedUrl(path, 60 * 30); // 30 minutes
+      if (error) throw error;
+      return data.signedUrl;
+    },
+    staleTime: 1000 * 60 * 20,
+  });
+}
+
 /* ─── PROFILE ──────────────────────────────────────────────── */
 export function useProfile(userId: string | undefined) {
   return useQuery({
