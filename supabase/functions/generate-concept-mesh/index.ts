@@ -39,7 +39,6 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    if (!MESHY_API_KEY) return json({ error: "MESHY_API_KEY is not configured" }, 500);
     if (!REPLICATE_API_TOKEN) return json({ error: "REPLICATE_API_TOKEN is not configured" }, 500);
 
     const { concept_id } = await req.json();
