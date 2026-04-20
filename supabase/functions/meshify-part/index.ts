@@ -16,6 +16,7 @@
  *   { action: "status", concept_id, part_kind, task_id }
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { smoothStl } from "../_shared/stl-smooth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
