@@ -24,6 +24,7 @@ import {
   Box, Download, Trash2, Sparkles, Wrench, ImageOff, Eye, ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StockVsConceptPanel } from "@/components/StockVsConceptPanel";
 
 export default function LibraryPage() {
   return (
