@@ -136,6 +136,7 @@ export default function Garage() {
                 key={c.id}
                 car={c}
                 onRegenerate={() => handleRegenerate(c.id)}
+                onRegenerateAngle={(angleKey) => handleRegenerate(c.id, [angleKey])}
                 onDelete={() => setConfirmDel(c.id)}
                 regenerating={generate.isPending}
               />
