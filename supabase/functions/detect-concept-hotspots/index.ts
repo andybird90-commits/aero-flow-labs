@@ -118,7 +118,17 @@ Deno.serve(async (req) => {
       "You will be shown a single render of a custom car and asked to locate " +
       "specific body kit parts. Return tight bounding boxes in normalised " +
       "image coordinates (0..1 from the top-left). Only return boxes for " +
-      "parts that are clearly visible. Skip parts that are occluded or absent.";
+      "parts that are clearly visible. Skip parts that are occluded or absent.\n\n" +
+      "CRITICAL DISAMBIGUATION — WING vs DUCKTAIL:\n" +
+      "• A WING is a separate aerofoil blade held above the rear deck on " +
+      "  visible stalks/swan-necks. There is a CLEAR GAP of air (daylight) " +
+      "  between the underside of the blade and the bootlid surface.\n" +
+      "• A DUCKTAIL is a short integrated lip rising directly off the " +
+      "  bootlid/rear-deck panel. It is part of the body itself — NO stalks, " +
+      "  NO daylight underneath, NO separation from the body surface.\n" +
+      "• Never return both for the same car — they are mutually exclusive.\n" +
+      "• If you cannot see daylight under a rear blade, it is a DUCKTAIL.\n" +
+      "• If you can see daylight + uprights, it is a WING.";
 
     const userPrompt =
       `View: ${view}. ` +
@@ -130,7 +140,8 @@ Deno.serve(async (req) => {
       `- Boxes must hug the actual part on the car, not be huge generic regions.\n` +
       `- If a part is not clearly present, OMIT it entirely. Do not guess.\n` +
       `- For symmetric parts (e.g. front arches L/R) return one box per side only ` +
-      `  if both are visible.`;
+      `  if both are visible.\n` +
+      `- Wing and ducktail are MUTUALLY EXCLUSIVE — return at most one of them.`;
 
     const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
