@@ -12,7 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Check, X, RefreshCw, Star, Wand2, AlertCircle, MousePointer2, Maximize2, Layers, Download,
+  Sparkles, Check, X, RefreshCw, Star, Wand2, AlertCircle, MousePointer2, Maximize2, Layers, Download, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
@@ -259,6 +259,35 @@ function ConceptCard({
   const current = visibleAngles[angleIdx];
   const hasMultiple = visibleAngles.length > 1;
 
+  const goPrev = () => setAngleIdx((i) => (i - 1 + visibleAngles.length) % visibleAngles.length);
+  const goNext = () => setAngleIdx((i) => (i + 1) % visibleAngles.length);
+
+  // Keyboard arrows when the zoom dialog is open.
+  useEffect(() => {
+    if (!zoomOpen || !hasMultiple) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") { e.preventDefault(); goPrev(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); goNext(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomOpen, hasMultiple, visibleAngles.length]);
+
+  // Touch swipe — horizontal flick > 40px switches angles.
+  const touchStartX = useRef<number | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (!hasMultiple || pickMode) return;
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!hasMultiple || pickMode || touchStartX.current == null) return;
+    const dx = (e.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(dx) < 40) return;
+    if (dx > 0) goPrev(); else goNext();
+  };
+
   const renderViewer = (variant: "card" | "zoom") => (
     <>
       {current ? (
@@ -338,6 +367,29 @@ function ConceptCard({
         )}
       </div>
 
+      {hasMultiple && !pickMode && (
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); goPrev(); }}
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 grid place-items-center h-9 w-9 rounded-full bg-surface-0/80 backdrop-blur border border-border text-muted-foreground hover:text-foreground hover:bg-surface-0 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 group-[.is-zoom]:opacity-100"
+            aria-label="Previous angle"
+            title="Previous angle (←)"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); goNext(); }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 grid place-items-center h-9 w-9 rounded-full bg-surface-0/80 backdrop-blur border border-border text-muted-foreground hover:text-foreground hover:bg-surface-0 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 group-[.is-zoom]:opacity-100"
+            aria-label="Next angle"
+            title="Next angle (→)"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </>
+      )}
+
       {hasMultiple && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-surface-0/80 backdrop-blur px-1.5 py-1 border border-border z-10">
           {visibleAngles.map((a, i) => (
@@ -366,7 +418,11 @@ function ConceptCard({
       concept.status === "approved" && "border-success/40 ring-1 ring-success/20",
       concept.status === "rejected" && "opacity-50",
     )}>
-      <div className="relative aspect-[4/3] bg-surface-2 grid-bg-fine">
+      <div
+        className="relative aspect-[4/3] bg-surface-2 grid-bg-fine group"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
         {renderViewer("card")}
       </div>
       <div className="p-3 flex-1 space-y-2">
@@ -453,7 +509,11 @@ function ConceptCard({
           <VisuallyHidden asChild>
             <DialogDescription>Pick parts on a larger render</DialogDescription>
           </VisuallyHidden>
-          <div className="relative w-full h-full bg-surface-2 grid-bg-fine">
+          <div
+            className="relative w-full h-full bg-surface-2 grid-bg-fine group is-zoom"
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+          >
             {renderViewer("zoom")}
           </div>
         </DialogContent>
