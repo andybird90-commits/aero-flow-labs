@@ -4,32 +4,21 @@
  * Builds the printable aero kit by isolating the parts of the displaced mesh
  * that moved meaningfully outward from the stock STL.
  *
- * Why not a true CSG boolean? `manifold-3d` in Deno is fragile (WASM cold
- * start, intolerant of non-manifold inputs even after the repair pass), and
- * we already know exactly which vertices moved during displacement. So we
- * use a per-vertex distance-to-stock test instead:
- *
- *   1. Load `displaced.stl` AND repaired stock STL.
- *   2. Build a coarse spatial hash of the stock vertices (bucketed by 100mm).
+ * Uses a per-vertex distance-to-stock test:
+ *   1. Load displaced.stl AND repaired stock STL.
+ *   2. Build a coarse spatial hash of the stock vertices.
  *   3. For each displaced vertex, compute distance to nearest stock vertex.
- *      Vertices > 2mm (the dilation tolerance) from stock = "kit".
- *   4. A triangle is "kit" if all 3 of its vertices are kit. Triangles where
- *      0 or 1 vertices are kit = stock surface; we drop them.
- *      For mixed triangles (2 kit verts), we keep them — they form the
- *      mating face that wraps onto the body.
- *   5. Drop tiny components, weld, smooth, split connected components, and
- *      classify each by bbox zone.
- *   6. Upload combined kit + per-part STLs and insert `concept_parts` rows.
+ *      Vertices > 2mm from stock = "kit".
+ *   4. Keep triangles with ≥2 kit vertices.
+ *   5. Weld, upload combined kit STL, insert a single concept_part row.
+ *
+ * Skips connected-component splitting to stay within edge worker memory.
  *
  * Body: { concept_id: string }
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { parseStl, writeBinaryStl, weldMesh, type Mesh } from "../_shared/stl-io.ts";
 import { reorientMesh, type ForwardAxis } from "../_shared/stl-render-server.ts";
-import {
-  splitConnectedComponents, classifyByZone, meshBboxOf, approxVolume,
-  type PartKind,
-} from "../_shared/stl-classify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,12 +31,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TOLERANCE_MM = 2;
-const MIN_COMPONENT_VOLUME_MM3 = 50_000; // 50 cm³
-// Hard cap on triangles we'll process. Hero STLs from scrape sources can be
-// 500k+ tris; running the per-vertex distance test + connected-component split
-// on that scale blows the edge worker's 256 MB / 400ms budget.
-const MAX_DISPLACED_TRIS = 60_000;
-const MAX_KIT_TRIS_FOR_SPLIT = 40_000;
+const MAX_INPUT_TRIS = 50_000;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -99,16 +83,13 @@ Deno.serve(async (req) => {
       return fail(admin, concept.id, "Empty stock or displaced mesh");
     }
     stockMesh = reorientMesh(stockMesh, (stlRow.forward_axis as ForwardAxis) ?? "-z");
-    // Displaced was already in canonical space when written by the displacement step.
 
-    // Decimate inputs uniformly if they're too dense. Stride-sample triangles
-    // — coarser than a real edge-collapse pass, but keeps the worker alive
-    // and the kit shell only needs to be approximate (we re-weld below).
-    displacedMesh = decimateIfTooBig(displacedMesh, MAX_DISPLACED_TRIS);
-    stockMesh = decimateIfTooBig(stockMesh, MAX_DISPLACED_TRIS);
+    // Decimate if too dense.
+    displacedMesh = decimateIfTooBig(displacedMesh, MAX_INPUT_TRIS);
+    stockMesh = decimateIfTooBig(stockMesh, MAX_INPUT_TRIS);
 
-    // 2. Spatial hash of stock vertices for fast nearest-neighbour (~O(1) per query).
-    const CELL = 100; // mm
+    // 2. Spatial hash of stock vertices.
+    const CELL = 100;
     const stockHash = new Map<string, number[]>();
     const sp = stockMesh.positions;
     for (let i = 0; i < sp.length; i += 3) {
@@ -137,15 +118,20 @@ Deno.serve(async (req) => {
       return best;
     };
 
-    // 3. Mark displaced vertices that are > tolerance away from stock.
+    // Free stock mesh memory now that the hash is built.
+    stockMesh = null as any;
+
+    // 3. Mark displaced vertices > tolerance from stock.
     const dp = displacedMesh.positions;
     const vCount = dp.length / 3;
     const isKit = new Uint8Array(vCount);
     const tolSq = TOLERANCE_MM * TOLERANCE_MM;
     let kitVerts = 0;
     for (let v = 0; v < vCount; v++) {
-      const d2 = distToStockSq(dp[v * 3], dp[v * 3 + 1], dp[v * 3 + 2]);
-      if (d2 > tolSq) { isKit[v] = 1; kitVerts++; }
+      if (distToStockSq(dp[v * 3], dp[v * 3 + 1], dp[v * 3 + 2]) > tolSq) {
+        isKit[v] = 1;
+        kitVerts++;
+      }
     }
 
     if (kitVerts === 0) {
@@ -164,7 +150,7 @@ Deno.serve(async (req) => {
       return fail(admin, concept.id, "No kit triangles after subtraction");
     }
 
-    // Re-index kit triangles into a fresh mesh.
+    // Re-index into a fresh mesh.
     const remap = new Map<number, number>();
     const newPos: number[] = [];
     const newIdx = new Uint32Array(keptTris.length * 3);
@@ -183,71 +169,29 @@ Deno.serve(async (req) => {
     }
     let kitMesh: Mesh = { positions: new Float32Array(newPos), indices: newIdx };
     kitMesh = weldMesh(kitMesh, 0.5);
-    kitMesh = decimateIfTooBig(kitMesh, MAX_KIT_TRIS_FOR_SPLIT);
 
-    await admin.from("concepts")
-      .update({ aero_kit_status: "splitting" })
-      .eq("id", concept.id);
-
-    // 5. Split into connected components, drop tiny ones, classify each.
-    const allComponents = splitConnectedComponents(kitMesh);
-    const components = allComponents
-      .map((m) => ({ mesh: m, vol: approxVolume(m) }))
-      .filter((c) => c.vol >= MIN_COMPONENT_VOLUME_MM3)
-      .sort((a, b) => b.vol - a.vol);
-
-    if (components.length === 0) {
-      return fail(admin, concept.id, "All kit fragments below minimum volume — try a stronger concept silhouette.");
-    }
-
-    const carBb = meshBboxOf(stockMesh);
-
-    // 6. Upload combined kit STL. Skip Laplacian smoothing — its full
-    //    weld + adjacency-Set pass is the single biggest memory hog and
-    //    consistently trips WORKER_RESOURCE_LIMIT on dense meshes.
-    const combinedSmoothed = writeBinaryStl(kitMesh);
+    // 5. Upload combined kit STL (no component splitting).
+    const combinedBytes = writeBinaryStl(kitMesh);
     const kitPath = `aero-kits/${concept.id}/kit.stl`;
     const { error: kitUpErr } = await admin.storage.from("car-stls")
-      .upload(kitPath, combinedSmoothed, { contentType: "model/stl", upsert: true });
+      .upload(kitPath, combinedBytes, { contentType: "model/stl", upsert: true });
     if (kitUpErr) return fail(admin, concept.id, `Upload kit STL failed: ${kitUpErr.message}`);
     const { data: kitSigned } = await admin.storage.from("car-stls").createSignedUrl(kitPath, 60 * 60 * 24 * 365);
 
-    // Clear any prior boolean-source parts so re-runs replace them.
+    // Clear prior boolean-source parts, insert single combined part.
     await admin.from("concept_parts")
       .delete().eq("concept_id", concept.id).eq("source", "boolean");
 
-    // 7. Upload + insert per-component parts. Use kind+index for uniqueness.
-    const kindCounts: Record<string, number> = {};
-    const uploaded: { kind: PartKind; signed_url: string; volume_mm3: number; label: string }[] = [];
-    for (const { mesh, vol } of components) {
-      const partBb = meshBboxOf(mesh);
-      const kind = classifyByZone(partBb, carBb);
-      kindCounts[kind] = (kindCounts[kind] ?? 0) + 1;
-      const idx = kindCounts[kind];
-      const partBytes = writeBinaryStl(mesh);
-      const partPath = `aero-kits/${concept.id}/${kind}-${idx}.stl`;
-      const { error: pErr } = await admin.storage.from("car-stls")
-        .upload(partPath, partBytes, { contentType: "model/stl", upsert: true });
-      if (pErr) {
-        console.error(`upload part ${kind}-${idx} failed:`, pErr.message);
-        continue;
-      }
-      const { data: signed } = await admin.storage.from("car-stls")
-        .createSignedUrl(partPath, 60 * 60 * 24 * 365);
-      const label = `${prettyKind(kind)} ${idx > 1 ? `(${idx})` : ""}`.trim();
-      uploaded.push({ kind, signed_url: signed?.signedUrl ?? "", volume_mm3: vol, label });
-
-      await admin.from("concept_parts").insert({
-        user_id: userRes.user.id,
-        project_id: concept.project_id,
-        concept_id: concept.id,
-        kind,
-        label,
-        glb_url: signed?.signedUrl ?? null,
-        render_urls: [],
-        source: "boolean",
-      });
-    }
+    await admin.from("concept_parts").insert({
+      user_id: userRes.user.id,
+      project_id: concept.project_id,
+      concept_id: concept.id,
+      kind: "full_kit",
+      label: "Aero Kit",
+      glb_url: kitSigned?.signedUrl ?? null,
+      render_urls: [],
+      source: "boolean",
+    });
 
     await admin.from("concepts").update({
       aero_kit_status: "ready",
@@ -258,17 +202,12 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       kit_url: kitSigned?.signedUrl ?? null,
-      part_count: uploaded.length,
-      parts: uploaded,
+      triangles: kitMesh.indices.length / 3,
     });
   } catch (e) {
     return json({ error: String((e as Error).message ?? e) }, 500);
   }
 });
-
-function prettyKind(k: PartKind): string {
-  return k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -282,11 +221,7 @@ async function fail(admin: ReturnType<typeof createClient>, conceptId: string, m
   return json({ error: message }, 500);
 }
 
-/**
- * Cheap uniform triangle decimation: keep every Nth triangle until we're
- * under `maxTris`. Loses some shell quality but avoids edge-runtime OOM.
- * Vertices not referenced by kept triangles are pruned.
- */
+/** Cheap uniform triangle decimation to stay under worker memory. */
 function decimateIfTooBig(mesh: Mesh, maxTris: number): Mesh {
   const triCount = mesh.indices.length / 3;
   if (triCount <= maxTris) return mesh;
