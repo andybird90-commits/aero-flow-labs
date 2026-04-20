@@ -279,3 +279,32 @@ async function fail(admin: ReturnType<typeof createClient>, conceptId: string, m
   await admin.from("concepts").update({ aero_kit_status: "failed", aero_kit_error: message }).eq("id", conceptId);
   return json({ error: message }, 500);
 }
+
+/**
+ * Cheap uniform triangle decimation: keep every Nth triangle until we're
+ * under `maxTris`. Loses some shell quality but avoids edge-runtime OOM.
+ * Vertices not referenced by kept triangles are pruned.
+ */
+function decimateIfTooBig(mesh: Mesh, maxTris: number): Mesh {
+  const triCount = mesh.indices.length / 3;
+  if (triCount <= maxTris) return mesh;
+  const stride = Math.ceil(triCount / maxTris);
+  const keptCount = Math.floor(triCount / stride);
+  const keptIdx = new Uint32Array(keptCount * 3);
+  const remap = new Map<number, number>();
+  const newPos: number[] = [];
+  for (let i = 0; i < keptCount; i++) {
+    const t = i * stride;
+    for (let k = 0; k < 3; k++) {
+      const old = mesh.indices[t * 3 + k];
+      let nid = remap.get(old);
+      if (nid === undefined) {
+        nid = newPos.length / 3;
+        newPos.push(mesh.positions[old * 3], mesh.positions[old * 3 + 1], mesh.positions[old * 3 + 2]);
+        remap.set(old, nid);
+      }
+      keptIdx[i * 3 + k] = nid;
+    }
+  }
+  return { positions: new Float32Array(newPos), indices: keptIdx };
+}
