@@ -173,14 +173,57 @@ Deno.serve(async (req) => {
 
     const inserted: string[] = [];
 
+    // If the project is linked to a garage car, prefer ITS 4 generated views
+    // as the canonical OEM identity references. They override any per-call
+    // snapshots the client may have sent.
+    const garageRefs: Partial<Record<AngleKey, string>> = {};
+    {
+      const { data: proj } = await admin
+        .from("projects")
+        .select("garage_car_id")
+        .eq("id", body.project_id)
+        .maybeSingle();
+      const gcId = (proj as any)?.garage_car_id;
+      if (gcId) {
+        const { data: gc } = await admin
+          .from("garage_cars")
+          .select("ref_front34_url, ref_side_url, ref_rear34_url, ref_rear_url")
+          .eq("id", gcId)
+          .maybeSingle();
+        if (gc) {
+          const fetchAsDataUrl = async (u: string | null): Promise<string | null> => {
+            if (!u) return null;
+            try {
+              const r = await fetch(u);
+              if (!r.ok) return null;
+              const buf = new Uint8Array(await r.arrayBuffer());
+              const mime = r.headers.get("content-type") ?? "image/png";
+              let s = "";
+              for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
+              return `data:${mime};base64,${btoa(s)}`;
+            } catch { return null; }
+          };
+          const [f, s, r34, r] = await Promise.all([
+            fetchAsDataUrl((gc as any).ref_front34_url),
+            fetchAsDataUrl((gc as any).ref_side_url),
+            fetchAsDataUrl((gc as any).ref_rear34_url),
+            fetchAsDataUrl((gc as any).ref_rear_url),
+          ]);
+          if (f)   garageRefs.front_three_quarter = f;
+          if (s)   garageRefs.side = s;
+          if (r34) garageRefs.rear_three_quarter = r34;
+          if (r)   garageRefs.rear = r;
+          console.log("generate-concepts: using garage car refs =", Object.keys(garageRefs));
+        }
+      }
+    }
 
-
-    // Normalise snapshots: prefer per-angle map, fall back to legacy single image.
+    // Normalise snapshots: garage-car refs win, then per-angle map, then legacy single image.
     const snaps: Record<AngleKey, string | null> = {
-      front_three_quarter: body.snapshots?.front_three_quarter ?? body.snapshot_data_url ?? null,
-      side: body.snapshots?.side ?? null,
-      rear_three_quarter: body.snapshots?.rear_three_quarter ?? null,
-      rear: body.snapshots?.rear ?? body.snapshots?.rear_three_quarter ?? null,
+      front_three_quarter: garageRefs.front_three_quarter ?? body.snapshots?.front_three_quarter ?? body.snapshot_data_url ?? null,
+      side:                garageRefs.side ?? body.snapshots?.side ?? null,
+      rear_three_quarter:  garageRefs.rear_three_quarter ?? body.snapshots?.rear_three_quarter ?? null,
+      rear:                garageRefs.rear ?? body.snapshots?.rear ?? body.snapshots?.rear_three_quarter ?? null,
     };
 
     const ANGLES: Array<{ key: AngleKey; label: string; framing: string }> = [
