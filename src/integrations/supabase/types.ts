@@ -524,6 +524,63 @@ export type Database = {
           },
         ]
       }
+      garage_cars: {
+        Row: {
+          color: string | null
+          created_at: string
+          generation_error: string | null
+          generation_status: string
+          id: string
+          make: string
+          model: string
+          notes: string | null
+          ref_front34_url: string | null
+          ref_rear_url: string | null
+          ref_rear34_url: string | null
+          ref_side_url: string | null
+          trim: string | null
+          updated_at: string
+          user_id: string
+          year: number | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          generation_error?: string | null
+          generation_status?: string
+          id?: string
+          make: string
+          model: string
+          notes?: string | null
+          ref_front34_url?: string | null
+          ref_rear_url?: string | null
+          ref_rear34_url?: string | null
+          ref_side_url?: string | null
+          trim?: string | null
+          updated_at?: string
+          user_id: string
+          year?: number | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          generation_error?: string | null
+          generation_status?: string
+          id?: string
+          make?: string
+          model?: string
+          notes?: string | null
+          ref_front34_url?: string | null
+          ref_rear_url?: string | null
+          ref_rear34_url?: string | null
+          ref_side_url?: string | null
+          trim?: string | null
+          updated_at?: string
+          user_id?: string
+          year?: number | null
+        }
+        Relationships: []
+      }
       geometries: {
         Row: {
           created_at: string
@@ -677,6 +734,7 @@ export type Database = {
         Row: {
           car_id: string
           created_at: string
+          garage_car_id: string | null
           id: string
           name: string
           notes: string | null
@@ -688,6 +746,7 @@ export type Database = {
         Insert: {
           car_id: string
           created_at?: string
+          garage_car_id?: string | null
           id?: string
           name: string
           notes?: string | null
@@ -699,6 +758,7 @@ export type Database = {
         Update: {
           car_id?: string
           created_at?: string
+          garage_car_id?: string | null
           id?: string
           name?: string
           notes?: string | null
@@ -713,6 +773,13 @@ export type Database = {
             columns: ["car_id"]
             isOneToOne: false
             referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_garage_car_id_fkey"
+            columns: ["garage_car_id"]
+            isOneToOne: false
+            referencedRelation: "garage_cars"
             referencedColumns: ["id"]
           },
         ]

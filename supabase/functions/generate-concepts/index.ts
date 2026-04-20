@@ -19,7 +19,6 @@
  *   final concept insert via service role check).
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { openaiGenerateImage } from "../_shared/openai-image.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,7 +27,6 @@ const corsHeaders = {
 };
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -175,14 +173,57 @@ Deno.serve(async (req) => {
 
     const inserted: string[] = [];
 
+    // If the project is linked to a garage car, prefer ITS 4 generated views
+    // as the canonical OEM identity references. They override any per-call
+    // snapshots the client may have sent.
+    const garageRefs: Partial<Record<AngleKey, string>> = {};
+    {
+      const { data: proj } = await admin
+        .from("projects")
+        .select("garage_car_id")
+        .eq("id", body.project_id)
+        .maybeSingle();
+      const gcId = (proj as any)?.garage_car_id;
+      if (gcId) {
+        const { data: gc } = await admin
+          .from("garage_cars")
+          .select("ref_front34_url, ref_side_url, ref_rear34_url, ref_rear_url")
+          .eq("id", gcId)
+          .maybeSingle();
+        if (gc) {
+          const fetchAsDataUrl = async (u: string | null): Promise<string | null> => {
+            if (!u) return null;
+            try {
+              const r = await fetch(u);
+              if (!r.ok) return null;
+              const buf = new Uint8Array(await r.arrayBuffer());
+              const mime = r.headers.get("content-type") ?? "image/png";
+              let s = "";
+              for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
+              return `data:${mime};base64,${btoa(s)}`;
+            } catch { return null; }
+          };
+          const [f, s, r34, r] = await Promise.all([
+            fetchAsDataUrl((gc as any).ref_front34_url),
+            fetchAsDataUrl((gc as any).ref_side_url),
+            fetchAsDataUrl((gc as any).ref_rear34_url),
+            fetchAsDataUrl((gc as any).ref_rear_url),
+          ]);
+          if (f)   garageRefs.front_three_quarter = f;
+          if (s)   garageRefs.side = s;
+          if (r34) garageRefs.rear_three_quarter = r34;
+          if (r)   garageRefs.rear = r;
+          console.log("generate-concepts: using garage car refs =", Object.keys(garageRefs));
+        }
+      }
+    }
 
-
-    // Normalise snapshots: prefer per-angle map, fall back to legacy single image.
+    // Normalise snapshots: garage-car refs win, then per-angle map, then legacy single image.
     const snaps: Record<AngleKey, string | null> = {
-      front_three_quarter: body.snapshots?.front_three_quarter ?? body.snapshot_data_url ?? null,
-      side: body.snapshots?.side ?? null,
-      rear_three_quarter: body.snapshots?.rear_three_quarter ?? null,
-      rear: body.snapshots?.rear ?? body.snapshots?.rear_three_quarter ?? null,
+      front_three_quarter: garageRefs.front_three_quarter ?? body.snapshots?.front_three_quarter ?? body.snapshot_data_url ?? null,
+      side:                garageRefs.side ?? body.snapshots?.side ?? null,
+      rear_three_quarter:  garageRefs.rear_three_quarter ?? body.snapshots?.rear_three_quarter ?? null,
+      rear:                garageRefs.rear ?? body.snapshots?.rear ?? body.snapshots?.rear_three_quarter ?? null,
     };
 
     const ANGLES: Array<{ key: AngleKey; label: string; framing: string }> = [
@@ -267,70 +308,40 @@ Deno.serve(async (req) => {
         messages[0].content.push({ type: "image_url", image_url: { url: ref } });
       }
 
-      // Image generation: prefer OpenAI gpt-image-1 if a key is set,
-      // otherwise fall back to Lovable AI gateway (Gemini).
-      let imgUrl: string | undefined;
+      const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3.1-flash-image-preview",
+          messages,
+          modalities: ["image", "text"],
+        }),
+      });
 
-      if (OPENAI_API_KEY) {
-        const refs = referenceImages;
-        const result = await openaiGenerateImage({
-          apiKey: OPENAI_API_KEY,
-          prompt: promptText,
-          referenceImages: refs,
-          size: "1536x1024",
-          quality: "high",
-        });
-        if (!result.ok) {
-          console.error(`OpenAI gen failed (${v.title} / ${angle.key}):`, result.status, result.error);
-          if (result.status === 429) throw new Error("__RATE_LIMIT__");
-          if (result.status === 402 || result.status === 401) throw new Error("__NO_CREDITS__");
-          return null;
-        }
-        imgUrl = result.dataUrl;
-      } else {
-        const messages: any[] = [{
-          role: "user",
-          content: [{ type: "text", text: promptText }],
-        }];
-        for (const ref of referenceImages) {
-          messages[0].content.push({ type: "image_url", image_url: { url: ref } });
-        }
-
-        const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-3.1-flash-image-preview",
-            messages,
-            modalities: ["image", "text"],
-          }),
-        });
-
-        if (!aiResp.ok) {
-          const t = await aiResp.text();
-          console.error(`AI gen failed (${v.title} / ${angle.key}):`, aiResp.status, t.slice(0, 200));
-          if (aiResp.status === 429) throw new Error("__RATE_LIMIT__");
-          if (aiResp.status === 402) throw new Error("__NO_CREDITS__");
-          return null;
-        }
-
-        const rawText = await aiResp.text();
-        if (!rawText) {
-          console.error(`AI gen empty body (${v.title} / ${angle.key})`);
-          return null;
-        }
-        let aiJson: any;
-        try {
-          aiJson = JSON.parse(rawText);
-        } catch (parseErr) {
-          console.error(`AI gen JSON parse failed (${v.title} / ${angle.key}):`, rawText.slice(0, 200));
-          return null;
-        }
-        imgUrl = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+      if (!aiResp.ok) {
+        const t = await aiResp.text();
+        console.error(`AI gen failed (${v.title} / ${angle.key}):`, aiResp.status, t.slice(0, 200));
+        if (aiResp.status === 429) throw new Error("__RATE_LIMIT__");
+        if (aiResp.status === 402) throw new Error("__NO_CREDITS__");
+        return null;
       }
+
+      const rawText = await aiResp.text();
+      if (!rawText) {
+        console.error(`AI gen empty body (${v.title} / ${angle.key})`);
+        return null;
+      }
+      let aiJson: any;
+      try {
+        aiJson = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error(`AI gen JSON parse failed (${v.title} / ${angle.key}):`, rawText.slice(0, 200));
+        return null;
+      }
+      const imgUrl: string | undefined = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
       if (!imgUrl?.startsWith("data:image/")) {
         console.error(`Image gen produced no data URL (${v.title} / ${angle.key})`);

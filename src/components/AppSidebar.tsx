@@ -21,12 +21,14 @@ import {
   Hexagon,
   FileBox,
   Palette,
+  Car,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/lib/repo";
 
 const projectsNav = [
   { title: "Projects", url: "/projects", icon: LayoutGrid },
+  { title: "Garage", url: "/garage", icon: Car },
   { title: "Styles", url: "/styles", icon: Palette },
 ];
 
