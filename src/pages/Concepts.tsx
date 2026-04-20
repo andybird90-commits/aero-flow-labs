@@ -149,24 +149,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
           </div>
         )}
 
-        {concepts.some((c) => c.status === "approved") && (
-          <div className="glass-strong rounded-xl p-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Check className="h-5 w-5 text-success shrink-0" />
-              <div className="min-w-0">
-                <div className="text-sm font-semibold tracking-tight">Concept approved</div>
-                <div className="text-mono text-[10px] text-muted-foreground">
-                  Generate fitted body kit parts based on the approved concept.
-                </div>
-              </div>
-            </div>
-            <Button variant="hero" size="sm" asChild>
-              <Link to={`/parts?project=${projectId}`}>
-                Generate parts <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </div>
-        )}
+        {/* Post-approval banner removed — exports now happen inline on the concept card. */}
       </div>
 
       <div className="space-y-4 lg:sticky lg:top-32 lg:self-start">
