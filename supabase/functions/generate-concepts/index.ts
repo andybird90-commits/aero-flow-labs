@@ -384,41 +384,44 @@ Deno.serve(async (req) => {
 
     try {
       for (const v of variations) {
-        const frontAngle = ANGLES[0];
-        const otherAngles = ANGLES.slice(1);
+        const heroAngle = ANGLES.find((a) => a.key === "front_three_quarter")!;
+        const otherAngles = ANGLES.filter((a) => a.key !== "front_three_quarter");
 
-        // 1) Generate the FRONT concept first using the user's car snapshot(s)
+        // 1) Generate the FRONT 3/4 concept first using the user's car snapshot(s)
         //    as identity reference. This becomes the source of truth for paint,
         //    wheels, and body kit details.
         const userFrontRef = snaps.front_three_quarter;
         const frontRefs = userFrontRef && userFrontRef.startsWith("data:image/")
           ? [userFrontRef]
           : [];
-        const frontResult = await renderAngle(v, frontAngle, frontRefs, "from_user_car");
+        const frontResult = await renderAngle(v, heroAngle, frontRefs, "from_user_car");
 
         if (!frontResult) {
-          console.warn("Front render failed for variation:", v.title);
+          console.warn("Front 3/4 render failed for variation:", v.title);
           continue;
         }
 
-        // 2) Generate the OTHER 3 angles in parallel, using the just-generated
-        //    front concept as the primary reference. Optionally include the
+        // 2) Generate the OTHER 5 angles in parallel, using the just-generated
+        //    front 3/4 concept as the primary reference. Optionally include the
         //    user's snapshot for that angle as a secondary geometry hint.
-        const otherResults = await Promise.all(otherAngles.map((a) => {
+        const otherResults = await Promise.all(otherAngles.map(async (a) => {
           const userAngleRef = snaps[a.key];
           const refs: string[] = [frontResult.dataUrl];
           if (userAngleRef && userAngleRef.startsWith("data:image/")) {
             refs.push(userAngleRef);
           }
-          return renderAngle(v, a, refs, "from_concept_front");
+          const r = await renderAngle(v, a, refs, "from_concept_front");
+          return { key: a.key, result: r };
         }));
 
-        const front = frontResult.publicUrl;
-        const side = otherResults[0]?.publicUrl ?? null;
-        const rear34 = otherResults[1]?.publicUrl ?? null;
-        const rear = otherResults[2]?.publicUrl ?? null;
+        const byKey: Partial<Record<AngleKey, string>> = {
+          front_three_quarter: frontResult.publicUrl,
+        };
+        for (const { key, result } of otherResults) {
+          if (result?.publicUrl) byKey[key] = result.publicUrl;
+        }
 
-        if (!front && !side && !rear34 && !rear) {
+        if (Object.keys(byKey).length === 0) {
           console.warn("All angles failed for variation:", v.title);
           continue;
         }
@@ -432,10 +435,13 @@ Deno.serve(async (req) => {
             title: v.title,
             direction: v.direction,
             status: "pending",
-            render_front_url: front,
-            render_side_url: side,
-            render_rear34_url: rear34,
-            render_rear_url: rear,
+            // Note: render_front_url historically held the front 3/4 view.
+            render_front_url:         byKey.front_three_quarter ?? null,
+            render_front_direct_url:  byKey.front ?? null,
+            render_side_url:          byKey.side ?? null,
+            render_side_opposite_url: byKey.side_opposite ?? null,
+            render_rear34_url:        byKey.rear_three_quarter ?? null,
+            render_rear_url:          byKey.rear ?? null,
             ai_notes: stylePrompt.slice(0, 500),
           })
           .select("id")
