@@ -395,3 +395,34 @@ function json(body: unknown, status = 200) {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+/**
+ * When a style preset is active, all three variations stay inside its DNA.
+ * Only the *intensity* and *spec* changes — never the design language. This
+ * means the user gets three takes of (e.g.) Pandem applied to their car,
+ * not OEM+ vs Pandem vs Widebody-GT.
+ */
+function presetVariations(preset: any): Array<{ title: string; direction: string; modifier: string; emphasis: string }> {
+  const name = preset?.name ?? "preset";
+  const dna = preset?.prompt ?? "";
+  return [
+    {
+      title: `${name} — street spec`,
+      direction: `${name} signature kit applied at a road-friendly intensity. Same design language as the preset, slightly toned down for street use. ${dna}`,
+      modifier: `${name} style body kit, signature design language, road-friendly proportions`,
+      emphasis: `Stay 100% inside the ${name} design language. Do NOT introduce shapes or details from outside the preset DNA.`,
+    },
+    {
+      title: `${name} — full kit`,
+      direction: `${name} signature kit at its full, definitive intensity — exactly as the preset describes. ${dna}`,
+      modifier: `${name} style body kit, full signature kit, definitive proportions, signature wing/arches/splitter as per the preset`,
+      emphasis: `This is the canonical ${name} look on this car. Hit every signature element of the preset.`,
+    },
+    {
+      title: `${name} — track spec`,
+      direction: `${name} signature kit pushed to its most aggressive track-ready spec, while staying recognisably ${name}. Larger wing, deeper splitter, more vents — but using the preset's design vocabulary, not a different one. ${dna}`,
+      modifier: `${name} style body kit, track-spec, larger rear wing, deeper splitter, additional vents and canards in the preset's design language`,
+      emphasis: `Maximum aggression but the silhouette must still read as ${name}. Do NOT swap to a generic GT3 or generic time-attack look.`,
+    },
+  ];
+}
