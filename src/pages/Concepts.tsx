@@ -46,12 +46,19 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const heroReady = !!heroStl?.repaired_stl_path;
   const heroNonManifold = heroReady && !heroStl?.manifold_clean;
 
-  const hasBrief = !!(brief?.prompt && brief.prompt.trim().length > 10);
+  const hasPromptText = !!(brief?.prompt && brief.prompt.trim().length > 10);
+  const hasStylePresetText = !!(activePreset?.prompt && activePreset.prompt.trim().length > 10);
+  const hasStyleTags =
+    ((brief?.style_tags?.length ?? 0) > 0) ||
+    ((activePreset?.style_tags?.length ?? 0) > 0);
+  // A brief is "ready" if there's a written prompt, an attached style preset
+  // with its own description, or at least one style tag selected.
+  const hasBrief = hasPromptText || hasStylePresetText || hasStyleTags;
 
   const generate = async () => {
     if (!user || !brief) return;
     if (!hasBrief) {
-      toast({ title: "Add a design brief first", variant: "destructive" });
+      toast({ title: "Add a design brief or style preset first", variant: "destructive" });
       return;
     }
     setGenerating(true);
@@ -124,7 +131,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
             <AlertCircle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
             <div className="text-sm">
               <p className="text-muted-foreground">
-                Add a design brief first.{" "}
+                Add a design brief or pick a style preset first.{" "}
                 <Link to={`/brief?project=${projectId}`} className="text-primary hover:underline">
                   Go to Brief
                 </Link>
