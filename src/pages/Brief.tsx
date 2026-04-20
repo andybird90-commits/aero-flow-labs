@@ -318,7 +318,7 @@ function BriefInner({ projectId }: { projectId: string }) {
           variant="hero"
           size="lg"
           onClick={continueToConcepts}
-          disabled={!prompt.trim() || continuing || upsert.isPending}
+          disabled={(!prompt.trim() && !stylePresetId) || continuing || upsert.isPending}
         >
           {continuing ? (
             <>
