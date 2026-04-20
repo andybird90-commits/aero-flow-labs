@@ -197,32 +197,17 @@ Deno.serve(async (req) => {
           .eq("id", gcId)
           .maybeSingle();
         if (gc) {
-          const fetchAsDataUrl = async (u: string | null): Promise<string | null> => {
-            if (!u) return null;
-            try {
-              const r = await fetch(u);
-              if (!r.ok) return null;
-              const buf = new Uint8Array(await r.arrayBuffer());
-              const mime = r.headers.get("content-type") ?? "image/png";
-              let s = "";
-              for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
-              return `data:${mime};base64,${btoa(s)}`;
-            } catch { return null; }
-          };
-          const [fr, f34, s, sOpp, r34, r] = await Promise.all([
-            fetchAsDataUrl((gc as any).ref_front_url),
-            fetchAsDataUrl((gc as any).ref_front34_url),
-            fetchAsDataUrl((gc as any).ref_side_url),
-            fetchAsDataUrl((gc as any).ref_side_opposite_url),
-            fetchAsDataUrl((gc as any).ref_rear34_url),
-            fetchAsDataUrl((gc as any).ref_rear_url),
-          ]);
-          if (fr)   garageRefs.front = fr;
-          if (f34)  garageRefs.front_three_quarter = f34;
-          if (s)    garageRefs.side = s;
-          if (sOpp) garageRefs.side_opposite = sOpp;
-          if (r34)  garageRefs.rear_three_quarter = r34;
-          if (r)    garageRefs.rear = r;
+          // Pass the public bucket URLs straight to the AI gateway. We used to
+          // fetch + base64 each one here, which burned 6 round-trips and several
+          // MB of memory before the first AI call — pushing the worker past its
+          // CPU/wall-time budget (WORKER_RESOURCE_LIMIT). The gateway accepts
+          // https URLs in image_url.url, so this is a no-op for quality.
+          if ((gc as any).ref_front_url)          garageRefs.front               = (gc as any).ref_front_url;
+          if ((gc as any).ref_front34_url)        garageRefs.front_three_quarter = (gc as any).ref_front34_url;
+          if ((gc as any).ref_side_url)           garageRefs.side                = (gc as any).ref_side_url;
+          if ((gc as any).ref_side_opposite_url)  garageRefs.side_opposite       = (gc as any).ref_side_opposite_url;
+          if ((gc as any).ref_rear34_url)         garageRefs.rear_three_quarter  = (gc as any).ref_rear34_url;
+          if ((gc as any).ref_rear_url)           garageRefs.rear                = (gc as any).ref_rear_url;
           console.log("generate-concepts: using garage car refs =", Object.keys(garageRefs));
         }
       }
@@ -382,34 +367,34 @@ Deno.serve(async (req) => {
       return { publicUrl, dataUrl: imgUrl };
     }
 
+    // Shared ref-type guard — refs may be data: URLs (legacy snapshots) or
+    // https: URLs (garage-car bucket assets). Both work with the AI gateway.
+    const isImageRef = (u: string | null | undefined): u is string =>
+      !!u && (u.startsWith("data:image/") || u.startsWith("https://") || u.startsWith("http://"));
+
     try {
-      for (const v of variations) {
+      // Run all 3 style variations in parallel. Each one still does its own
+      // front-3/4 → 5-other-angles fan-out internally, but doing the variations
+      // sequentially was tripling our wall-clock time and tripping the
+      // worker's CPU/wall budget (WORKER_RESOURCE_LIMIT).
+      const variationResults = await Promise.all(variations.map(async (v) => {
         const heroAngle = ANGLES.find((a) => a.key === "front_three_quarter")!;
         const otherAngles = ANGLES.filter((a) => a.key !== "front_three_quarter");
 
-        // 1) Generate the FRONT 3/4 concept first using the user's car snapshot(s)
-        //    as identity reference. This becomes the source of truth for paint,
-        //    wheels, and body kit details.
+        // 1) FRONT 3/4 first — anchors paint, wheels and kit details.
         const userFrontRef = snaps.front_three_quarter;
-        const frontRefs = userFrontRef && userFrontRef.startsWith("data:image/")
-          ? [userFrontRef]
-          : [];
+        const frontRefs = isImageRef(userFrontRef) ? [userFrontRef] : [];
         const frontResult = await renderAngle(v, heroAngle, frontRefs, "from_user_car");
-
         if (!frontResult) {
           console.warn("Front 3/4 render failed for variation:", v.title);
-          continue;
+          return null;
         }
 
-        // 2) Generate the OTHER 5 angles in parallel, using the just-generated
-        //    front 3/4 concept as the primary reference. Optionally include the
-        //    user's snapshot for that angle as a secondary geometry hint.
+        // 2) Other 5 angles in parallel, anchored to the front-3/4 concept.
         const otherResults = await Promise.all(otherAngles.map(async (a) => {
           const userAngleRef = snaps[a.key];
           const refs: string[] = [frontResult.dataUrl];
-          if (userAngleRef && userAngleRef.startsWith("data:image/")) {
-            refs.push(userAngleRef);
-          }
+          if (isImageRef(userAngleRef)) refs.push(userAngleRef);
           const r = await renderAngle(v, a, refs, "from_concept_front");
           return { key: a.key, result: r };
         }));
@@ -420,12 +405,16 @@ Deno.serve(async (req) => {
         for (const { key, result } of otherResults) {
           if (result?.publicUrl) byKey[key] = result.publicUrl;
         }
-
         if (Object.keys(byKey).length === 0) {
           console.warn("All angles failed for variation:", v.title);
-          continue;
+          return null;
         }
+        return { v, byKey };
+      }));
 
+      for (const vr of variationResults) {
+        if (!vr) continue;
+        const { v, byKey } = vr;
         const { data: concept, error: cErr } = await admin
           .from("concepts")
           .insert({
