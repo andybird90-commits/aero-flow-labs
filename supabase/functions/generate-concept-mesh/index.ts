@@ -299,49 +299,6 @@ async function runRodinJob({
   }
 }
 
-    // 4) Download and re-host in our public bucket so we control caching/expiry.
-    const glbResp = await fetch(glbUrl);
-    if (!glbResp.ok) {
-      await admin.from("concepts").update({
-        preview_mesh_status: "failed",
-        preview_mesh_error: `Failed to download GLB: ${glbResp.status}`,
-      }).eq("id", concept_id);
-      return;
-    }
-    const glbBytes = new Uint8Array(await glbResp.arrayBuffer());
-    const path = `${userId}/${projectId}/preview-mesh-${concept_id}.glb`;
-    const { error: upErr } = await admin.storage
-      .from("concept-renders")
-      .upload(path, glbBytes, { contentType: "model/gltf-binary", upsert: true });
-    if (upErr) {
-      console.error("upload failed:", upErr);
-      await admin.from("concepts").update({
-        preview_mesh_status: "failed",
-        preview_mesh_error: `Upload failed: ${upErr.message}`,
-      }).eq("id", concept_id);
-      return;
-    }
-
-    // Cache-bust the public URL so the viewer fetches the new mesh.
-    const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
-    const bustedUrl = `${publicUrl}?v=${Date.now()}`;
-
-    await admin.from("concepts").update({
-      preview_mesh_url: bustedUrl,
-      preview_mesh_status: "ready",
-      preview_mesh_error: null,
-    }).eq("id", concept_id);
-
-    console.log("generate-concept-mesh: success", bustedUrl);
-  } catch (e) {
-    console.error("runMeshyJob error:", e);
-    await admin.from("concepts").update({
-      preview_mesh_status: "failed",
-      preview_mesh_error: e instanceof Error ? e.message.slice(0, 500) : "Unknown error",
-    }).eq("id", concept_id);
-  }
-}
-
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
