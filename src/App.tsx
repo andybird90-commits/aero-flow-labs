@@ -54,7 +54,7 @@ const App = () => (
             <Route path="/simulation" element={<Navigate to="/concepts" replace />} />
             <Route path="/results" element={<Navigate to="/concepts" replace />} />
             <Route path="/compare" element={<Navigate to="/concepts" replace />} />
-            <Route path="/optimization" element={<Navigate to="/parts" replace />} />
+            <Route path="/optimization" element={<Navigate to="/concepts" replace />} />
             <Route path="/system" element={<Navigate to="/projects" replace />} />
             <Route path="/design-system" element={<Navigate to="/" replace />} />
 
