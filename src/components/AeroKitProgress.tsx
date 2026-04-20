@@ -38,8 +38,8 @@ function stateForStep(stepIdx: number, status: AeroKitStatus): "done" | "active"
 }
 
 export function AeroKitProgress({
-  status, error, className,
-}: { status: AeroKitStatus; error?: string | null; className?: string }) {
+  status, error, warning, className,
+}: { status: AeroKitStatus; error?: string | null; warning?: string | null; className?: string }) {
   if (status === "idle") return null;
 
   if (status === "failed") {
@@ -55,26 +55,34 @@ export function AeroKitProgress({
   }
 
   return (
-    <div className={cn("flex items-center gap-1.5", className)}>
-      {STEPS.map((step, i) => {
-        const s = stateForStep(i, status);
-        return (
-          <div
-            key={step.key}
-            className={cn(
-              "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-mono uppercase tracking-widest",
-              s === "done" && "border-success/40 bg-success/10 text-success",
-              s === "active" && "border-primary/50 bg-primary/10 text-primary",
-              s === "todo" && "border-border text-muted-foreground",
-            )}
-          >
-            {s === "done" && <CheckCircle2 className="h-3 w-3" />}
-            {s === "active" && <Loader2 className="h-3 w-3 animate-spin" />}
-            {s === "todo" && <Circle className="h-3 w-3" />}
-            {step.label}
-          </div>
-        );
-      })}
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      {warning && (
+        <div className="rounded-md border border-warning/40 bg-warning/5 p-2 flex items-start gap-2">
+          <AlertCircle className="h-3 w-3 text-warning mt-0.5 shrink-0" />
+          <div className="text-[10px] text-warning break-words">{warning}</div>
+        </div>
+      )}
+      <div className="flex items-center gap-1.5">
+        {STEPS.map((step, i) => {
+          const s = stateForStep(i, status);
+          return (
+            <div
+              key={step.key}
+              className={cn(
+                "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-mono uppercase tracking-widest",
+                s === "done" && "border-success/40 bg-success/10 text-success",
+                s === "active" && "border-primary/50 bg-primary/10 text-primary",
+                s === "todo" && "border-border text-muted-foreground",
+              )}
+            >
+              {s === "done" && <CheckCircle2 className="h-3 w-3" />}
+              {s === "active" && <Loader2 className="h-3 w-3 animate-spin" />}
+              {s === "todo" && <Circle className="h-3 w-3" />}
+              {step.label}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

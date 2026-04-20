@@ -62,7 +62,12 @@ Deno.serve(async (req) => {
       .from("car_stls").select("*").eq("car_template_id", templateId).maybeSingle();
     if (!stlRow) return json({ error: "Upload a hero STL for this car first." }, 400);
     if (!stlRow.repaired_stl_path) return json({ error: "Repair the hero STL first." }, 400);
-    if (!stlRow.manifold_clean) return json({ error: "Hero STL is non-manifold; boolean kit disabled." }, 400);
+    // Note: non-manifold meshes are allowed through. The boolean kit may produce
+    // imperfect shells (stray faces, open edges) on scraped meshes with holes,
+    // but it's better than blocking the user entirely. The UI surfaces a warning.
+    const nonManifoldWarning = !stlRow.manifold_clean
+      ? "Hero STL is non-manifold — kit output may have stray or open faces."
+      : null;
 
     // Forward the caller's auth header so child functions resolve the same user.
     const headers = {
@@ -76,6 +81,7 @@ Deno.serve(async (req) => {
     await admin.from("concepts").update({
       aero_kit_status: "queued",
       aero_kit_error: null,
+      aero_kit_warning: nonManifoldWarning,
       aero_kit_url: null,
     }).eq("id", concept.id);
 

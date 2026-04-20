@@ -1,0 +1,1 @@
+ALTER TABLE public.concepts ADD COLUMN IF NOT EXISTS aero_kit_warning text;
