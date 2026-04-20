@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
@@ -38,6 +38,9 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const buildKit = useBuildAeroKit();
   const { data: heroStl } = useHeroStlForProject(projectId);
   const [generating, setGenerating] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const autoTriggered = useRef(false);
 
   // Manifold is no longer required — non-manifold meshes build with a warning.
   const heroReady = !!heroStl?.repaired_stl_path;
@@ -81,6 +84,19 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
       setGenerating(false);
     }
   };
+
+  // If we arrived from the Brief page with the auto-generate flag, fire the
+  // generator as soon as the brief has loaded so the page's own button shows
+  // the spinning state (instead of the request being in-flight invisibly).
+  useEffect(() => {
+    const flag = (location.state as any)?.autoGenerate;
+    if (!flag || autoTriggered.current) return;
+    if (!brief || !hasBrief || generating) return;
+    autoTriggered.current = true;
+    navigate(location.pathname + location.search, { replace: true, state: {} });
+    void generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brief, hasBrief]);
 
   return (
     <div className="grid gap-6 p-6 lg:grid-cols-[1fr_360px]">
