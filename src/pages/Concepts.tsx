@@ -367,6 +367,29 @@ function ConceptCard({
         )}
       </div>
 
+      {hasMultiple && !pickMode && (
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); goPrev(); }}
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 grid place-items-center h-9 w-9 rounded-full bg-surface-0/80 backdrop-blur border border-border text-muted-foreground hover:text-foreground hover:bg-surface-0 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+            aria-label="Previous angle"
+            title="Previous angle (←)"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); goNext(); }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 grid place-items-center h-9 w-9 rounded-full bg-surface-0/80 backdrop-blur border border-border text-muted-foreground hover:text-foreground hover:bg-surface-0 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+            aria-label="Next angle"
+            title="Next angle (→)"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </>
+      )}
+
       {hasMultiple && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-surface-0/80 backdrop-blur px-1.5 py-1 border border-border z-10">
           {visibleAngles.map((a, i) => (
