@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useBrief, useUpsertBrief, type DesignBrief } from "@/lib/repo";
+import { useBrief, useUpsertBrief, useStylePresets, type DesignBrief } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight, Save, Tag, Wrench, RefreshCw } from "lucide-react";
+import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette } from "lucide-react";
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 const STYLE_TAGS = [
@@ -41,6 +42,7 @@ function BriefInner({ projectId }: { projectId: string }) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { data: brief } = useBrief(projectId);
+  const { data: presets = [] } = useStylePresets(user?.id);
   const upsert = useUpsertBrief();
 
   const [prompt, setPrompt] = useState("");
@@ -50,6 +52,20 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [customConstraint, setCustomConstraint] = useState("");
   const [rights, setRights] = useState(false);
   const [continuing, setContinuing] = useState(false);
+  const [stylePresetId, setStylePresetId] = useState<string | null>(null);
+
+  const activePreset = presets.find((p) => p.id === stylePresetId) ?? null;
+
+  useEffect(() => {
+    if (brief) {
+      setPrompt(brief.prompt ?? "");
+      setStyleTags(brief.style_tags ?? []);
+      setBuildType(brief.build_type ?? "");
+      setConstraints(brief.constraints ?? []);
+      setRights(brief.rights_confirmed ?? false);
+      setStylePresetId((brief as any).style_preset_id ?? null);
+    }
+  }, [brief]);
 
   useEffect(() => {
     if (brief) {
