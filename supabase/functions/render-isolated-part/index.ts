@@ -260,7 +260,22 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const aiJson = await aiResp.json();
+        const rawText = await aiResp.text();
+        if (!rawText) {
+          lastErr = "empty response body from gateway";
+          console.error(`Image gen empty body (attempt ${attempt}/3)`);
+          await new Promise((r) => setTimeout(r, 1500 * attempt));
+          continue;
+        }
+        let aiJson: any;
+        try {
+          aiJson = JSON.parse(rawText);
+        } catch {
+          lastErr = `invalid JSON: ${rawText.slice(0, 200)}`;
+          console.error(`Image gen JSON parse failed (attempt ${attempt}/3):`, lastErr);
+          await new Promise((r) => setTimeout(r, 1500 * attempt));
+          continue;
+        }
         const providerErr = aiJson?.choices?.[0]?.error;
         imgUrl = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
         if (imgUrl) break;
