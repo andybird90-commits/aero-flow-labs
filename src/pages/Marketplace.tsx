@@ -182,9 +182,7 @@ function ListingCard({
           </div>
         )}
         <div className="absolute top-2 right-2">
-          <Badge className={cn(
-            isFree ? "bg-emerald-500/90 text-white" : "bg-primary text-primary-foreground",
-          )}>
+          <Badge className="bg-primary text-primary-foreground">
             <Tag className="mr-1 h-3 w-3" />
             {isFree ? "Free" : formatPrice(listing.price_cents, listing.currency)}
           </Badge>
