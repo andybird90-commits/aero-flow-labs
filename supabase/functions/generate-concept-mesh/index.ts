@@ -160,7 +160,7 @@ async function removeBackground(imageUrl: string): Promise<string | null> {
   }
 }
 
-async function runMeshyJob({
+async function runRodinJob({
   admin, concept_id, userId, projectId, angleUrls,
 }: {
   admin: ReturnType<typeof createClient>;
@@ -170,60 +170,47 @@ async function runMeshyJob({
   angleUrls: string[];
 }) {
   try {
-    // 1) Background-remove all angles in parallel so Meshy gets clean silhouettes.
+    // 1) Background-remove all angles in parallel so Rodin gets clean silhouettes.
     console.log("Background-removing", angleUrls.length, "angles...");
     const cleaned = await Promise.all(angleUrls.map((u) => removeBackground(u)));
-    const meshyImages = cleaned
+    const inputImages = cleaned
       .map((c, i) => c ?? angleUrls[i]) // fall back to original if bg-remove failed
-      .filter(Boolean);
-    console.log("Cleaned images ready:", meshyImages.length, "of", angleUrls.length, "succeeded");
+      .filter(Boolean) as string[];
+    console.log("Cleaned images ready:", inputImages.length, "of", angleUrls.length, "succeeded");
 
-    // 2) Create the Multi-Image-to-3D task.
-    // Docs: https://docs.meshy.ai/api/multi-image-to-3d
-    const createResp = await fetch(MESHY_MULTI_BASE, {
+    // 2) Create the Rodin Gen-2 prediction on Replicate.
+    // Model: hyper3d/rodin — takes `images: string[]` + optional `prompt`.
+    const createResp = await fetch(`https://api.replicate.com/v1/models/${RODIN_MODEL}/predictions`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${MESHY_API_KEY}`,
+        Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        image_urls: meshyImages,
-        ai_model: "meshy-6",
-        topology: "quad",
-        target_polycount: 50000,
-        should_remesh: true,
-        should_texture: true,
-        enable_pbr: true,
-        symmetry_mode: "auto",
+        input: {
+          images: inputImages,
+          prompt: "A high-detail automotive concept with custom aero body kit, clean studio reference, photoreal proportions",
+        },
       }),
     });
 
     if (!createResp.ok) {
       const t = await createResp.text();
-      console.error("Meshy create failed:", createResp.status, t.slice(0, 500));
+      console.error("Rodin create failed:", createResp.status, t.slice(0, 500));
       await admin.from("concepts").update({
         preview_mesh_status: "failed",
-        preview_mesh_error: `Meshy ${createResp.status}: ${t.slice(0, 300)}`,
+        preview_mesh_error: `Rodin ${createResp.status}: ${t.slice(0, 300)}`,
       }).eq("id", concept_id);
       return;
     }
 
-    const createJson = await createResp.json();
-    const taskId: string | undefined = createJson.result;
-    if (!taskId) {
-      console.error("Meshy returned no task id:", JSON.stringify(createJson).slice(0, 500));
-      await admin.from("concepts").update({
-        preview_mesh_status: "failed",
-        preview_mesh_error: "Meshy returned no task id",
-      }).eq("id", concept_id);
-      return;
-    }
-    console.log("Meshy multi-image task created:", taskId);
+    let pred = await createResp.json();
+    const predictionId: string = pred.id;
+    console.log("Rodin prediction created:", predictionId);
 
-    // 3) Poll until it succeeds, fails, or times out.
+    // 3) Poll until succeeded / failed / timeout.
     const start = Date.now();
-    let task: any = null;
-    while (true) {
+    while (pred.status !== "succeeded" && pred.status !== "failed" && pred.status !== "canceled") {
       if (Date.now() - start > MAX_POLL_MS) {
         await admin.from("concepts").update({
           preview_mesh_status: "failed",
@@ -232,22 +219,19 @@ async function runMeshyJob({
         return;
       }
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      const pollResp = await fetch(`${MESHY_MULTI_BASE}/${taskId}`, {
-        headers: { Authorization: `Bearer ${MESHY_API_KEY}` },
+      const pollResp = await fetch(pred.urls.get, {
+        headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}` },
       });
       if (!pollResp.ok) {
-        console.warn("Meshy poll failed:", pollResp.status);
+        console.warn("Rodin poll failed:", pollResp.status);
         continue;
       }
-      task = await pollResp.json();
-      console.log("Meshy poll status:", task.status, "progress:", task.progress);
-      if (task.status === "SUCCEEDED" || task.status === "FAILED" || task.status === "CANCELED" || task.status === "EXPIRED") {
-        break;
-      }
+      pred = await pollResp.json();
+      console.log("Rodin poll status:", pred.status);
     }
 
-    if (task.status !== "SUCCEEDED") {
-      const errMsg = task.task_error?.message || `Meshy status: ${task.status}`;
+    if (pred.status !== "succeeded") {
+      const errMsg = pred.error || `Rodin status: ${pred.status}`;
       await admin.from("concepts").update({
         preview_mesh_status: "failed",
         preview_mesh_error: String(errMsg).slice(0, 500),
@@ -255,16 +239,65 @@ async function runMeshyJob({
       return;
     }
 
-    const glbUrl: string | undefined = task.model_urls?.glb;
+    // Output is a single GLB URL (string) or an array — handle both shapes.
+    const out = pred.output;
+    const glbUrl: string | undefined =
+      typeof out === "string" ? out :
+      Array.isArray(out) ? (out.find((u: string) => typeof u === "string" && u.endsWith(".glb")) ?? out[0]) :
+      undefined;
+
     if (!glbUrl) {
-      console.error("Meshy succeeded but no GLB url:", JSON.stringify(task.model_urls).slice(0, 500));
+      console.error("Rodin succeeded but no GLB url:", JSON.stringify(out).slice(0, 500));
       await admin.from("concepts").update({
         preview_mesh_status: "failed",
-        preview_mesh_error: "Meshy returned no GLB URL",
+        preview_mesh_error: "Rodin returned no GLB URL",
       }).eq("id", concept_id);
       return;
     }
-    console.log("Meshy output GLB:", glbUrl);
+    console.log("Rodin output GLB:", glbUrl);
+
+    // 4) Download and re-host in our public bucket so we control caching/expiry.
+    const glbResp = await fetch(glbUrl);
+    if (!glbResp.ok) {
+      await admin.from("concepts").update({
+        preview_mesh_status: "failed",
+        preview_mesh_error: `Failed to download GLB: ${glbResp.status}`,
+      }).eq("id", concept_id);
+      return;
+    }
+    const glbBytes = new Uint8Array(await glbResp.arrayBuffer());
+    const path = `${userId}/${projectId}/preview-mesh-${concept_id}.glb`;
+    const { error: upErr } = await admin.storage
+      .from("concept-renders")
+      .upload(path, glbBytes, { contentType: "model/gltf-binary", upsert: true });
+    if (upErr) {
+      console.error("upload failed:", upErr);
+      await admin.from("concepts").update({
+        preview_mesh_status: "failed",
+        preview_mesh_error: `Upload failed: ${upErr.message}`,
+      }).eq("id", concept_id);
+      return;
+    }
+
+    // Cache-bust the public URL so the viewer fetches the new mesh.
+    const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
+    const bustedUrl = `${publicUrl}?v=${Date.now()}`;
+
+    await admin.from("concepts").update({
+      preview_mesh_url: bustedUrl,
+      preview_mesh_status: "ready",
+      preview_mesh_error: null,
+    }).eq("id", concept_id);
+
+    console.log("generate-concept-mesh: success", bustedUrl);
+  } catch (e) {
+    console.error("runRodinJob error:", e);
+    await admin.from("concepts").update({
+      preview_mesh_status: "failed",
+      preview_mesh_error: e instanceof Error ? e.message.slice(0, 500) : "Unknown error",
+    }).eq("id", concept_id);
+  }
+}
 
     // 4) Download and re-host in our public bucket so we control caching/expiry.
     const glbResp = await fetch(glbUrl);
