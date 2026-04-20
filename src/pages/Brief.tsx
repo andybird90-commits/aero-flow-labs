@@ -122,10 +122,6 @@ function BriefInner({ projectId }: { projectId: string }) {
     }
   };
 
-      setBulkRunning(false);
-    }
-  };
-
   return (
     <div className="mx-auto max-w-4xl p-6 space-y-6">
       <div>
