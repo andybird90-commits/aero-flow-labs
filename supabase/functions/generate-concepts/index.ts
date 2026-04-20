@@ -118,6 +118,26 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    // Load the subject vehicle so the prompt can anchor the AI to the right
+    // make/model. Without this, text-only generation drifts to whatever the
+    // model feels like (we've seen a "Boxster" project come back as a BRZ).
+    let vehicleLabel = "";
+    {
+      const { data: proj } = await admin
+        .from("projects")
+        .select("name, car:cars(name, template:car_templates(make, model, trim, year_range))")
+        .eq("id", body.project_id)
+        .maybeSingle();
+      const tmpl: any = (proj as any)?.car?.template;
+      if (tmpl?.make && tmpl?.model) {
+        vehicleLabel = `${tmpl.make} ${tmpl.model}${tmpl.trim ? " " + tmpl.trim : ""}${tmpl.year_range ? ` (${tmpl.year_range})` : ""}`;
+      } else if ((proj as any)?.car?.name) {
+        vehicleLabel = (proj as any).car.name;
+      } else if ((proj as any)?.name) {
+        vehicleLabel = (proj as any).name;
+      }
+    }
+
     // When a style preset is used, IT IS AUTHORITATIVE. We deliberately
     // ignore the per-project brief's tags / constraints / build type so the
     // same DNA gets applied uniformly to every car the user runs through it
@@ -136,7 +156,10 @@ Deno.serve(async (req) => {
       : (brief.build_type || null);
 
     const stylePrompt = [
-      preset?.prompt ? `Style DNA — ${preset.name} (this is the signature kit, apply it to this car): ${preset.prompt}` : "",
+      vehicleLabel
+        ? `SUBJECT VEHICLE (highest priority — the result MUST be this exact car, no other model): ${vehicleLabel}.`
+        : "",
+      preset?.prompt ? `Style DNA — ${preset.name} (this is the signature kit, apply it to the subject vehicle above): ${preset.prompt}` : "",
       brief.prompt ? (presetMode ? `Car-specific notes (do not override the style DNA): ${brief.prompt}` : `Project brief: ${brief.prompt}`) : "",
       buildType ? `Build type: ${buildType}.` : "",
       styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
