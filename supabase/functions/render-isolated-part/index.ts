@@ -232,35 +232,50 @@ Deno.serve(async (req) => {
         ...imageUrlsForThisAngle.map((url) => ({ type: "image_url", image_url: { url } })),
       ];
 
-      const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          // Pro image model — much better at faithfully reproducing details
-          // from reference images vs. inventing generic-looking geometry.
-          model: "google/gemini-3-pro-image-preview",
-          messages: [{ role: "user", content: userContent }],
-          modalities: ["image", "text"],
-        }),
-      });
+      // Retry up to 3 times — Gemini Pro image often returns transient
+      // 502 "Network connection lost" or empty image responses mid-batch.
+      let imgUrl: string | undefined;
+      let lastErr = "";
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-3-pro-image-preview",
+            messages: [{ role: "user", content: userContent }],
+            modalities: ["image", "text"],
+          }),
+        });
 
-      if (!aiResp.ok) {
-        if (aiResp.status === 429) return json({ error: "Rate limit reached. Try again shortly." }, 429);
-        if (aiResp.status === 402) return json({ error: "AI credits exhausted." }, 402);
-        const t = await aiResp.text();
-        console.error("Image gen failed:", aiResp.status, t.slice(0, 400));
-        return json({ error: "AI gateway error" }, 500);
+        if (!aiResp.ok) {
+          if (aiResp.status === 429) return json({ error: "Rate limit reached. Try again shortly." }, 429);
+          if (aiResp.status === 402) return json({ error: "AI credits exhausted." }, 402);
+          const t = await aiResp.text();
+          lastErr = `gateway ${aiResp.status}: ${t.slice(0, 200)}`;
+          console.error(`Image gen failed (attempt ${attempt}/3):`, lastErr);
+          await new Promise((r) => setTimeout(r, 1500 * attempt));
+          continue;
+        }
+
+        const aiJson = await aiResp.json();
+        const providerErr = aiJson?.choices?.[0]?.error;
+        imgUrl = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+        if (imgUrl) break;
+
+        lastErr = providerErr
+          ? `provider ${providerErr.code}: ${providerErr.message}`
+          : `no image in response: ${JSON.stringify(aiJson).slice(0, 200)}`;
+        console.error(`No image returned (attempt ${attempt}/3):`, lastErr);
+        await new Promise((r) => setTimeout(r, 1500 * attempt));
       }
 
-      const aiJson = await aiResp.json();
-      const imgUrl: string | undefined =
-        aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
       if (!imgUrl) {
-        console.error("No image in response:", JSON.stringify(aiJson).slice(0, 400));
-        return json({ error: `Image gen returned no image for ${angle.key}` }, 500);
+        return json({
+          error: `Image generation failed for ${angle.key} after 3 attempts. ${lastErr}. Please try again.`,
+        }, 502);
       }
 
       // imgUrl is a data: URL. Decode → upload to bucket → public URL.
