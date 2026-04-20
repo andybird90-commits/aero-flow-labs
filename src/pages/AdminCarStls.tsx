@@ -1,0 +1,312 @@
+/**
+ * Admin: hero-car STL library.
+ *
+ * Upload one STL per car_template, choose its forward axis (matches the
+ * concept renderer's camera convention), and run the repair pass to make it
+ * eligible for the boolean aero-kit pipeline.
+ *
+ * Gated by the `admin` role. Non-admins get a polite "no access" panel
+ * instead of the upload UI.
+ */
+import { useMemo, useRef, useState } from "react";
+import { Navigate } from "react-router-dom";
+import { AppLayout } from "@/components/AppLayout";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  useIsAdmin, useCarStls, useUpsertCarStl, useDeleteCarStl, useUpdateCarStlAxis,
+  useCarTemplates, type CarStl, type CarTemplate,
+} from "@/lib/repo";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const FORWARD_AXES = [
+  { value: "-z", label: "−Z forward (default, three.js / glTF)" },
+  { value: "+z", label: "+Z forward" },
+  { value: "-x", label: "−X forward" },
+  { value: "+x", label: "+X forward" },
+  { value: "-y", label: "−Y forward (Z-up)" },
+  { value: "+y", label: "+Y forward" },
+];
+
+export default function AdminCarStls() {
+  const { user, loading: authLoading } = useAuth();
+  const { data: isAdmin, isLoading: roleLoading } = useIsAdmin(user?.id);
+
+  if (authLoading || roleLoading) {
+    return (
+      <AppLayout>
+        <div className="grid place-items-center py-24 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      </AppLayout>
+    );
+  }
+  if (!user) return <Navigate to="/auth" replace />;
+  if (!isAdmin) {
+    return (
+      <AppLayout>
+        <div className="mx-auto max-w-2xl px-6 py-16">
+          <div className="glass rounded-xl p-8 text-center">
+            <AlertTriangle className="mx-auto h-8 w-8 text-warning" />
+            <h2 className="mt-3 text-lg font-semibold tracking-tight">Admins only</h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              The hero-car STL library is restricted. Ask an administrator if you need upload access.
+            </p>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+  return (
+    <AppLayout>
+      <CarStlsInner userId={user.id} />
+    </AppLayout>
+  );
+}
+
+function CarStlsInner({ userId }: { userId: string }) {
+  const { toast } = useToast();
+  const { data: templates = [] } = useCarTemplates();
+  const { data: rows = [], isLoading } = useCarStls();
+  const upsert = useUpsertCarStl();
+  const del = useDeleteCarStl();
+  const updateAxis = useUpdateCarStlAxis();
+
+  const [pendingTemplateId, setPendingTemplateId] = useState<string>("");
+  const [pendingAxis, setPendingAxis] = useState<string>("-z");
+  const [repairing, setRepairing] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const usedTemplateIds = useMemo(() => new Set(rows.map((r) => r.car_template_id)), [rows]);
+  const availableTemplates = templates.filter((t) => !usedTemplateIds.has(t.id));
+
+  const onPickFile = async (file: File) => {
+    if (!pendingTemplateId) {
+      toast({ title: "Choose a car template first", variant: "destructive" });
+      return;
+    }
+    if (!/\.stl$/i.test(file.name)) {
+      toast({ title: "STL files only", variant: "destructive" });
+      return;
+    }
+    try {
+      await upsert.mutateAsync({
+        userId,
+        carTemplateId: pendingTemplateId,
+        file,
+        forwardAxis: pendingAxis,
+      });
+      toast({ title: "STL uploaded", description: "Run repair to make it eligible for boolean kits." });
+      setPendingTemplateId("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (e: any) {
+      toast({ title: "Upload failed", description: String(e.message ?? e), variant: "destructive" });
+    }
+  };
+
+  const runRepair = async (row: CarStl) => {
+    setRepairing(row.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("repair-car-stl", {
+        body: { car_stl_id: row.id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const stats = (data as any)?.stats;
+      toast({
+        title: stats?.manifold ? "Repair complete · manifold" : "Repair complete · NOT manifold",
+        description: stats
+          ? `${stats.triangle_count_out.toLocaleString()} tris · ${stats.open_edges} open edges · ${stats.duplicate_edges} non-manifold edges`
+          : "See row details.",
+        variant: stats?.manifold ? "default" : "destructive",
+      });
+    } catch (e: any) {
+      toast({ title: "Repair failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setRepairing(null);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-5xl px-6 py-10 space-y-6">
+      <div>
+        <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Admin · Reference geometry</div>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Hero-car STL library</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground max-w-2xl">
+          One ground-truth STL per car template. The boolean aero-kit pipeline pushes this surface outward
+          where the concept silhouette extends past it, then subtracts the original to leave a printable kit.
+        </p>
+      </div>
+
+      {/* Upload card */}
+      <div className="glass rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Upload className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold tracking-tight">Add a hero STL</h3>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_220px_auto]">
+          <Select value={pendingTemplateId} onValueChange={setPendingTemplateId}>
+            <SelectTrigger>
+              <SelectValue placeholder={availableTemplates.length ? "Choose car template…" : "All templates have an STL"} />
+            </SelectTrigger>
+            <SelectContent>
+              {availableTemplates.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.make} {t.model}{t.trim ? ` ${t.trim}` : ""}{t.year_range ? ` · ${t.year_range}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={pendingAxis} onValueChange={setPendingAxis}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {FORWARD_AXES.map((a) => (
+                <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".stl,model/stl,application/octet-stream"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onPickFile(f);
+            }}
+          />
+          <Button
+            variant="hero"
+            disabled={!pendingTemplateId || upsert.isPending}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {upsert.isPending ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading…</>
+            ) : (
+              <><Upload className="mr-2 h-4 w-4" /> Choose STL</>
+            )}
+          </Button>
+        </div>
+        <p className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          Forward axis must match how the model's nose points in the file. Default −Z matches the concept renderer.
+        </p>
+      </div>
+
+      {/* List */}
+      <div className="space-y-2">
+        {isLoading ? (
+          <div className="grid place-items-center py-12 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="glass rounded-xl p-12 text-center">
+            <FileBox className="mx-auto h-8 w-8 text-primary/60" />
+            <h3 className="mt-3 text-lg font-semibold tracking-tight">No hero STLs yet</h3>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Upload one STL per car template to enable the boolean aero-kit flow.
+            </p>
+          </div>
+        ) : (
+          rows.map((row) => (
+            <CarStlRow
+              key={row.id}
+              row={row}
+              template={row.car_template}
+              repairing={repairing === row.id}
+              onRepair={() => runRepair(row)}
+              onDelete={async () => {
+                if (!confirm(`Delete the STL for ${row.car_template?.make ?? "this template"}?`)) return;
+                try {
+                  await del.mutateAsync(row);
+                  toast({ title: "Deleted" });
+                } catch (e: any) {
+                  toast({ title: "Delete failed", description: String(e.message ?? e), variant: "destructive" });
+                }
+              }}
+              onAxisChange={(forward_axis) => updateAxis.mutate({ id: row.id, forward_axis })}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CarStlRow({
+  row, template, repairing, onRepair, onDelete, onAxisChange,
+}: {
+  row: CarStl;
+  template: CarTemplate | null;
+  repairing: boolean;
+  onRepair: () => void;
+  onDelete: () => void;
+  onAxisChange: (axis: string) => void;
+}) {
+  const repaired = !!row.repaired_stl_path;
+  const manifold = row.manifold_clean;
+  const tris = row.triangle_count;
+
+  return (
+    <div className="glass rounded-xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="text-sm font-semibold tracking-tight truncate">
+            {template ? `${template.make} ${template.model}` : "Unknown template"}
+            {template?.trim ? <span className="text-muted-foreground"> {template.trim}</span> : null}
+          </div>
+          {!repaired ? (
+            <Badge variant="outline" className="border-warning/40 text-warning">Needs repair</Badge>
+          ) : manifold ? (
+            <Badge variant="outline" className="border-success/40 text-success">
+              <CheckCircle2 className="mr-1 h-3 w-3" /> Manifold
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="border-destructive/40 text-destructive">
+              <AlertTriangle className="mr-1 h-3 w-3" /> Non-manifold
+            </Badge>
+          )}
+        </div>
+        <div className="mt-1 text-mono text-[10px] uppercase tracking-widest text-muted-foreground truncate">
+          {row.stl_path}
+          {tris ? ` · ${tris.toLocaleString()} tris` : ""}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <Select value={row.forward_axis} onValueChange={onAxisChange}>
+          <SelectTrigger className="h-8 w-[200px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {FORWARD_AXES.map((a) => (
+              <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="glass"
+          size="sm"
+          onClick={onRepair}
+          disabled={repairing}
+          className={cn(repaired && manifold && "opacity-70")}
+        >
+          {repairing ? (
+            <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Repairing…</>
+          ) : (
+            <><Wrench className="mr-1.5 h-3.5 w-3.5" /> {repaired ? "Re-repair" : "Run repair"}</>
+          )}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onDelete} className="text-destructive hover:bg-destructive/10">
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}

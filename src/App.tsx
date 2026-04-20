@@ -19,6 +19,7 @@ import Refine from "./pages/Refine";
 import Library from "./pages/Library";
 import Exports from "./pages/Exports";
 import Settings from "./pages/Settings";
+import AdminCarStls from "./pages/AdminCarStls";
 
 function RealtimeBridge() {
   const { user } = useAuth();
@@ -48,6 +49,7 @@ const App = () => (
             <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
             <Route path="/exports" element={<ProtectedRoute><Exports /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/settings/car-stls" element={<ProtectedRoute><AdminCarStls /></ProtectedRoute>} />
 
             {/* Legacy redirects */}
             <Route path="/garage" element={<Navigate to="/projects" replace />} />
