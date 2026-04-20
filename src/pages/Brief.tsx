@@ -67,15 +67,6 @@ function BriefInner({ projectId }: { projectId: string }) {
     }
   }, [brief]);
 
-  useEffect(() => {
-    if (brief) {
-      setPrompt(brief.prompt ?? "");
-      setStyleTags(brief.style_tags ?? []);
-      setBuildType(brief.build_type ?? "");
-      setConstraints(brief.constraints ?? []);
-      setRights(brief.rights_confirmed ?? false);
-    }
-  }, [brief]);
 
   const toggle = (arr: string[], v: string, set: (a: string[]) => void) => {
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
@@ -95,7 +86,8 @@ function BriefInner({ projectId }: { projectId: string }) {
         build_type: buildType || null,
         constraints: allConstraints,
         rights_confirmed: rights,
-      },
+        style_preset_id: stylePresetId,
+      } as any,
     });
     setCustomConstraint("");
     return saved;
