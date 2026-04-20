@@ -132,8 +132,8 @@ function CarStlsInner({ userId }: { userId: string }) {
       toast({ title: "Choose a car template first", variant: "destructive" });
       return;
     }
-    if (!/\.stl$/i.test(file.name)) {
-      toast({ title: "STL files only", variant: "destructive" });
+    if (!/\.(stl|obj)$/i.test(file.name)) {
+      toast({ title: "STL or OBJ files only", variant: "destructive" });
       return;
     }
     try {
@@ -190,7 +190,7 @@ function CarStlsInner({ userId }: { userId: string }) {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Upload className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold tracking-tight">Add a hero STL</h3>
+            <h3 className="text-sm font-semibold tracking-tight">Add a hero mesh (STL or OBJ)</h3>
           </div>
           <Button
             variant="ghost"
@@ -249,7 +249,7 @@ function CarStlsInner({ userId }: { userId: string }) {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".stl,model/stl,application/octet-stream"
+            accept=".stl,.obj,model/stl,model/obj,application/octet-stream"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -264,12 +264,12 @@ function CarStlsInner({ userId }: { userId: string }) {
             {upsert.isPending ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading…</>
             ) : (
-              <><Upload className="mr-2 h-4 w-4" /> Choose STL</>
+              <><Upload className="mr-2 h-4 w-4" /> Choose STL / OBJ</>
             )}
           </Button>
         </div>
         <p className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Forward axis must match how the model's nose points in the file. Default −Z matches the concept renderer.
+          Accepts .stl or .obj. Forward axis must match how the model's nose points in the file. Default −Z matches the concept renderer.
         </p>
       </div>
 
