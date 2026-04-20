@@ -110,35 +110,11 @@ function BriefInner({ projectId }: { projectId: string }) {
       const briefId = (saved as any)?.id ?? brief?.id;
       if (!briefId) throw new Error("Could not save brief");
 
-      // Navigate immediately so the user sees concepts appear as they generate.
-      navigate(`/concepts?project=${projectId}`);
-
-      // Kick off generation in the background — the Concepts page polls/refetches.
-      supabase.functions
-        .invoke("generate-concepts", {
-          body: {
-            project_id: projectId,
-            brief_id: briefId,
-            snapshot_data_url: null,
-            snapshots: {},
-          },
-        })
-        .then(({ data, error }) => {
-          if (error || (data as any)?.error) {
-            toast({
-              title: "Generation failed",
-              description: String(error?.message ?? (data as any)?.error ?? "Unknown error"),
-              variant: "destructive",
-            });
-          } else {
-            toast({
-              title: "Concepts generated",
-              description: `${(data as any)?.count ?? "Several"} concept variations created.`,
-            });
-          }
-        });
-
-      toast({ title: "Generating concepts…", description: "This usually takes 20–40 seconds." });
+      // Hand off to the Concepts page with an auto-generate flag. The Concepts
+      // page owns the invocation so its "Generating…" spinner accurately
+      // reflects the in-flight request (instead of us firing it here behind
+      // the scenes and the page button looking idle).
+      navigate(`/concepts?project=${projectId}`, { state: { autoGenerate: true } });
     } catch (e: any) {
       toast({ title: "Couldn't continue", description: e.message, variant: "destructive" });
     } finally {
