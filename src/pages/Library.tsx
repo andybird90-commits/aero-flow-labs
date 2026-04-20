@@ -106,6 +106,12 @@ function LibraryInner({ projectId, project }: { projectId: string; project: any 
         <div className="text-center text-muted-foreground py-12">Loading library…</div>
       )}
 
+      {/* Stock-vs-concept silhouette comparison (only renders if hero STL exists). */}
+      <StockVsConceptPanel
+        projectId={projectId}
+        carTemplateId={project?.car?.template?.id ?? null}
+      />
+
       {!isLoading && totalSaved === 0 && (
         <EmptyLibrary projectId={projectId} />
       )}
