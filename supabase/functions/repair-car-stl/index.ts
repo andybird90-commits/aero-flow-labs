@@ -114,3 +114,74 @@ function json(body: unknown, status = 200) {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+/**
+ * Minimal Wavefront OBJ → ASCII STL converter.
+ *
+ * Handles `v` (vertex) and `f` (face) lines, including faces that reference
+ * vertex/normal/texture indices in the `v/vt/vn` form. Faces with more than
+ * 3 vertices are fan-triangulated. Per-face normals are computed from the
+ * triangle geometry — we don't read the OBJ's `vn` lines because the repair
+ * pass re-orients normals anyway.
+ */
+function objToAsciiStl(objText: string): string {
+  const verts: [number, number, number][] = [];
+  const tris: [number, number, number][] = []; // 1-based vertex indices
+
+  const lines = objText.split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("v ")) {
+      const parts = line.split(/\s+/);
+      const x = parseFloat(parts[1]);
+      const y = parseFloat(parts[2]);
+      const z = parseFloat(parts[3]);
+      if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+        verts.push([x, y, z]);
+      }
+    } else if (line.startsWith("f ")) {
+      const parts = line.split(/\s+/).slice(1);
+      // Each token is "v", "v/vt", "v//vn", or "v/vt/vn". Resolve negative indices.
+      const idx = parts.map((p) => {
+        const n = parseInt(p.split("/")[0], 10);
+        if (!Number.isFinite(n)) return NaN;
+        return n < 0 ? verts.length + n + 1 : n;
+      });
+      // Fan-triangulate.
+      for (let i = 1; i < idx.length - 1; i++) {
+        const a = idx[0], b = idx[i], c = idx[i + 1];
+        if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c)) {
+          tris.push([a, b, c]);
+        }
+      }
+    }
+  }
+
+  if (verts.length === 0 || tris.length === 0) {
+    throw new Error("OBJ has no usable vertices or faces.");
+  }
+
+  const out: string[] = ["solid converted"];
+  for (const [a, b, c] of tris) {
+    const va = verts[a - 1], vb = verts[b - 1], vc = verts[c - 1];
+    if (!va || !vb || !vc) continue;
+    // Face normal via cross product.
+    const ux = vb[0] - va[0], uy = vb[1] - va[1], uz = vb[2] - va[2];
+    const vx = vc[0] - va[0], vy = vc[1] - va[1], vz = vc[2] - va[2];
+    let nx = uy * vz - uz * vy;
+    let ny = uz * vx - ux * vz;
+    let nz = ux * vy - uy * vx;
+    const len = Math.hypot(nx, ny, nz) || 1;
+    nx /= len; ny /= len; nz /= len;
+    out.push(`facet normal ${nx} ${ny} ${nz}`);
+    out.push("  outer loop");
+    out.push(`    vertex ${va[0]} ${va[1]} ${va[2]}`);
+    out.push(`    vertex ${vb[0]} ${vb[1]} ${vb[2]}`);
+    out.push(`    vertex ${vc[0]} ${vc[1]} ${vc[2]}`);
+    out.push("  endloop");
+    out.push("endfacet");
+  }
+  out.push("endsolid converted");
+  return out.join("\n");
+}
