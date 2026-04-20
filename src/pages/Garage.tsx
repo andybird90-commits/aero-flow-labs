@@ -79,10 +79,13 @@ export default function Garage() {
     }
   };
 
-  const handleRegenerate = async (id: string) => {
+  const handleRegenerate = async (id: string, angles?: string[]) => {
     try {
-      await generate.mutateAsync(id);
-      toast({ title: "Regenerating views", description: "Hang tight — ~45s." });
+      await generate.mutateAsync(angles ? { garageCarId: id, angles } : id);
+      toast({
+        title: angles ? "Regenerating that view" : "Regenerating views",
+        description: angles ? "About 10s." : "Hang tight — ~45s.",
+      });
     } catch (e: any) {
       toast({ title: "Regenerate failed", description: e.message, variant: "destructive" });
     }
