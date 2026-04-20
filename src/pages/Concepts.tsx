@@ -374,13 +374,27 @@ function ConceptCard({
               </div>
             )}
             <AeroKitProgress status={aeroStatus} error={aeroError} warning={aeroWarning} />
-            {aeroStatus === "ready" && (
-              <Link
-                to={`/library?project=${projectId}`}
-                className="block text-center text-mono text-[10px] uppercase tracking-widest text-primary hover:underline"
+            {aeroStatus === "ready" && polledAero.data?.aero_kit_url && (
+              <Button
+                variant="glass"
+                size="sm"
+                className="w-full"
+                onClick={async () => {
+                  const url = polledAero.data!.aero_kit_url!;
+                  try {
+                    const resp = await fetch(url);
+                    const blob = await resp.blob();
+                    const u = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = u;
+                    a.download = `${concept.title || "aero-kit"}.stl`;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(u), 1000);
+                  } catch {/* noop */}
+                }}
               >
-                View kit in Library →
-              </Link>
+                <Download className="mr-1.5 h-3.5 w-3.5" /> Download combined kit STL
+              </Button>
             )}
           </div>
         )}
