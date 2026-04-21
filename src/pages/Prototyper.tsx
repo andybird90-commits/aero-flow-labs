@@ -31,7 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Beaker, Plus, Loader2, Wand2, Box, Download, Trash2, Upload, X, Image as ImageIcon, Car,
+  Beaker, Plus, Loader2, Wand2, Box, Download, Trash2, Upload, X, Image as ImageIcon, Car, Sparkles, RefreshCw, AlertCircle,
 } from "lucide-react";
 import {
   useMyPrototypes, useCreatePrototype, useDeletePrototype, useGarageCars, type Prototype, type PrototypeGenerationMode,
@@ -483,6 +483,15 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
   const fitUrl = (prototype as any)?.fit_preview_url ?? null;
   const fitStatus = (prototype as any)?.fit_preview_status ?? "idle";
   const garageCarId = (prototype as any)?.garage_car_id ?? null;
+  const genMode: PrototypeGenerationMode = (prototype as any)?.generation_mode ?? "exact_photo";
+  const isolatedRefs = useMemo(
+    () => (((prototype as any)?.isolated_ref_urls as string[]) ?? []),
+    [prototype],
+  );
+  const referenceStatus: string = (prototype as any)?.reference_status ?? "idle";
+  const referenceError: string | null = (prototype as any)?.reference_error ?? null;
+  const placement: string | null = (prototype as any)?.placement_hint ?? null;
+  const showIsolatedPanel = genMode === "exact_photo" && sources.length > 0;
 
   // Three.js viewer
   useEffect(() => {
@@ -551,9 +560,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
     try {
       // For exact_photo with photos, isolate the part first so the downstream
       // renders work from a clean reference instead of a busy raw photo.
-      const genMode = (prototype as any).generation_mode ?? "exact_photo";
-      const isolated = ((prototype as any).isolated_ref_urls as string[]) ?? [];
-      if (genMode === "exact_photo" && sources.length > 0 && isolated.length === 0) {
+      if (genMode === "exact_photo" && sources.length > 0 && isolatedRefs.length === 0) {
         const iso = await supabase.functions.invoke("isolate-prototype-part", {
           body: { prototype_id: prototype.id },
         });
@@ -587,6 +594,25 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
       toast({ title: "Renders ready" });
     } catch (e: any) {
       toast({ title: "Render failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const reisolate = async () => {
+    setBusy("render");
+    try {
+      const iso = await supabase.functions.invoke("isolate-prototype-part", {
+        body: { prototype_id: prototype.id },
+      });
+      if (iso.error) throw iso.error;
+      if ((iso.data as any)?.error) throw new Error((iso.data as any).error);
+      const { data: fresh } = await (supabase as any)
+        .from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
+      if (fresh) Object.assign(prototype, fresh);
+      toast({ title: "Reference re-isolated" });
+    } catch (e: any) {
+      toast({ title: "Isolation failed", description: String(e.message ?? e), variant: "destructive" });
     } finally {
       setBusy(null);
     }
@@ -672,7 +698,19 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
             <Beaker className="h-4 w-4 text-fuchsia-400" /> {prototype.title}
           </DialogTitle>
           <DialogDescription>
-            {prototype.car_context ? `For ${prototype.car_context}.` : "No car context."} {sources.length} reference photo{sources.length === 1 ? "" : "s"}.
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-widest">
+                {MODE_OPTIONS.find((m) => m.value === genMode)?.label ?? genMode}
+              </Badge>
+              {placement && (
+                <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-widest">
+                  {placement}
+                </Badge>
+              )}
+              <span className="text-muted-foreground">
+                {prototype.car_context ? `For ${prototype.car_context}.` : "No car context."} {sources.length} reference photo{sources.length === 1 ? "" : "s"}.
+              </span>
+            </span>
           </DialogDescription>
         </DialogHeader>
 
@@ -724,7 +762,10 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
         </div>
 
         {/* SECONDARY GRID — sources / clay views / 3D */}
-        <div className="grid gap-2 grid-cols-1 md:grid-cols-3" style={{ minHeight: "260px" }}>
+        <div
+          className={`grid gap-2 grid-cols-1 ${showIsolatedPanel ? "md:grid-cols-4" : "md:grid-cols-3"}`}
+          style={{ minHeight: "260px" }}
+        >
           {/* Pane 1 — Source photos */}
           <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden" style={{ aspectRatio: "4 / 3" }}>
             <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
@@ -741,6 +782,56 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
               )}
             </div>
           </div>
+
+          {/* Pane 1.5 — Isolated reference (only for exact_photo mode with photos). */}
+          {showIsolatedPanel && (
+            <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden group" style={{ aspectRatio: "4 / 3" }}>
+              <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+                Isolated reference
+              </span>
+              {referenceStatus === "processing" || (busy === "render" && !isolatedRefs.length) ? (
+                <div className="absolute inset-0 grid place-items-center text-primary">
+                  <div className="flex flex-col items-center gap-2">
+                    <Sparkles className="h-5 w-5 animate-pulse" />
+                    <span className="text-[9px] font-mono uppercase tracking-widest">Isolating…</span>
+                  </div>
+                </div>
+              ) : isolatedRefs[0] ? (
+                <>
+                  <img src={isolatedRefs[0]} alt="Isolated part reference" className="absolute inset-0 w-full h-full object-contain" />
+                  <button
+                    type="button"
+                    onClick={reisolate}
+                    disabled={busy !== null}
+                    title="Re-isolate from source photos"
+                    className="absolute top-1 right-1 inline-flex items-center gap-1 rounded-md bg-background/70 backdrop-blur px-1.5 py-1 text-[10px] text-foreground/90 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-background/90 disabled:opacity-40"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                  </button>
+                </>
+              ) : referenceStatus === "failed" ? (
+                <div className="absolute inset-0 grid place-items-center text-destructive p-3 text-center">
+                  <div className="flex flex-col items-center gap-1.5">
+                    <AlertCircle className="h-5 w-5" />
+                    <span className="text-[10px]">{referenceError ?? "Isolation failed"}</span>
+                    <Button size="sm" variant="outline" className="mt-1 h-6 text-[10px]" onClick={reisolate} disabled={busy !== null}>
+                      Retry
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="absolute inset-0 grid place-items-center text-muted-foreground p-3 text-center">
+                  <div className="flex flex-col items-center gap-1.5">
+                    <Sparkles className="h-5 w-5 opacity-40" />
+                    <span className="text-[9px] font-mono uppercase tracking-widest">Auto-isolates on render</span>
+                    <Button size="sm" variant="outline" className="mt-1 h-6 text-[10px]" onClick={reisolate} disabled={busy !== null}>
+                      Isolate now
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Pane 2 — Clay views (hero + back) */}
           <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden" style={{ aspectRatio: "4 / 3" }}>
@@ -828,8 +919,25 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onClose}><X className="h-4 w-4 mr-1" /> Close</Button>
-          <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || isFitting || !hasRenderInput}>
-            {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length || fitUrl ? (revisionNote.trim() ? "Re-render with note" : "Re-render preview") : "Render preview"}</>}
+          <Button
+            variant="outline"
+            onClick={startRender}
+            disabled={isRendering || isMeshing || isFitting || !hasRenderInput}
+          >
+            {isRendering ? (
+              <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> {genMode === "exact_photo" && sources.length > 0 && !isolatedRefs.length ? "Isolating + rendering…" : "Rendering…"}</>
+            ) : (
+              <>
+                <Wand2 className="h-4 w-4 mr-1" />
+                {renders.length || fitUrl
+                  ? (revisionNote.trim() ? "Re-render with note" : "Re-render preview")
+                  : genMode === "exact_photo"
+                    ? "Render exact fit"
+                    : genMode === "text_design"
+                      ? "Generate concept"
+                      : "Render inspired version"}
+              </>
+            )}
           </Button>
           {garageCarId && (fitUrl || renders.length > 0) && (
             <Button
