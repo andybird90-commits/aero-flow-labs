@@ -27,6 +27,9 @@ export interface Prototype {
   user_id: string;
   title: string;
   car_context: string | null;
+  notes: string | null;
+  replicate_exact: boolean;
+  garage_car_id: string | null;
   source_image_urls: string[];
   render_status: string;
   render_error: string | null;
@@ -62,6 +65,9 @@ export function useCreatePrototype() {
       user_id: string;
       title: string;
       car_context: string | null;
+      notes: string | null;
+      replicate_exact: boolean;
+      garage_car_id: string | null;
       source_image_urls: string[];
     }) => {
       const { data, error } = await (supabase as any)
