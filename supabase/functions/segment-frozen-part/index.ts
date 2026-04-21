@@ -233,7 +233,7 @@ function scoreMaskForClick(
   const cx = Math.max(0, Math.min(size.w - 1, clickPx.x));
   const cy = Math.max(0, Math.min(size.h - 1, clickPx.y));
   const at = (x: number, y: number) => {
-    const m = mask.getRGBAAt(x + 1, y + 1);
+    const m = rgbaToUint32(mask.getRGBAAt(x + 1, y + 1));
     return ((m >> 24) & 0xff) > 127;
   };
   if (at(cx, cy)) return 0;
