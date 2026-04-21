@@ -64,6 +64,35 @@ Deno.serve(async (req) => {
     const userId = userRes.user.id;
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    // Mark as rendering immediately and kick off the work in the background so
+    // we don't hit the 150s idle timeout (3 sequential OpenAI image gens).
+    await admin.from("prototypes").update({ render_status: "rendering", render_error: null }).eq("id", prototype_id);
+
+    // @ts-ignore - EdgeRuntime is provided by Supabase edge runtime
+    EdgeRuntime.waitUntil(runRender(admin, prototype_id, userId, revisionNote).catch(async (e) => {
+      console.error("background render failed:", e);
+      await admin.from("prototypes").update({
+        render_status: "failed",
+        render_error: e instanceof Error ? e.message : String(e),
+      }).eq("id", prototype_id);
+    }));
+
+    return json({ ok: true, status: "rendering" }, 202);
+  } catch (e) {
+    console.error("render-prototype-views error:", e);
+    return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
+  }
+});
+
+async function runRender(
+  admin: ReturnType<typeof createClient>,
+  prototype_id: string,
+  userId: string,
+  revisionNote: string,
+): Promise<void> {
+  const adminClient = admin;
+  {
     const { data: proto, error: protoErr } = await admin
       .from("prototypes")
       .select("id, user_id, title, car_context, notes, replicate_exact, source_image_urls, garage_car_id")
