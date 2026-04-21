@@ -934,14 +934,17 @@ export type Database = {
         Row: {
           car_context: string | null
           created_at: string
+          garage_car_id: string | null
           glb_url: string | null
           id: string
           mesh_error: string | null
           mesh_status: string
           mesh_task_id: string | null
+          notes: string | null
           render_error: string | null
           render_status: string
           render_urls: Json
+          replicate_exact: boolean
           source_image_urls: Json
           title: string
           updated_at: string
@@ -950,14 +953,17 @@ export type Database = {
         Insert: {
           car_context?: string | null
           created_at?: string
+          garage_car_id?: string | null
           glb_url?: string | null
           id?: string
           mesh_error?: string | null
           mesh_status?: string
           mesh_task_id?: string | null
+          notes?: string | null
           render_error?: string | null
           render_status?: string
           render_urls?: Json
+          replicate_exact?: boolean
           source_image_urls?: Json
           title?: string
           updated_at?: string
@@ -966,20 +972,31 @@ export type Database = {
         Update: {
           car_context?: string | null
           created_at?: string
+          garage_car_id?: string | null
           glb_url?: string | null
           id?: string
           mesh_error?: string | null
           mesh_status?: string
           mesh_task_id?: string | null
+          notes?: string | null
           render_error?: string | null
           render_status?: string
           render_urls?: Json
+          replicate_exact?: boolean
           source_image_urls?: Json
           title?: string
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "prototypes_garage_car_id_fkey"
+            columns: ["garage_car_id"]
+            isOneToOne: false
+            referencedRelation: "garage_cars"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       style_presets: {
         Row: {
