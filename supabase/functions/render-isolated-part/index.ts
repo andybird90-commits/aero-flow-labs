@@ -108,12 +108,15 @@ const SHELL_TREATMENT =
   "Do NOT flatten the part into a thin ribbon or strip. Keep its proper proportions: a side skirt is still ~150-250mm tall with a curved outward flare, a diffuser still has 400-600mm of depth with tall vertical strakes, an arch flare still bulges out 30-50mm from where it would mount, etc. " +
   "Only the visible EDGES (the open-backed mounting side / cut edge) should read as thin sheet material — like looking at the rim of a fibreglass moulding. The exterior surface is full-form. Think 'hollow GRP body panel,' NOT 'flat sheet metal cut-out.'";
 
-// Single hero render only. Gemini Pro image gen is ~50s per call; multiple
-// sequential calls blow past the 150s edge function timeout, and our best
-// fidelity results came from a single Pro render. Meshy can still build a
-// 3D model from one image.
+// Multi-view renders give the 3D stage enough information to preserve thin
+// shell construction, reverse faces, mounting flanges, and end thickness.
+// We keep the first frame as the hero shot, then derive the rest from it so
+// Gemini stays consistent across views.
 const ANGLES = [
   { key: "front34", label: "front 3/4 view, slightly above, hero product shot" },
+  { key: "rear34", label: "rear 3/4 view, clearly showing the reverse / back side and mounting face" },
+  { key: "side", label: "clean side profile view, perfectly side-on, showing the full length and section" },
+  { key: "top", label: "top-down 3/4 view, showing plan shape, returns, and thin-shell edge transitions" },
 ] as const;
 
 Deno.serve(async (req) => {
