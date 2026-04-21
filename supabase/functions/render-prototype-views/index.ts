@@ -236,7 +236,9 @@ async function runRender(
     }
 
     /* ─── STEP 2 + 3: Clay hero + clay back ─── */
-    const FIDELITY_HERO = replicateExact
+    const FIDELITY_HERO = textOnly
+      ? `FIDELITY: Design the part cleanly from the description. Aim for a believable, well-resolved aftermarket aero piece — proportions, returns and depth should look like a real part you could mould and bond on.`
+      : replicateExact
       ? `FIDELITY: REPLICA MODE — copy the part in the photos as faithfully as possible. Preserve every vent, return, crease, fillet, transition and proportion exactly. Do NOT idealise, smooth out, or "improve" the design. If something is asymmetric in the photos, keep it asymmetric.`
       : `FIDELITY: Re-draw a clean, idealised version of the part — the SHAPE and proportions must match, but you may smooth out manufacturing flaws, scratches, dirt, and odd reflections.`;
     const FIDELITY_BACK = replicateExact
