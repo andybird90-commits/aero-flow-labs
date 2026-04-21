@@ -1008,9 +1008,12 @@ export function ExtractedPartPreview({
                   <Undo2 className="h-4 w-4 mr-1" /> Use original
                 </Button>
               )}
-              {/* Gate the mesh step on fidelity. Mismatch (<50) requires
-                  the user to either re-draw or explicitly override. */}
-              {fidelity?.status === "mismatch" && !overrideFidelity ? (
+              {/* Body-conforming kinds bypass image-to-3D entirely. */}
+              {bodyConforming ? (
+                <Button onClick={() => setGeometryDialogOpen(true)}>
+                  <Send className="h-4 w-4 mr-1" /> Send to geometry worker
+                </Button>
+              ) : fidelity?.status === "mismatch" && !overrideFidelity ? (
                 <Button
                   variant="outline"
                   onClick={() => setOverrideFidelity(true)}
