@@ -48,8 +48,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { prototype_id } = (await req.json()) as { prototype_id?: string };
+    const { prototype_id, revision_note } = (await req.json()) as { prototype_id?: string; revision_note?: string };
     if (!prototype_id) return json({ error: "prototype_id required" }, 400);
+    const revisionNote = (revision_note ?? "").toString().trim().slice(0, 1000);
 
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
