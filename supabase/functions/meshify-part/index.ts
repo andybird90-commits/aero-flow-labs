@@ -79,6 +79,7 @@ Deno.serve(async (req) => {
       // Kick off Rodin Gen-2 (Ultra) prediction on Replicate.
       // Rodin handles single OR multi-view input via the same `images` param.
       const partLabel = part_kind.replace(/_/g, " ");
+      const isMulti = image_urls.length > 1;
       const createResp = await fetch(`https://api.replicate.com/v1/models/${RODIN_MODEL}/predictions`, {
         method: "POST",
         headers: {
@@ -88,7 +89,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           input: {
             images: image_urls,
-            prompt: `A standalone aftermarket automotive ${partLabel} part, clean smooth surfaces, matte clay render, flat panels, sharp edges, no surface noise, thin-walled composite shell construction, approximately 2mm wall thickness, open-backed where appropriate, never a solid block`,
+            prompt: `A standalone aftermarket automotive ${partLabel} part, clean smooth surfaces, matte clay render, flat panels, sharp edges, no surface noise, thin-walled composite shell construction, approximately 2mm wall thickness, preserve real part depth and section, preserve reverse side and mounting faces from the reference views, open-backed where appropriate, visible edge thickness, never a solid block, never a paper-thin ribbon`,
           },
         }),
       });
@@ -101,7 +102,7 @@ Deno.serve(async (req) => {
       const taskId: string | undefined = pred.id;
       if (!taskId) return json({ error: "Rodin returned no prediction id" }, 500);
       console.log("meshify-part Rodin task created:", taskId, "for", part_kind);
-      return json({ task_id: taskId, status: "IN_PROGRESS", progress: 0 });
+      return json({ task_id: taskId, status: "IN_PROGRESS", progress: 0, is_multi: isMulti });
     }
 
     // ─────────── STATUS ───────────

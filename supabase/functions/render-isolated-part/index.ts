@@ -108,12 +108,15 @@ const SHELL_TREATMENT =
   "Do NOT flatten the part into a thin ribbon or strip. Keep its proper proportions: a side skirt is still ~150-250mm tall with a curved outward flare, a diffuser still has 400-600mm of depth with tall vertical strakes, an arch flare still bulges out 30-50mm from where it would mount, etc. " +
   "Only the visible EDGES (the open-backed mounting side / cut edge) should read as thin sheet material — like looking at the rim of a fibreglass moulding. The exterior surface is full-form. Think 'hollow GRP body panel,' NOT 'flat sheet metal cut-out.'";
 
-// Single hero render only. Gemini Pro image gen is ~50s per call; multiple
-// sequential calls blow past the 150s edge function timeout, and our best
-// fidelity results came from a single Pro render. Meshy can still build a
-// 3D model from one image.
+// Multi-view renders give the 3D stage enough information to preserve thin
+// shell construction, reverse faces, mounting flanges, and end thickness.
+// We keep the first frame as the hero shot, then derive the rest from it so
+// Gemini stays consistent across views.
 const ANGLES = [
   { key: "front34", label: "front 3/4 view, slightly above, hero product shot" },
+  { key: "rear34", label: "rear 3/4 view, clearly showing the reverse / back side and mounting face" },
+  { key: "side", label: "clean side profile view, perfectly side-on, showing the full length and section" },
+  { key: "top", label: "top-down 3/4 view, showing plan shape, returns, and thin-shell edge transitions" },
 ] as const;
 
 Deno.serve(async (req) => {
@@ -240,6 +243,7 @@ Deno.serve(async (req) => {
         ``,
         `STEP 2 — RE-DRAW that exact shape as a STANDALONE AFTERMARKET COMPONENT, completely detached from the car, photographed alone for a parts catalogue.`,
         `Match THIS car's specific silhouette and proportions. If the reference shows a 20mm flare, draw a 20mm flare — not an 80mm overfender.`,
+        `This is a REAL FABRICATABLE PART, not a visual mockup: preserve the true section thickness, folds, returns, flanges, mounting tabs, and the reverse / inner face wherever visible from the requested camera angle.`,
         ``,
         `Loose shape sanity check (only if reference is unclear): ${spec.shape}.`,
         ``,
@@ -262,6 +266,7 @@ Deno.serve(async (req) => {
         `- Soft even studio lighting, gentle ground contact shadow directly under the part only.`,
         `- Part centred, fills 40-55% of frame (leave generous white margin on all sides — do NOT crop tight).`,
         `- Camera angle: ${angle.label}.`,
+        `- Show the part as a thin-shell moulding with visible edge thickness and open-backed construction where appropriate; do NOT close it into a solid slab.`,
         `- Clean clay render style. No text, no watermarks, no logos, no part numbers.`,
       ] : [
         `The FIRST attached image is the hero clay render of a ${spec.what} that we already approved.`,
@@ -276,6 +281,7 @@ Deno.serve(async (req) => {
         `- Same surface curvature and edge treatment`,
         `- Same proportions and thickness`,
         `Treat the hero image as the ground truth — this is just a turntable rotation of the same physical object.`,
+        `CRITICAL: reveal the physical construction visible from this angle — especially the reverse side, mounting face, flanges, tabs, returns, and edge thickness. Do NOT invent a sealed solid block or paper-thin ribbon.`,
         ``,
         `SURFACE TREATMENT (CRITICAL):`,
         `${SURFACE_TREATMENT}`,
@@ -287,6 +293,7 @@ Deno.serve(async (req) => {
         `- Pure white seamless background, identical lighting to the hero.`,
         `- Soft even studio lighting, gentle ground shadow.`,
         `- The part is centred and fills ~60% of the frame.`,
+        `- The back / inner face must be visible when the angle calls for it, so the object reads as a manufacturable thin-shell part in 3D.`,
         `- Clean clay render. No car, no wheels, no fenders. No text, no watermarks.`,
       ];
 

@@ -297,7 +297,12 @@ export function ExtractedPartPreview({
       // If the user trimmed the render with the lasso/click tool, send the
       // masked image to Meshy instead of the raw render — the mesher only
       // ever sees the cleaned silhouette.
-      const meshImages = maskedUrl ? [maskedUrl] : images.map((i) => i.url);
+      const meshImages = maskedUrl
+        ? [maskedUrl]
+        : images
+            .slice()
+            .sort((a, b) => (a.angle === "front34" ? -1 : b.angle === "front34" ? 1 : 0))
+            .map((i) => i.url);
       const startRes = await supabase.functions.invoke("meshify-part", {
         body: {
           action: "start",
@@ -855,6 +860,23 @@ export function ExtractedPartPreview({
             </div>
 
             {/* Trim toolbar — only meaningful in review stage */}
+            {stage === "review" && !trimOpen && images.length > 1 && !maskedUrl && (
+              <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+                {images.map((image) => (
+                  <div key={image.url} className="relative overflow-hidden rounded-md border border-border bg-surface-0 aspect-[4/3]">
+                    <img
+                      src={image.url}
+                      alt={`${label} ${image.angle}`}
+                      className="h-full w-full object-contain"
+                    />
+                    <span className="absolute bottom-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1 py-0.5 rounded">
+                      {image.angle}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {stage === "review" && trimOpen && (
               <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-xs">
                 <div className="inline-flex rounded-md border border-border overflow-hidden">
