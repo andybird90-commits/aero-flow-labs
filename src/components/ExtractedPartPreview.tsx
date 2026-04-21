@@ -757,6 +757,16 @@ export function ExtractedPartPreview({
                       alt={`${label} ${images[0]?.angle ?? ""}`}
                       className="w-full h-full object-contain"
                     />
+                    {/* Compare overlay — source crop tinted red over the render
+                        so the user can see what (if anything) the AI dropped. */}
+                    {compareOverlay && (isolatedUrl || sourceImageUrl) && (
+                      <img
+                        src={isolatedUrl ?? sourceImageUrl!}
+                        alt="Source overlay"
+                        className="absolute inset-0 w-full h-full object-contain pointer-events-none mix-blend-multiply"
+                        style={{ filter: "hue-rotate(-50deg) saturate(2.5)", opacity: 0.5 }}
+                      />
+                    )}
                     <span className="absolute bottom-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1 py-0.5 rounded">
                       {maskedUrl ? "trimmed" : images[0]?.angle}
                     </span>
@@ -770,7 +780,25 @@ export function ExtractedPartPreview({
                 <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
                   Extracted
                 </span>
+                {/* Fidelity badge + compare toggle, shown once we have a render */}
+                {(stage === "review" || stage === "meshing" || stage === "ready") && images[0] && !trimOpen && (
+                  <div className="absolute top-1 right-1 flex items-center gap-1">
+                    <FidelityBadge fidelity={fidelity} scoring={scoring} />
+                    {(isolatedUrl || sourceImageUrl) && (
+                      <button
+                        type="button"
+                        onClick={() => setCompareOverlay((v) => !v)}
+                        className="inline-flex items-center gap-1 rounded bg-surface-0/80 backdrop-blur border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-widest font-mono text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+                        title={compareOverlay ? "Hide source overlay" : "Show source overlay"}
+                      >
+                        {compareOverlay ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        Compare
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
+
 
               {/* Pane 3 — 3D mesh (or placeholder while not ready) */}
               <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
