@@ -99,9 +99,14 @@ const SURFACE_TREATMENT =
   "ABSOLUTELY NO carbon-fibre weave, NO carbon twill pattern, NO glossy paint, NO metallic flake, NO chrome, NO reflections, NO decals, NO logos, NO surface texture or material detail. " +
   "Just clean smooth geometry with soft even shading so the SHAPE reads clearly. The goal is a featureless surface that highlights form only.";
 
+// IMPORTANT: this is about WALL thickness only — the part keeps its full
+// real-world 3D form (height, depth, curvature, flare). Only the material
+// itself (the shell) is thin, like a fibreglass/carbon moulding.
+// Earlier wording made Gemini collapse the whole part into a flat 2mm ribbon.
 const SHELL_TREATMENT =
-  "CRITICAL THICKNESS: this part is a thin-walled composite shell with approximately 2mm wall thickness, NOT a solid billet block. " +
-  "All visible edges must read as very thin sheet material. If the real part would be open-backed / hollow on the car-facing side, keep it open-backed here too instead of filling it in as a solid mass.";
+  "MATERIAL CONSTRUCTION: render this as a moulded composite/fibreglass aero part — the SHELL/WALL itself is thin (~2mm) like a real bolt-on bodykit panel, but the part still has its FULL real-world three-dimensional shape, height, depth, curvature and flare. " +
+  "Do NOT flatten the part into a thin ribbon or strip. Keep its proper proportions: a side skirt is still ~150-250mm tall with a curved outward flare, a diffuser still has 400-600mm of depth with tall vertical strakes, an arch flare still bulges out 30-50mm from where it would mount, etc. " +
+  "Only the visible EDGES (the open-backed mounting side / cut edge) should read as thin sheet material — like looking at the rim of a fibreglass moulding. The exterior surface is full-form. Think 'hollow GRP body panel,' NOT 'flat sheet metal cut-out.'";
 
 // Single hero render only. Gemini Pro image gen is ~50s per call; multiple
 // sequential calls blow past the 150s edge function timeout, and our best
