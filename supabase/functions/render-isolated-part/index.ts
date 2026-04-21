@@ -243,6 +243,7 @@ Deno.serve(async (req) => {
         ``,
         `STEP 2 — RE-DRAW that exact shape as a STANDALONE AFTERMARKET COMPONENT, completely detached from the car, photographed alone for a parts catalogue.`,
         `Match THIS car's specific silhouette and proportions. If the reference shows a 20mm flare, draw a 20mm flare — not an 80mm overfender.`,
+        `This is a REAL FABRICATABLE PART, not a visual mockup: preserve the true section thickness, folds, returns, flanges, mounting tabs, and the reverse / inner face wherever visible from the requested camera angle.`,
         ``,
         `Loose shape sanity check (only if reference is unclear): ${spec.shape}.`,
         ``,
@@ -265,6 +266,7 @@ Deno.serve(async (req) => {
         `- Soft even studio lighting, gentle ground contact shadow directly under the part only.`,
         `- Part centred, fills 40-55% of frame (leave generous white margin on all sides — do NOT crop tight).`,
         `- Camera angle: ${angle.label}.`,
+        `- Show the part as a thin-shell moulding with visible edge thickness and open-backed construction where appropriate; do NOT close it into a solid slab.`,
         `- Clean clay render style. No text, no watermarks, no logos, no part numbers.`,
       ] : [
         `The FIRST attached image is the hero clay render of a ${spec.what} that we already approved.`,
@@ -279,6 +281,7 @@ Deno.serve(async (req) => {
         `- Same surface curvature and edge treatment`,
         `- Same proportions and thickness`,
         `Treat the hero image as the ground truth — this is just a turntable rotation of the same physical object.`,
+        `CRITICAL: reveal the physical construction visible from this angle — especially the reverse side, mounting face, flanges, tabs, returns, and edge thickness. Do NOT invent a sealed solid block or paper-thin ribbon.`,
         ``,
         `SURFACE TREATMENT (CRITICAL):`,
         `${SURFACE_TREATMENT}`,
@@ -290,6 +293,7 @@ Deno.serve(async (req) => {
         `- Pure white seamless background, identical lighting to the hero.`,
         `- Soft even studio lighting, gentle ground shadow.`,
         `- The part is centred and fills ~60% of the frame.`,
+        `- The back / inner face must be visible when the angle calls for it, so the object reads as a manufacturable thin-shell part in 3D.`,
         `- Clean clay render. No car, no wheels, no fenders. No text, no watermarks.`,
       ];
 
