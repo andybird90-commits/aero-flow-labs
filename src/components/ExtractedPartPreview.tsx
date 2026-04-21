@@ -1064,6 +1064,19 @@ export function ExtractedPartPreview({
           )}
         </DialogFooter>
       </DialogContent>
+
+      {bodyConforming && (
+        <SendToGeometryWorker
+          open={geometryDialogOpen}
+          onClose={() => setGeometryDialogOpen(false)}
+          conceptId={conceptId}
+          projectId={projectId}
+          partKind={kind}
+          partLabel={label}
+          baseMeshUrl={baseMeshUrl}
+          partTemplateUrl={glbUrl}
+        />
+      )}
     </Dialog>
   );
 }
