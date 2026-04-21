@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     const { data: proto, error: protoErr } = await admin
       .from("prototypes")
-      .select("id, user_id, title, car_context, garage_car_id, render_urls, source_image_urls")
+      .select("id, user_id, title, car_context, garage_car_id, render_urls, source_image_urls, notes")
       .eq("id", prototype_id)
       .eq("user_id", userId)
       .maybeSingle();
@@ -49,14 +49,15 @@ Deno.serve(async (req) => {
       return json({ error: "This prototype isn't linked to a garage car" }, 400);
     }
 
-    // Prefer the clay hero (cleaner subject) if present; otherwise fall back to
-    // the user's source photos so we can still produce a fit preview before
-    // clay views exist.
+    // Prefer the clay hero if present; otherwise fall back to source photos.
+    // If neither exists, fall back to text-only design from title/notes.
     const renders = (proto.render_urls as Array<{ angle: string; url: string }> | null) ?? [];
     const heroUrl = renders.find((r) => r.angle === "hero")?.url ?? renders[0]?.url ?? null;
     const sourceUrls = (proto.source_image_urls as string[] | null) ?? [];
     const partRefUrls: string[] = heroUrl ? [heroUrl] : sourceUrls.slice(0, 3);
-    if (!partRefUrls.length) return json({ error: "Upload reference photos first" }, 400);
+    const textOnly = partRefUrls.length === 0;
+    const partDescription = [proto.title?.trim(), ((proto as any).notes ?? "").toString().trim()].filter(Boolean).join(" — ") || "";
+    if (textOnly && !partDescription) return json({ error: "Add a description or upload reference photos first" }, 400);
 
     const { data: car, error: carErr } = await admin
       .from("garage_cars")
