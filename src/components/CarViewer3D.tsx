@@ -442,19 +442,27 @@ function FittedParts({
         });
       })()}
 
-      {wideArch && (() => {
-        const n = readNudge(wideArch.params);
-        const flare = paramN(wideArch.params, "flare", 50) / 1000;
-        return [
-          { side: -1, anchor: a.skirtsLeft, x: a.splitter.x - 0.6 },
-          { side: 1, anchor: a.skirtsRight, x: a.splitter.x - 0.6 },
-          { side: -1, anchor: a.skirtsLeft, x: a.wing.x + 0.5 },
-          { side: 1, anchor: a.skirtsRight, x: a.wing.x + 0.5 },
-        ].map((s, i) => {
+      {[wideArch, frontArch, rearArch].filter(Boolean).map((archPart) => {
+        const arch = archPart!;
+        const n = readNudge(arch.params);
+        const flare = paramN(arch.params, "flare", 50) / 1000;
+        const isFrontOnly = arch.kind === "front_arch";
+        const isRearOnly = arch.kind === "rear_arch";
+        const positions = [
+          ...(!isRearOnly ? [
+            { side: -1, anchor: a.skirtsLeft, x: a.splitter.x - 0.55, key: "front-l" },
+            { side: 1, anchor: a.skirtsRight, x: a.splitter.x - 0.55, key: "front-r" },
+          ] : []),
+          ...(!isFrontOnly ? [
+            { side: -1, anchor: a.skirtsLeft, x: a.wing.x + 0.48, key: "rear-l" },
+            { side: 1, anchor: a.skirtsRight, x: a.wing.x + 0.48, key: "rear-r" },
+          ] : []),
+        ];
+        return positions.map((s) => {
           const p = nudged(s.anchor, n);
           return (
             <mesh
-              key={i}
+              key={`${arch.id}-${s.key}`}
               position={[s.x, p.y + height * 0.25, p.z + s.side * flare]}
               material={partMat}
               castShadow
@@ -463,7 +471,7 @@ function FittedParts({
             </mesh>
           );
         });
-      })()}
+      })}
 
       {ducktail && (() => {
         const n = readNudge(ducktail.params);
