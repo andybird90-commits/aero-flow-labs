@@ -122,33 +122,10 @@ function collectUrls(val: unknown): string[] {
   return [];
 }
 
-function extractFirstUrl(val: unknown): string | null {
-  if (!val) return null;
-  if (typeof val === "string") {
-    return val.startsWith("http") ? val : null;
-  }
-  if (Array.isArray(val)) {
-    for (const item of val) {
-      const found = extractFirstUrl(item);
-      if (found) return found;
-    }
-    return null;
-  }
-  if (typeof val === "object") {
-    // Prefer common SAM 2 keys before generic walk.
-    const obj = val as Record<string, unknown>;
-    for (const key of ["combined_mask", "mask", "output", "url"]) {
-      if (key in obj) {
-        const found = extractFirstUrl(obj[key]);
-        if (found) return found;
-      }
-    }
-    for (const v of Object.values(obj)) {
-      const found = extractFirstUrl(v);
-      if (found) return found;
-    }
-  }
-  return null;
+function rgbaToUint32(px: number | Uint8ClampedArray | number[]): number {
+  if (typeof px === "number") return px;
+  const [r = 0, g = 0, b = 0, a = 255] = px;
+  return ((r & 0xff) << 24) | ((g & 0xff) << 16) | ((b & 0xff) << 8) | (a & 0xff);
 }
 
 async function buildSilhouetteAndBbox(
