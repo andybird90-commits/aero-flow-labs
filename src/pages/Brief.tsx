@@ -9,7 +9,7 @@ import { useBrief, useUpsertBrief, useStylePresets, type DesignBrief } from "@/l
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette } from "lucide-react";
+import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette, Upload, X, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +53,11 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [rights, setRights] = useState(false);
   const [continuing, setContinuing] = useState(false);
   const [stylePresetId, setStylePresetId] = useState<string | null>(null);
+  const [referencePaths, setReferencePaths] = useState<string[]>([]);
+  const [refUrls, setRefUrls] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
 
+  const MAX_REFS = 5;
   const activePreset = presets.find((p) => p.id === stylePresetId) ?? null;
 
   useEffect(() => {
@@ -64,8 +68,82 @@ function BriefInner({ projectId }: { projectId: string }) {
       setConstraints(brief.constraints ?? []);
       setRights(brief.rights_confirmed ?? false);
       setStylePresetId((brief as any).style_preset_id ?? null);
+      setReferencePaths(brief.reference_image_paths ?? []);
     }
   }, [brief]);
+
+  // Resolve signed URLs for previews whenever the path list changes.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const missing = referencePaths.filter((p) => !refUrls[p]);
+      if (missing.length === 0) return;
+      const next: Record<string, string> = { ...refUrls };
+      for (const path of missing) {
+        const { data } = await supabase.storage
+          .from("brief-references")
+          .createSignedUrl(path, 60 * 60);
+        if (data?.signedUrl) next[path] = data.signedUrl;
+      }
+      if (!cancelled) setRefUrls(next);
+    })();
+    return () => { cancelled = true; };
+  }, [referencePaths]);
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || !user) return;
+    const remaining = MAX_REFS - referencePaths.length;
+    if (remaining <= 0) {
+      toast({ title: `Maximum ${MAX_REFS} reference images`, variant: "destructive" });
+      return;
+    }
+    const incoming = Array.from(files).slice(0, remaining);
+    setUploading(true);
+    const newPaths: string[] = [];
+    try {
+      for (const file of incoming) {
+        if (!file.type.startsWith("image/")) {
+          toast({ title: `Skipped ${file.name}`, description: "Not an image file.", variant: "destructive" });
+          continue;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          toast({ title: `Skipped ${file.name}`, description: "Larger than 10MB.", variant: "destructive" });
+          continue;
+        }
+        const ext = file.name.split(".").pop() || "jpg";
+        const path = `${user.id}/${projectId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error } = await supabase.storage
+          .from("brief-references")
+          .upload(path, file, { contentType: file.type, upsert: false });
+        if (error) {
+          toast({ title: `Upload failed: ${file.name}`, description: error.message, variant: "destructive" });
+          continue;
+        }
+        newPaths.push(path);
+      }
+      if (newPaths.length) {
+        const updated = [...referencePaths, ...newPaths];
+        setReferencePaths(updated);
+        // Persist immediately so refresh keeps them.
+        if (brief?.id) {
+          await supabase.from("design_briefs")
+            .update({ reference_image_paths: updated }).eq("id", brief.id);
+        }
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeReference = async (path: string) => {
+    const updated = referencePaths.filter((p) => p !== path);
+    setReferencePaths(updated);
+    await supabase.storage.from("brief-references").remove([path]);
+    if (brief?.id) {
+      await supabase.from("design_briefs")
+        .update({ reference_image_paths: updated }).eq("id", brief.id);
+    }
+  };
 
 
   const toggle = (arr: string[], v: string, set: (a: string[]) => void) => {
@@ -87,6 +165,7 @@ function BriefInner({ projectId }: { projectId: string }) {
         constraints: allConstraints,
         rights_confirmed: rights,
         style_preset_id: stylePresetId,
+        reference_image_paths: referencePaths,
       } as any,
     });
     setCustomConstraint("");
@@ -274,10 +353,80 @@ function BriefInner({ projectId }: { projectId: string }) {
       </div>
 
       <div className="glass rounded-xl p-5 space-y-3">
-        <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Reference images (optional)</label>
-        <div className="rounded-md border-2 border-dashed border-border bg-surface-1 px-4 py-6 text-center">
-          <p className="text-sm text-muted-foreground">Reference image upload coming next — describe in the prompt for now.</p>
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Reference images (optional)
+          </label>
+          <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground/70">
+            {referencePaths.length} / {MAX_REFS}
+          </span>
         </div>
+
+        {referencePaths.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {referencePaths.map((path) => (
+              <div
+                key={path}
+                className="relative aspect-square rounded-md overflow-hidden border border-border bg-surface-1 group"
+              >
+                {refUrls[path] ? (
+                  <img
+                    src={refUrls[path]}
+                    alt="Reference"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeReference(path)}
+                  className="absolute top-1 right-1 rounded-full bg-background/80 backdrop-blur p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground"
+                  aria-label="Remove reference"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {referencePaths.length < MAX_REFS && (
+          <label
+            className={cn(
+              "flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-surface-1 px-4 py-6 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors",
+              uploading && "opacity-60 cursor-wait",
+            )}
+          >
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                handleFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            {uploading ? (
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            ) : (
+              <Upload className="h-5 w-5 text-muted-foreground" />
+            )}
+            <p className="text-sm text-muted-foreground">
+              {uploading
+                ? "Uploading…"
+                : `Click to upload up to ${MAX_REFS - referencePaths.length} more image${MAX_REFS - referencePaths.length === 1 ? "" : "s"}`}
+            </p>
+            <p className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground/70">
+              PNG · JPG · WEBP · max 10MB each
+            </p>
+          </label>
+        )}
+
         <label className="flex items-start gap-2 cursor-pointer text-sm">
           <Checkbox checked={rights} onCheckedChange={(v) => setRights(!!v)} className="mt-0.5" />
           <span className="text-muted-foreground">
