@@ -1,0 +1,1 @@
+UPDATE public.concepts SET carbon_kit_status = 'idle', carbon_kit_error = NULL, carbon_kit_task_id = NULL WHERE carbon_kit_status = 'failed';
