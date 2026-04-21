@@ -679,6 +679,24 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
           </div>
         )}
 
+        {garageCarId && (fitUrl || isFitting) && (
+          <div className="rounded-md border border-border bg-surface-0 overflow-hidden relative" style={{ height: 220 }}>
+            <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+              Fit on car (carbon)
+            </span>
+            {isFitting ? (
+              <div className="absolute inset-0 grid place-items-center text-primary">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="text-[9px] font-mono uppercase tracking-widest">Fitting…</span>
+                </div>
+              </div>
+            ) : fitUrl ? (
+              <img src={fitUrl} alt="Part fitted on car" className="absolute inset-0 w-full h-full object-contain" />
+            ) : null}
+          </div>
+        )}
+
         {renders.length > 0 && (
           <div className="rounded-md border border-border bg-surface-0/40 p-2 space-y-1">
             <Label htmlFor="proto-revision" className="text-[10px] uppercase tracking-widest font-mono text-muted-foreground">
@@ -698,10 +716,20 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onClose}><X className="h-4 w-4 mr-1" /> Close</Button>
-          <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || sources.length === 0}>
+          <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || isFitting || sources.length === 0}>
             {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length ? (revisionNote.trim() ? "Re-render with note" : "Re-render views") : "Render views"}</>}
           </Button>
-          <Button onClick={startMesh} disabled={isMeshing || isRendering || renders.length === 0}>
+          {garageCarId && renders.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={startFit}
+              disabled={isRendering || isMeshing || isFitting}
+              title="Composite the part onto your garage car in carbon"
+            >
+              {isFitting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Fitting…</> : <><Car className="h-4 w-4 mr-1" /> {fitUrl ? "Re-fit on car" : "Show on car"}</>}
+            </Button>
+          )}
+          <Button onClick={startMesh} disabled={isMeshing || isRendering || isFitting || renders.length === 0}>
             {isMeshing ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Meshing…</> : <><Box className="h-4 w-4 mr-1" /> {glbUrl ? "Re-mesh" : "Make 3D model"}</>}
           </Button>
           {glbUrl && (
