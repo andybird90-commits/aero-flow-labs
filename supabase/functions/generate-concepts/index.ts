@@ -187,6 +187,12 @@ const FALLBACK_VARIATIONS: Variation[] = [
     modifier: "widebody arches, wide track, fitment-focused stance, lowered ride height",
     emphasis: "The car must visibly read as wide. Same brief otherwise.",
   },
+  {
+    title: "Aero-max direction",
+    direction: "Same brief intent with the most functional aero package: wing, splitter, vents, skirts and diffuser all clearly visible.",
+    modifier: "maximum functional aero, big wing, deep splitter, canards, vents, skirts, diffuser",
+    emphasis: "Do not return a near-stock car. The aero package must be obvious at thumbnail size.",
+  },
 ];
 
 const ANGLES: Array<{ key: AngleKey; label: string; framing: string }> = [
@@ -230,7 +236,7 @@ Deno.serve(async (req) => {
       }
 
       // @ts-ignore EdgeRuntime is provided by Deno.
-      EdgeRuntime.waitUntil(queueAllVariations({ authHeader, body, variationCount: ctx.variations.length, conceptSetId: ctx.conceptSetId }).catch(async (e) => {
+      EdgeRuntime.waitUntil(queueAllVariations({ authHeader, body, variations: ctx.variations, conceptSetId: ctx.conceptSetId }).catch(async (e) => {
         console.error("generate-concepts queue failed:", e);
         if (ctx.conceptSetId) {
           await admin.from("concept_sets").update({ status: "failed" }).eq("id", ctx.conceptSetId);
@@ -342,20 +348,20 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   const avoidLine = mustAvoid.length ? `MUST AVOID: ${mustAvoid.join(", ")}.` : "";
 
   const stylePrompt = [
-    vehicleLabel
-      ? `SUBJECT VEHICLE (the result MUST be this exact car, no other model): ${vehicleLabel}.`
-      : "",
     disciplineLine,
     aggressionLine,
-    preset?.prompt ? `Style DNA — ${preset.name}: ${preset.prompt}` : "",
     briefText
       ? (presetMode ? `Car-specific notes: ${briefText}` : `User brief: ${briefText}`)
       : "",
     includeLine,
     avoidLine,
+    preset?.prompt ? `Style DNA — ${preset.name}: ${preset.prompt}` : "",
     buildType ? `Build type: ${buildType}.` : "",
     styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
     styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
+    vehicleLabel
+      ? `SUBJECT VEHICLE (lowest styling priority; only identity/proportions): ${vehicleLabel}.`
+      : "",
   ].filter(Boolean).join(" ");
 
   // If a per-tile seed was supplied (regenerate flow), use just that single
@@ -454,10 +460,10 @@ async function generateDynamicVariations(args: {
   styleTags: string[];
 }): Promise<Variation[]> {
   const sys =
-    "You are an automotive concept director. Given a build brief, propose 3 distinct " +
+    "You are an automotive concept director. Given a build brief, propose 4 distinct " +
     "styling DIRECTIONS for the same car. Each direction must respect the discipline and " +
     "aggression — they must NOT differ in aggression. They differ in cultural/stylistic " +
-    "vocabulary (e.g. JDM time attack vs Euro touring vs GT3). Output strict JSON only.";
+    "vocabulary (e.g. JDM time attack vs Euro touring vs GT3). Never propose OEM+, subtle, mild, clean street, or restrained directions when aggression is aggressive/extreme. Output strict JSON only.";
 
   const user =
     `Subject: ${args.vehicleLabel || "(unspecified car)"}\n` +
@@ -470,7 +476,7 @@ async function generateDynamicVariations(args: {
     `\nReturn JSON: { "variations": [ { "title": string (≤4 words), ` +
     `"direction": string (1 sentence describing the visual approach), ` +
     `"modifier": string (concrete aero parts list, comma-separated), ` +
-    `"emphasis": string (1 sentence — what MUST be visible) } x3 ] }`;
+    `"emphasis": string (1 sentence — what MUST be visible) } x4 ] }`;
 
   try {
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -656,6 +662,12 @@ async function renderAngle({
       `same silhouette, same greenhouse, same headlight/taillight design, same wheelbase, ` +
       `same overall proportions. Do NOT replace the car with a different model.`;
 
+  const disciplineMusts = discipline !== "auto" ? DISCIPLINE_AERO[discipline] : [];
+  const intensityRule = aggression === "aggressive" || aggression === "extreme"
+    ? `\nNON-NEGOTIABLE INTENSITY: this must NOT look OEM, OEM+, stock, mild, clean street, or subtly modified. ` +
+      `It must read as a heavily modified motorsport build at thumbnail size. Required visible features: ${disciplineMusts.join(", ") || variation.modifier}. ` +
+      `If the reference image is stock, transform it aggressively rather than preserving stock bumpers, arches or ride height.`
+    : "";
   const steerLine = extraModifier ? `\nADDITIONAL STEER (apply on top): ${extraModifier}` : "";
 
   const fromUserPrompt =
@@ -664,6 +676,7 @@ async function renderAngle({
     `${identityRule} ` +
     `\n\nDESIGN DIRECTION (this variation): ${variation.direction} ` +
     `\nKEY EMPHASIS: ${variation.emphasis}` +
+    intensityRule +
     steerLine +
     `\n\n${carbonFinish}` +
     `\n\nBRIEF (highest priority — every render must reflect this): ${stylePrompt} ` +
@@ -677,6 +690,7 @@ async function renderAngle({
     `diffuser, canards) — but viewed from a different camera angle: ${angle.framing}. ` +
     `CRITICAL: This must look like the same physical car as the reference, just photographed ` +
     `from another side. Do NOT change colour, wheels, or aero kit shapes. ` +
+    `${intensityRule} ` +
     `${carbonFinish} ` +
     `Studio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
     `no text, no watermark, no UI overlays.`;
@@ -687,6 +701,7 @@ async function renderAngle({
     `${identityRule} ` +
     `\n\nDESIGN DIRECTION: ${variation.direction} ` +
     `\nKEY EMPHASIS: ${variation.emphasis}` +
+    intensityRule +
     steerLine +
     `\n\n${carbonFinish}` +
     `\n\nBRIEF (highest priority): ${stylePrompt} ` +
@@ -768,19 +783,19 @@ async function renderAngle({
 async function queueAllVariations({
   authHeader,
   body,
-  variationCount,
+  variations,
   conceptSetId,
 }: {
   authHeader: string;
   body: Body;
-  variationCount: number;
+  variations: Variation[];
   conceptSetId: string | null;
 }) {
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   let successCount = 0;
   const failures: string[] = [];
 
-  for (let variationIndex = 0; variationIndex < variationCount; variationIndex += 1) {
+  for (let variationIndex = 0; variationIndex < variations.length; variationIndex += 1) {
     const resp = await fetch(FUNCTION_URL, {
       method: "POST",
       headers: {
@@ -793,7 +808,8 @@ async function queueAllVariations({
         brief_id: body.brief_id,
         snapshot_data_url: body.snapshot_data_url ?? null,
         snapshots: body.snapshots ?? {},
-        variation_index: variationIndex,
+        variation_index: 0,
+        variation_seed: variations[variationIndex],
       }),
     });
 
