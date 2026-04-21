@@ -930,6 +930,57 @@ export type Database = {
           },
         ]
       }
+      prototypes: {
+        Row: {
+          car_context: string | null
+          created_at: string
+          glb_url: string | null
+          id: string
+          mesh_error: string | null
+          mesh_status: string
+          mesh_task_id: string | null
+          render_error: string | null
+          render_status: string
+          render_urls: Json
+          source_image_urls: Json
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          car_context?: string | null
+          created_at?: string
+          glb_url?: string | null
+          id?: string
+          mesh_error?: string | null
+          mesh_status?: string
+          mesh_task_id?: string | null
+          render_error?: string | null
+          render_status?: string
+          render_urls?: Json
+          source_image_urls?: Json
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          car_context?: string | null
+          created_at?: string
+          glb_url?: string | null
+          id?: string
+          mesh_error?: string | null
+          mesh_status?: string
+          mesh_task_id?: string | null
+          render_error?: string | null
+          render_status?: string
+          render_urls?: Json
+          source_image_urls?: Json
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       style_presets: {
         Row: {
           build_type: string | null
@@ -1038,7 +1089,11 @@ export type Database = {
         | "completed"
         | "failed"
         | "cancelled"
-      library_item_kind: "concept_image" | "aero_kit_mesh" | "concept_part_mesh"
+      library_item_kind:
+        | "concept_image"
+        | "aero_kit_mesh"
+        | "concept_part_mesh"
+        | "prototype_part_mesh"
       library_visibility: "private" | "public"
       marketplace_listing_status: "draft" | "active" | "paused"
       parts_job_state:
@@ -1213,6 +1268,7 @@ export const Constants = {
         "concept_image",
         "aero_kit_mesh",
         "concept_part_mesh",
+        "prototype_part_mesh",
       ],
       library_visibility: ["private", "public"],
       marketplace_listing_status: ["draft", "active", "paused"],
