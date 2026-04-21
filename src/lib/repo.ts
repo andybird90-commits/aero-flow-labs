@@ -22,6 +22,8 @@ export type CarStl         = Database["public"]["Tables"]["car_stls"]["Row"];
 export type StylePreset    = Database["public"]["Tables"]["style_presets"]["Row"];
 
 /* ─── PROTOTYPES ──────────────────────────────────────────── */
+export type PrototypeGenerationMode = "exact_photo" | "text_design" | "inspired_photo";
+
 export interface Prototype {
   id: string;
   user_id: string;
@@ -38,6 +40,14 @@ export interface Prototype {
   mesh_error: string | null;
   mesh_task_id: string | null;
   glb_url: string | null;
+  generation_mode: PrototypeGenerationMode;
+  placement_hint: string | null;
+  isolated_ref_urls: string[];
+  reference_status: string;
+  reference_error: string | null;
+  fit_preview_status?: string;
+  fit_preview_url?: string | null;
+  fit_preview_error?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -69,6 +79,8 @@ export function useCreatePrototype() {
       replicate_exact: boolean;
       garage_car_id: string | null;
       source_image_urls: string[];
+      generation_mode: PrototypeGenerationMode;
+      placement_hint: string | null;
     }) => {
       const { data, error } = await (supabase as any)
         .from("prototypes")
