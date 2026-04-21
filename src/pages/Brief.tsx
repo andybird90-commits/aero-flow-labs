@@ -9,7 +9,7 @@ import { useBrief, useUpsertBrief, useStylePresets, type DesignBrief } from "@/l
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette, Upload, X, Loader2 } from "lucide-react";
+import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette, Upload, X, Loader2, Flame, Target } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,30 @@ const STYLE_TAGS = [
 ];
 
 const BUILD_TYPES = ["Daily/street", "Track day", "Time attack", "GT race", "Show car"];
+
+const DISCIPLINES = [
+  { value: "auto",        label: "Auto-detect" },
+  { value: "time_attack", label: "Time attack" },
+  { value: "drift",       label: "Drift" },
+  { value: "stance",      label: "Stance" },
+  { value: "gt",          label: "GT race" },
+  { value: "rally",       label: "Rally" },
+  { value: "show",        label: "Show car" },
+  { value: "street",      label: "Street" },
+];
+
+const AGGRESSIONS = [
+  { value: "auto",       label: "Auto" },
+  { value: "subtle",     label: "Subtle" },
+  { value: "moderate",   label: "Moderate" },
+  { value: "aggressive", label: "Aggressive" },
+  { value: "extreme",    label: "Extreme" },
+];
+
+const AERO_FEATURES = [
+  "Big rear wing", "Wide body", "Front splitter", "Canards",
+  "Diffuser", "Hood vents", "Roof scoop", "Side skirts", "Ducktail",
+];
 
 const CONSTRAINTS = [
   "Keep factory headlights",
