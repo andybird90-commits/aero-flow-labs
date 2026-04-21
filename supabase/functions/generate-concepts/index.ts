@@ -662,6 +662,12 @@ async function renderAngle({
       `same silhouette, same greenhouse, same headlight/taillight design, same wheelbase, ` +
       `same overall proportions. Do NOT replace the car with a different model.`;
 
+  const disciplineMusts = discipline !== "auto" ? DISCIPLINE_AERO[discipline] : [];
+  const intensityRule = aggression === "aggressive" || aggression === "extreme"
+    ? `\nNON-NEGOTIABLE INTENSITY: this must NOT look OEM, OEM+, stock, mild, clean street, or subtly modified. ` +
+      `It must read as a heavily modified motorsport build at thumbnail size. Required visible features: ${disciplineMusts.join(", ") || variation.modifier}. ` +
+      `If the reference image is stock, transform it aggressively rather than preserving stock bumpers, arches or ride height.`
+    : "";
   const steerLine = extraModifier ? `\nADDITIONAL STEER (apply on top): ${extraModifier}` : "";
 
   const fromUserPrompt =
@@ -670,6 +676,7 @@ async function renderAngle({
     `${identityRule} ` +
     `\n\nDESIGN DIRECTION (this variation): ${variation.direction} ` +
     `\nKEY EMPHASIS: ${variation.emphasis}` +
+    intensityRule +
     steerLine +
     `\n\n${carbonFinish}` +
     `\n\nBRIEF (highest priority — every render must reflect this): ${stylePrompt} ` +
@@ -683,6 +690,7 @@ async function renderAngle({
     `diffuser, canards) — but viewed from a different camera angle: ${angle.framing}. ` +
     `CRITICAL: This must look like the same physical car as the reference, just photographed ` +
     `from another side. Do NOT change colour, wheels, or aero kit shapes. ` +
+    `${intensityRule} ` +
     `${carbonFinish} ` +
     `Studio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
     `no text, no watermark, no UI overlays.`;
@@ -693,6 +701,7 @@ async function renderAngle({
     `${identityRule} ` +
     `\n\nDESIGN DIRECTION: ${variation.direction} ` +
     `\nKEY EMPHASIS: ${variation.emphasis}` +
+    intensityRule +
     steerLine +
     `\n\n${carbonFinish}` +
     `\n\nBRIEF (highest priority): ${stylePrompt} ` +
