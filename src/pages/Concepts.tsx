@@ -401,7 +401,10 @@ function ConceptCard({
   const visibleAngles = angles.filter((a) => !!a.url) as Array<{ key: ViewKey; label: string; url: string }>;
 
   const [angleIdx, setAngleIdx] = useState(0);
-  const [pickMode, setPickMode] = useState(false);
+  /** Three-state mode: none, AI pick (legacy), or manual trace (new). */
+  const [partMode, setPartMode] = useState<"none" | "pick" | "trace">("none");
+  const pickMode = partMode === "pick";
+  const traceMode = partMode === "trace";
   const [zoomOpen, setZoomOpen] = useState(false);
   const current = visibleAngles[angleIdx];
   const hasMultiple = visibleAngles.length > 1;
