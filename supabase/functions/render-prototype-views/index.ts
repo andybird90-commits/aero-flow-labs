@@ -158,10 +158,11 @@ async function runRender(
         console.warn("source fetch failed:", url, e);
       }
     }
-    if (!refDataUrls.length) {
+    if (sourceUrls.length && !refDataUrls.length) {
       await admin.from("prototypes").update({ render_status: "failed", render_error: "Could not load source images" }).eq("id", prototype_id);
-      return json({ error: "Could not load source images" }, 500);
+      throw new Error("Could not load source images");
     }
+    const partDescription = [titleRaw, userNotesRaw].filter(Boolean).join(" — ") || "an aftermarket aero part";
 
     const carContext = (proto.car_context ?? "").trim();
     const userNotes = ((proto as any).notes ?? "").toString().trim();
