@@ -179,6 +179,7 @@ export type Database = {
           fidelity_score: number | null
           glb_url: string | null
           id: string
+          isolated_meta: Json | null
           isolated_source_url: string | null
           kind: string
           label: string | null
@@ -195,6 +196,7 @@ export type Database = {
           fidelity_score?: number | null
           glb_url?: string | null
           id?: string
+          isolated_meta?: Json | null
           isolated_source_url?: string | null
           kind: string
           label?: string | null
@@ -211,6 +213,7 @@ export type Database = {
           fidelity_score?: number | null
           glb_url?: string | null
           id?: string
+          isolated_meta?: Json | null
           isolated_source_url?: string | null
           kind?: string
           label?: string | null
