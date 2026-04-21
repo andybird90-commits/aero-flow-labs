@@ -83,6 +83,8 @@ const REFINE_SPECS: RefineSpec[] = [
   },
 ];
 
+const labelFor = (kind: string) => REFINE_SPECS.find((s) => s.kind === kind)?.label ?? kind.replace(/_/g, " ");
+
 export default function Refine() {
   return (
     <WorkspaceShell>
