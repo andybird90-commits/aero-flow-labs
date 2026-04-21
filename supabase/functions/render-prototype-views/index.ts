@@ -41,7 +41,7 @@ const SHELL =
 
 const ANGLES = [
   { key: "hero", label: "front 3/4 view, slightly above, hero product shot" },
-  { key: "back", label: "rear 3/4 view, clearly showing the reverse / back / inner mounting side" },
+  { key: "back", label: "rear 3/4 view from behind the part, looking INTO the open hollow inner cavity / underside / mounting face" },
 ] as const;
 
 Deno.serve(async (req) => {
