@@ -19,6 +19,8 @@ import {
 import { useToast as useToastHook } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
+import { PartTraceOverlay } from "@/components/PartTraceOverlay";
+import { Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
