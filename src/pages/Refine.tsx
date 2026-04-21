@@ -144,10 +144,12 @@ function RefineInner({ projectId, project }: { projectId: string; project: any }
 
       <div className="space-y-4">
         <div>
-          <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Step 5 · Refine</div>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">Tune the fitted parts</h1>
+          <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Step 5 · Render / Refine</div>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">
+            {focusedPart ? `Rendering ${labelFor(focusedPart.kind)}` : "Tune the fitted parts"}
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Live preview · adjustments save automatically.
+            {focusedPart ? "Only this saved part is shown. Adjust it live or download its STL." : "Live preview · adjustments save automatically."}
           </p>
         </div>
 
