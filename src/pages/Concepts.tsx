@@ -696,22 +696,26 @@ function ConceptCard({
 
         <ConceptRegenAndPrompt concept={concept} projectId={projectId} />
 
-        {/* Combined carbon-kit mesh — primary route once carbon-only renders exist. */}
+        {/* Combined carbon-kit mesh — EXPERIMENTAL.
+         *  Image-to-3D struggles with full kits; manual trace is the recommended path. */}
         {(carbonReady || carbonAngles.some((a) => !!a.url) || kitStatus !== "idle") && (
           <div className="pt-2 border-t border-border space-y-2">
+            <div className="text-[10px] text-mono uppercase tracking-widest text-muted-foreground">
+              Experimental — prefer “Trace kit” for reliable STLs
+            </div>
             <Button
-              variant="hero"
+              variant="glass"
               size="sm"
               className="w-full"
               disabled={kitBusy || meshifyKit.isPending || (!carbonReady && !carbonAngles.some((a) => !!a.url))}
               onClick={handleMeshifyKit}
-              title="Reconstruct the entire carbon body kit as one mesh — split it in Fusion / Blender afterwards"
+              title="Experimental: reconstruct the entire carbon body kit as one mesh. Often unreliable — use Trace kit instead."
             >
               {kitBusy || meshifyKit.isPending ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Boxes className="mr-1.5 h-3.5 w-3.5" />}
               {kitStartPending || meshifyKit.isPending ? "Starting carbon kit mesh…"
                 : kitBusy ? "Reconstructing combined kit… ~60s"
-                : kitStatus === "ready" ? "Re-mesh full kit"
-                : "Mesh full carbon kit"}
+                : kitStatus === "ready" ? "Re-mesh full kit (experimental)"
+                : "Mesh full carbon kit (experimental)"}
             </Button>
             {kitStatus === "failed" && kitError && (
               <div className="text-[10px] text-mono text-destructive">{kitError}</div>
