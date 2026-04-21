@@ -243,6 +243,8 @@ function CreatePrototypeDialog({
   const [garageCarId, setGarageCarId] = useState<string>("none");
   const [notes, setNotes] = useState("");
   const [replicateExact, setReplicateExact] = useState(false);
+  const [mode, setMode] = useState<PrototypeGenerationMode>("exact_photo");
+  const [placement, setPlacement] = useState<string>("");
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -253,6 +255,8 @@ function CreatePrototypeDialog({
       setGarageCarId("none");
       setNotes("");
       setReplicateExact(false);
+      setMode("exact_photo");
+      setPlacement("");
       setFiles([]);
       setSubmitting(false);
     }
@@ -299,9 +303,11 @@ function CreatePrototypeDialog({
         title: title.trim() || "Untitled prototype",
         car_context: carContext.trim() || null,
         notes: notes.trim() || null,
-        replicate_exact: replicateExact,
+        replicate_exact: replicateExact || mode === "exact_photo",
         garage_car_id: garageCarId === "none" ? null : garageCarId,
         source_image_urls: uploadedUrls,
+        generation_mode: mode,
+        placement_hint: placement || null,
       });
       toast({ title: "Prototype created" });
       onCreated(created);
