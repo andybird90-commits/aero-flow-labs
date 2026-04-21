@@ -93,6 +93,8 @@ export default function Refine() {
 
 function RefineInner({ projectId, project }: { projectId: string; project: any }) {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const focusedKind = searchParams.get("part");
   const { data: geometry } = useGeometry(projectId);
   const { data: conceptSet } = useActiveConceptSet(projectId);
   const { data: parts = [] } = useFittedParts(conceptSet?.id);
@@ -100,7 +102,12 @@ function RefineInner({ projectId, project }: { projectId: string; project: any }
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
 
   const enabled = parts.filter((p) => p.enabled);
-  const visibility = Object.fromEntries(enabled.map((p) => [p.kind, !hidden[p.kind]]));
+  const focusedPart = focusedKind ? enabled.find((p) => p.kind === focusedKind) : undefined;
+  const displayedParts = focusedPart ? [focusedPart] : enabled;
+  const visibility = useMemo(() => {
+    if (focusedPart) return Object.fromEntries(enabled.map((p) => [p.kind, p.id === focusedPart.id]));
+    return Object.fromEntries(enabled.map((p) => [p.kind, !hidden[p.kind]]));
+  }, [enabled, focusedPart, hidden]);
 
   const update = (part: FittedPart, key: string, value: number) => {
     if (!user || !conceptSet) return;
