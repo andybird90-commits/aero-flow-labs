@@ -59,8 +59,8 @@ const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
     not:   "Do NOT draw a door, rocker panel, wheels, fenders, or any car body. Just the standalone skirt blade, like a parts-catalogue product photo.",
   },
   wide_arch: {
-    what:  "a single bolt-on wheel arch flare (one piece, like an over-fender)",
-    shape: "a curved arc-shaped strip that follows roughly half a wheel-well opening, about 800-1000mm long along the curve, 80-150mm wide, 30-50mm thick. Looks like a thick rainbow / horseshoe shape with mounting tabs",
+    what:  "a single wheel arch flare (one piece, like an over-fender)",
+    shape: "a curved arc-shaped strip that follows roughly half a wheel-well opening, about 800-1000mm long along the curve, 80-150mm wide, 30-50mm thick. Looks like a thick rainbow / horseshoe shape",
     not:   "Do NOT draw a fender, bumper, door, headlights, wheel, tyre, or any car body. Just the standalone arc-shaped flare on a white shop background. NO wheel, NO tyre, NO door.",
   },
   diffuser: {
@@ -79,13 +79,13 @@ const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
     not:   "Do NOT draw a trunk, rear window, taillights, bumper, or any car body. Just the standalone wing + stands + end plates floating, like a GT-wing product photo.",
   },
   bonnet_vent: {
-    what:  "a single bolt-on bonnet (hood) vent insert",
-    shape: "one rectangular louvred vent panel about 240mm long, 120mm wide, 18mm thick, with 4-6 angled parallel louvre slats and a thin mounting flange around the perimeter. Looks like a flat letterbox grill",
+    what:  "a single bonnet (hood) vent insert",
+    shape: "one rectangular louvred vent panel about 240mm long, 120mm wide, 18mm thick, with 4-6 angled parallel louvre slats. Looks like a flat letterbox grill",
     not:   "Do NOT draw a bonnet, hood, engine bay, fender, or any car body. Just the standalone louvred vent insert on a white background.",
   },
   wing_vent: {
-    what:  "a single bolt-on fender (wing) vent insert",
-    shape: "one elongated louvred vent panel about 180mm long, 90mm wide, 14mm thick, with 3-5 angled parallel louvre slats and a thin mounting flange. Smaller and more oval/teardrop in outline than a bonnet vent",
+    what:  "a single fender (wing) vent insert",
+    shape: "one elongated louvred vent panel about 180mm long, 90mm wide, 14mm thick, with 3-5 angled parallel louvre slats. Smaller and more oval/teardrop in outline than a bonnet vent",
     not:   "Do NOT draw a fender, wing panel, door, wheel, or any car body. Just the standalone louvred vent insert on a white background.",
   },
 };
@@ -104,9 +104,10 @@ const SURFACE_TREATMENT =
 // itself (the shell) is thin, like a fibreglass/carbon moulding.
 // Earlier wording made Gemini collapse the whole part into a flat 2mm ribbon.
 const SHELL_TREATMENT =
-  "MATERIAL CONSTRUCTION: render this as a moulded composite/fibreglass aero part — the SHELL/WALL itself is thin (~2mm) like a real bolt-on bodykit panel, but the part still has its FULL real-world three-dimensional shape, height, depth, curvature and flare. " +
+  "MATERIAL CONSTRUCTION: render this as a moulded composite/fibreglass aero part — the SHELL/WALL itself is thin (~2mm) like a real bonded-on bodykit panel, but the part still has its FULL real-world three-dimensional shape, height, depth, curvature and flare. " +
   "Do NOT flatten the part into a thin ribbon or strip. Keep its proper proportions: a side skirt is still ~150-250mm tall with a curved outward flare, a diffuser still has 400-600mm of depth with tall vertical strakes, an arch flare still bulges out 30-50mm from where it would mount, etc. " +
-  "Only the visible EDGES (the open-backed mounting side / cut edge) should read as thin sheet material — like looking at the rim of a fibreglass moulding. The exterior surface is full-form. Think 'hollow GRP body panel,' NOT 'flat sheet metal cut-out.'";
+  "Only the visible EDGES (the open-backed inner side / cut edge) should read as thin sheet material — like looking at the rim of a fibreglass moulding. The exterior surface is full-form. Think 'hollow GRP body panel,' NOT 'flat sheet metal cut-out.' " +
+  "FIXING METHOD IS NOT YOUR PROBLEM: do NOT add bolt holes, screw holes, fastener heads, threaded inserts, rivets, mounting tabs, mounting flanges, brackets, clips, or any visible attachment hardware. The part will be bonded or bolted on AFTER printing — render only the clean aerodynamic shell, with smooth continuous edges where it would meet the car.";
 
 // Multi-view renders give the 3D stage enough information to preserve thin
 // shell construction, reverse faces, mounting flanges, and end thickness.
@@ -238,12 +239,13 @@ Deno.serve(async (req) => {
         `Ignore every other shape, every other vent, every other panel, every other fin in the frame. They do not exist for this task.`,
         ``,
         `STEP 1 — STUDY the reference. Find the ${spec.what} on this car (the part centred near (${cxPct}%, ${cyPct}%)).`,
-        `Note its exact silhouette, thickness, flare/curve aggression, vent/louvre/cutout sizes, mounting tab locations, and overall proportions.`,
+        `Note its exact silhouette, thickness, flare/curve aggression, vent/louvre/cutout sizes, and overall proportions.`,
         `IGNORE the material, colour, finish, paint, carbon weave, decals, dirt, reflections — those do NOT matter. Only the SHAPE matters.`,
         ``,
         `STEP 2 — RE-DRAW that exact shape as a STANDALONE AFTERMARKET COMPONENT, completely detached from the car, photographed alone for a parts catalogue.`,
         `Match THIS car's specific silhouette and proportions. If the reference shows a 20mm flare, draw a 20mm flare — not an 80mm overfender.`,
-        `This is a REAL FABRICATABLE PART, not a visual mockup: preserve the true section thickness, folds, returns, flanges, mounting tabs, and the reverse / inner face wherever visible from the requested camera angle.`,
+        `This is a REAL FABRICATABLE PART, not a visual mockup: preserve the true section thickness, folds, returns, and the reverse / inner face wherever visible from the requested camera angle.`,
+        `IMPORTANT: this part will be BONDED OR BOLTED ON AFTER PRINTING. Do NOT add bolt holes, screw holes, fasteners, rivets, mounting tabs, mounting flanges, brackets, or any visible attachment hardware. Render the clean aerodynamic shell only with smooth continuous edges.`,
         ``,
         `Loose shape sanity check (only if reference is unclear): ${spec.shape}.`,
         ``,
@@ -255,7 +257,7 @@ Deno.serve(async (req) => {
         `- The part is FULLY DETACHED. It is sitting on a white seamless cyclorama.`,
         `- ABSOLUTELY NO car body present in the frame. No fender, no door, no bumper, no quarter panel, no wheel, no tyre, no headlight, no taillight, no glass, no trim, no body colour panel adjacent to the part.`,
         `- NO ghost / faded / blurred car silhouette behind it. NO partial car visible at the edges of the frame. NO reflection of a car on the floor.`,
-        `- If you would normally draw the part attached to a fender for context — DO NOT. Show ONLY the bolt-on piece itself with its mounting tabs/holes visible.`,
+        `- If you would normally draw the part attached to a fender for context — DO NOT. Show ONLY the standalone piece itself.`,
         `${spec.not}`,
         `- AND NO other aftermarket aero parts (no bonnet vents, no fender vents, no lip, no canards, no skirts, no other arches, no wing, no diffuser, no ducktail, no splitter) — ONLY the ${partLabel} itself.`,
         ``,
@@ -267,6 +269,7 @@ Deno.serve(async (req) => {
         `- Part centred, fills 40-55% of frame (leave generous white margin on all sides — do NOT crop tight).`,
         `- Camera angle: ${angle.label}.`,
         `- Show the part as a thin-shell moulding with visible edge thickness and open-backed construction where appropriate; do NOT close it into a solid slab.`,
+        `- NO bolt holes, NO fasteners, NO mounting tabs, NO flanges, NO brackets — clean shell only.`,
         `- Clean clay render style. No text, no watermarks, no logos, no part numbers.`,
       ] : [
         `The FIRST attached image is the hero clay render of a ${spec.what} that we already approved.`,
@@ -277,11 +280,11 @@ Deno.serve(async (req) => {
         ``,
         `MUST match the hero image identically:`,
         `- Same overall shape and silhouette`,
-        `- Same vents, louvres, mounting tabs, fasteners and bolt locations`,
+        `- Same vents, louvres and surface features (NO bolt holes, NO mounting tabs, NO fasteners — never add them)`,
         `- Same surface curvature and edge treatment`,
         `- Same proportions and thickness`,
         `Treat the hero image as the ground truth — this is just a turntable rotation of the same physical object.`,
-        `CRITICAL: reveal the physical construction visible from this angle — especially the reverse side, mounting face, flanges, tabs, returns, and edge thickness. Do NOT invent a sealed solid block or paper-thin ribbon.`,
+        `CRITICAL: reveal the physical construction visible from this angle — especially the reverse / inner side, returns, and edge thickness. Do NOT invent a sealed solid block or paper-thin ribbon. Do NOT add bolt holes, mounting tabs, flanges, brackets or fasteners — fixing happens after printing.`,
         ``,
         `SURFACE TREATMENT (CRITICAL):`,
         `${SURFACE_TREATMENT}`,
