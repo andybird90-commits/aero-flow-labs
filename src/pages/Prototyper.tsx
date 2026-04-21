@@ -549,6 +549,18 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
   const startRender = async () => {
     setBusy("render");
     try {
+      // For exact_photo with photos, isolate the part first so the downstream
+      // renders work from a clean reference instead of a busy raw photo.
+      const genMode = (prototype as any).generation_mode ?? "exact_photo";
+      const isolated = ((prototype as any).isolated_ref_urls as string[]) ?? [];
+      if (genMode === "exact_photo" && sources.length > 0 && isolated.length === 0) {
+        const iso = await supabase.functions.invoke("isolate-prototype-part", {
+          body: { prototype_id: prototype.id },
+        });
+        if (iso.error) throw iso.error;
+        if ((iso.data as any)?.error) throw new Error((iso.data as any).error);
+      }
+
       const { data, error } = await supabase.functions.invoke("render-prototype-views", {
         body: { prototype_id: prototype.id, revision_note: revisionNote.trim() || undefined },
       });
