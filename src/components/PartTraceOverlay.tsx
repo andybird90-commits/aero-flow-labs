@@ -13,7 +13,8 @@
  * directly from `part-geometry.ts`.
  */
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Loader2, Pencil, Check, X, Undo2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Loader2, Pencil, Check, Undo2, ArrowRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -275,23 +276,30 @@ export function PartTraceOverlay({ active, view, projectId }: Props) {
       {/* Subtle dim so trace lines pop */}
       <div className="absolute inset-0 bg-background/25 pointer-events-none" />
 
-      {/* Part type picker */}
+      {/* Part type picker — saved kinds get a green tick */}
       <div className="absolute top-2 left-2 right-2 flex flex-wrap gap-1 pointer-events-auto z-30">
-        {PART_OPTIONS.map((o) => (
-          <button
-            key={o.kind}
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setSelectedKind(o.kind); setBox(null); }}
-            className={cn(
-              "rounded-md px-2 py-1 border text-mono text-[10px] uppercase tracking-widest backdrop-blur transition-colors",
-              selectedKind === o.kind
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
-            )}
-          >
-            {o.label}
-          </button>
-        ))}
+        {PART_OPTIONS.map((o) => {
+          const isSaved = existingParts.some((p) => p.kind === o.kind && p.enabled);
+          const isSelected = selectedKind === o.kind;
+          return (
+            <button
+              key={o.kind}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setSelectedKind(o.kind); setBox(null); }}
+              className={cn(
+                "rounded-md px-2 py-1 border text-mono text-[10px] uppercase tracking-widest backdrop-blur transition-colors inline-flex items-center gap-1",
+                isSelected
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : isSaved
+                    ? "bg-success/15 text-success border-success/40 hover:bg-success/25"
+                    : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
+              )}
+            >
+              {isSaved && !isSelected && <CheckCircle2 className="h-2.5 w-2.5" />}
+              {o.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Hint banner */}
@@ -299,6 +307,23 @@ export function PartTraceOverlay({ active, view, projectId }: Props) {
         <Pencil className="h-3 w-3 text-primary" />
         {opt.hint}
       </div>
+
+      {/* Saved kit summary — bottom-right, always visible when parts exist */}
+      {existingParts.filter((p) => p.enabled).length > 0 && (
+        <div className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md bg-surface-0/95 backdrop-blur px-2 py-1.5 border border-border shadow-md z-30 pointer-events-auto">
+          <CheckCircle2 className="h-3 w-3 text-success" />
+          <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            {existingParts.filter((p) => p.enabled).length} part{existingParts.filter((p) => p.enabled).length === 1 ? "" : "s"} in kit
+          </span>
+          <Link
+            to={`/parts?project=${projectId}`}
+            onClick={(e) => e.stopPropagation()}
+            className="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-mono uppercase tracking-widest text-primary hover:bg-primary/10"
+          >
+            View 3D <ArrowRight className="h-2.5 w-2.5" />
+          </Link>
+        </div>
+      )}
 
       {/* Drawing surface */}
       <div
