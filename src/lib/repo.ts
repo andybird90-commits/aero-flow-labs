@@ -21,6 +21,75 @@ export type ExportRow      = Database["public"]["Tables"]["exports"]["Row"];
 export type CarStl         = Database["public"]["Tables"]["car_stls"]["Row"];
 export type StylePreset    = Database["public"]["Tables"]["style_presets"]["Row"];
 
+/* ─── PROTOTYPES ──────────────────────────────────────────── */
+export interface Prototype {
+  id: string;
+  user_id: string;
+  title: string;
+  car_context: string | null;
+  source_image_urls: string[];
+  render_status: string;
+  render_error: string | null;
+  render_urls: Array<{ angle: string; url: string }>;
+  mesh_status: string;
+  mesh_error: string | null;
+  mesh_task_id: string | null;
+  glb_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function useMyPrototypes(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["prototypes", userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("prototypes")
+        .select("*")
+        .eq("user_id", userId!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Prototype[];
+    },
+  });
+}
+
+export function useCreatePrototype() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      user_id: string;
+      title: string;
+      car_context: string | null;
+      source_image_urls: string[];
+    }) => {
+      const { data, error } = await (supabase as any)
+        .from("prototypes")
+        .insert(input)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as Prototype;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["prototypes"] }),
+  });
+}
+
+export function useDeletePrototype() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any).from("prototypes").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prototypes"] });
+      qc.invalidateQueries({ queryKey: ["library_items"] });
+    },
+  });
+}
+
 /* ─── ROLES ────────────────────────────────────────────────── */
 export function useIsAdmin(userId: string | undefined) {
   return useQuery({
