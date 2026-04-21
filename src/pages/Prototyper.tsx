@@ -330,6 +330,33 @@ function CreatePrototypeDialog({
 
         <div className="space-y-3">
           <div>
+            <Label htmlFor="proto-mode">Workflow</Label>
+            <Select value={mode} onValueChange={(v) => setMode(v as PrototypeGenerationMode)}>
+              <SelectTrigger id="proto-mode"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {MODE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground mt-1">{MODE_OPTIONS.find((o) => o.value === mode)?.help}</p>
+          </div>
+
+          <div>
+            <Label htmlFor="proto-placement">Where on the car?</Label>
+            <Select value={placement || "unset"} onValueChange={(v) => setPlacement(v === "unset" ? "" : v)}>
+              <SelectTrigger id="proto-placement"><SelectValue placeholder="Pick a zone…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unset">— Let the AI guess —</SelectItem>
+                {PLACEMENT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.label}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground mt-1">Telling the AI where the part belongs dramatically improves on-car results.</p>
+          </div>
+
+          <div>
             <Label htmlFor="proto-title">Name</Label>
             <Input id="proto-title" placeholder="e.g. Boxster 986 side skirt" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
           </div>
