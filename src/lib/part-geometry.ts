@@ -52,9 +52,8 @@ export function buildPartMesh(kind: string, params: Params, bounds: KitBounds = 
 const matNeutral = () => new THREE.MeshStandardMaterial({ color: 0x111418 });
 
 /* ─── PART WALL THICKNESS ──────────────────────────────────────
- * Real fibreglass / carbon body kit parts are ~3–6 mm thick.
- * We standardise on 5 mm so exported STLs print/read as panels,
- * not chunky billet blocks. */
+ * Extracted concept parts should read as thin composite shells, not solid
+ * billet blocks. We standardise on 2 mm wall thickness. */
 const SHELL = 0.002;
 
 /* ─── splitter: flat blade with optional side fences ───────── */
@@ -140,10 +139,10 @@ function wideArches(p: Params, b: KitBounds): THREE.Group {
   const positions = [[-0.6, -1], [-0.6, 1], [0.5, -1], [0.5, 1]] as const;
   for (const [x, side] of positions) {
     const m = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 0.18, flare),
+      new THREE.BoxGeometry(0.5, 0.18, SHELL),
       matNeutral(),
     );
-    m.position.set(x, 0, side * (b.width / 2 + flare / 2));
+    m.position.set(x, 0, side * (b.width / 2 + flare));
     g.add(m);
   }
   return g;
@@ -185,7 +184,7 @@ function ducktail(p: Params, b: KitBounds): THREE.Mesh {
   const h = num(p, "height", 38) / 1000;
   const kick = (num(p, "kick", 10) * Math.PI) / 180;
   const m = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, h, b.width * 0.85),
+    new THREE.BoxGeometry(0.22, h, SHELL),
     matNeutral(),
   );
   m.rotation.set(0, 0, kick);
@@ -262,7 +261,7 @@ function louvredVent(p: Params, _b: KitBounds): THREE.Group {
   // Recessed surround (a thin frame around an open tray).
   const wall = 0.006;
   const tray = new THREE.Mesh(
-    new THREE.BoxGeometry(length, depth, width),
+    new THREE.BoxGeometry(length, depth, SHELL),
     matNeutral(),
   );
   tray.position.y = -depth / 2;
