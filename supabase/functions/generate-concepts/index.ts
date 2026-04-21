@@ -460,10 +460,10 @@ async function generateDynamicVariations(args: {
   styleTags: string[];
 }): Promise<Variation[]> {
   const sys =
-    "You are an automotive concept director. Given a build brief, propose 3 distinct " +
+    "You are an automotive concept director. Given a build brief, propose 4 distinct " +
     "styling DIRECTIONS for the same car. Each direction must respect the discipline and " +
     "aggression — they must NOT differ in aggression. They differ in cultural/stylistic " +
-    "vocabulary (e.g. JDM time attack vs Euro touring vs GT3). Output strict JSON only.";
+    "vocabulary (e.g. JDM time attack vs Euro touring vs GT3). Never propose OEM+, subtle, mild, clean street, or restrained directions when aggression is aggressive/extreme. Output strict JSON only.";
 
   const user =
     `Subject: ${args.vehicleLabel || "(unspecified car)"}\n` +
@@ -476,7 +476,7 @@ async function generateDynamicVariations(args: {
     `\nReturn JSON: { "variations": [ { "title": string (≤4 words), ` +
     `"direction": string (1 sentence describing the visual approach), ` +
     `"modifier": string (concrete aero parts list, comma-separated), ` +
-    `"emphasis": string (1 sentence — what MUST be visible) } x3 ] }`;
+    `"emphasis": string (1 sentence — what MUST be visible) } x4 ] }`;
 
   try {
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
