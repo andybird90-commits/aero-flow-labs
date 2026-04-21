@@ -177,6 +177,7 @@ export type Database = {
           created_at: string
           glb_url: string | null
           id: string
+          isolated_source_url: string | null
           kind: string
           label: string | null
           project_id: string
@@ -190,6 +191,7 @@ export type Database = {
           created_at?: string
           glb_url?: string | null
           id?: string
+          isolated_source_url?: string | null
           kind: string
           label?: string | null
           project_id: string
@@ -203,6 +205,7 @@ export type Database = {
           created_at?: string
           glb_url?: string | null
           id?: string
+          isolated_source_url?: string | null
           kind?: string
           label?: string | null
           project_id?: string

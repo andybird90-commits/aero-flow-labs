@@ -45,6 +45,7 @@ interface Preview {
   kind: PartKind;
   label: string;
   filenameBase: string;
+  bbox: { x: number; y: number; w: number; h: number };
 }
 
 type Handle = "move" | "n" | "s" | "e" | "w" | "nw" | "ne" | "sw" | "se";
@@ -142,6 +143,7 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
       kind: zone.kind,
       label: zone.label,
       filenameBase: `${safeTitle}__${safeLabel || zone.kind}`,
+      bbox: { x: zone.x, y: zone.y, w: zone.w, h: zone.h },
     });
   }, [conceptTitle]);
 
@@ -380,6 +382,7 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
           label={preview.label}
           filenameBase={preview.filenameBase}
           sourceImageUrl={sourceImageUrl}
+          bbox={preview.bbox}
         />
       )}
     </>

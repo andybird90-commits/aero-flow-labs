@@ -35,20 +35,31 @@ interface Props {
    *  optional pre-render trim step so we can isolate the part BEFORE Gemini
    *  draws it. */
   sourceImageUrl?: string;
+  /** Hotspot bounding box in normalised coordinates. When supplied alongside
+   *  `sourceImageUrl`, we run an automatic isolation pass first so downstream
+   *  AI only ever sees the chosen part. */
+  bbox?: { x: number; y: number; w: number; h: number };
 }
 
-type Stage = "pretrim" | "rendering" | "review" | "meshing" | "ready" | "error";
+type Stage = "isolating" | "pretrim" | "rendering" | "review" | "meshing" | "ready" | "error";
 
 interface RenderImage { angle: string; url: string }
 
 export function ExtractedPartPreview({
-  open, onClose, conceptId, kind, label, filenameBase, sourceImageUrl,
+  open, onClose, conceptId, kind, label, filenameBase, sourceImageUrl, bbox,
 }: Props) {
   const { toast } = useToast();
-  const [stage, setStage] = useState<Stage>(sourceImageUrl ? "pretrim" : "rendering");
+  // When we have a bbox, kick off auto-isolation first. Otherwise fall back
+  // to the legacy pretrim (lasso) or direct rendering path.
+  const initialStage: Stage =
+    bbox && sourceImageUrl ? "isolating" : sourceImageUrl ? "pretrim" : "rendering";
+  const [stage, setStage] = useState<Stage>(initialStage);
   const [images, setImages] = useState<RenderImage[]>([]);
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** AI-isolated crop of just the picked part. Replaces `sourceImageUrl` in
+   *  the "On car" pane and is sent as the sole reference to render-isolated-part. */
+  const [isolatedUrl, setIsolatedUrl] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
   // Pre-render trim state (lasso on the original concept image)
@@ -69,7 +80,8 @@ export function ExtractedPartPreview({
   // Reset trim state whenever the dialog opens or the underlying render changes.
   useEffect(() => {
     if (!open) return;
-    setStage(sourceImageUrl ? "pretrim" : "rendering");
+    setStage(bbox && sourceImageUrl ? "isolating" : sourceImageUrl ? "pretrim" : "rendering");
+    setIsolatedUrl(null);
     setTrimOpen(false);
     setTrimPoints([]);
     setTrimLasso([]);
@@ -77,7 +89,7 @@ export function ExtractedPartPreview({
     setPrePoints([]);
     setPreLasso([]);
     setPreMaskedUrl(null);
-  }, [open, conceptId, kind, sourceImageUrl]);
+  }, [open, conceptId, kind, sourceImageUrl, bbox]);
 
   const purgeCachedMesh = async () => {
     const { error } = await supabase
@@ -154,17 +166,57 @@ export function ExtractedPartPreview({
     }
   };
 
-  // Auto-run the AI render only when there's no source image to pre-trim.
-  // When sourceImageUrl is supplied we land on the "pretrim" stage and wait
-  // for the user to either skip or finish trimming.
+  // Auto-run the AI render only when there's no source image to pre-trim
+  // AND no bbox to auto-isolate. When sourceImageUrl is supplied we land on
+  // the "pretrim" or "isolating" stage instead.
   useEffect(() => {
     if (!open) return;
-    if (sourceImageUrl) return; // user drives the flow from pretrim
+    if (sourceImageUrl) return; // user drives the flow from pretrim/isolating
     const signal = { cancelled: false };
     runRender(signal);
     return () => { signal.cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conceptId, kind, label, sourceImageUrl]);
+
+  // Auto-isolate the picked part when bbox + sourceImageUrl are present.
+  // On success → flow straight into rendering with the isolated crop.
+  // On failure → drop into the existing manual lasso pretrim.
+  useEffect(() => {
+    if (!open || !bbox || !sourceImageUrl) return;
+    if (stage !== "isolating") return;
+    const signal = { cancelled: false };
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("isolate-picked-part", {
+          body: {
+            concept_id: conceptId,
+            part_kind: kind,
+            part_label: label,
+            source_image_url: sourceImageUrl,
+            bbox,
+          },
+        });
+        if (signal.cancelled) return;
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+        const url = (data as any)?.isolated_url as string | undefined;
+        if (!url) throw new Error("No isolated URL returned");
+        setIsolatedUrl(url);
+        runRender(signal, true, url);
+      } catch (e: any) {
+        if (signal.cancelled) return;
+        const msg = String(e.message ?? e);
+        toast({
+          title: "Auto-isolate failed",
+          description: `${msg} — outline the part manually.`,
+          variant: "destructive",
+        });
+        setStage("pretrim");
+      }
+    })();
+    return () => { signal.cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, bbox, sourceImageUrl, stage, conceptId, kind, label]);
 
   const [meshProgress, setMeshProgress] = useState<number>(0);
 
@@ -495,6 +547,7 @@ export function ExtractedPartPreview({
         <DialogHeader>
           {titleLine}
           <DialogDescription>
+            {stage === "isolating" && "Isolating the picked part — erasing the rest of the car so the AI only sees what you chose…"}
             {stage === "pretrim"   && "Optional: lasso the part on the original image so the AI only sees that crop. Or skip and render the full view."}
             {stage === "rendering" && "Drawing the part on a clean white background…"}
             {stage === "review"    && "Review the render. Regenerate if it looks generic, or turn it into a 3D model."}
@@ -503,6 +556,39 @@ export function ExtractedPartPreview({
             {stage === "error"     && "Something went wrong. See details below."}
           </DialogDescription>
         </DialogHeader>
+
+        {/* ISOLATING: AI is stripping the surrounding car away. Show a clay
+            placeholder over the original so the user has visual context. */}
+        {stage === "isolating" && sourceImageUrl && (
+          <div className="flex-1 min-h-0 flex items-center justify-center">
+            <div className="relative w-full h-full rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
+              <img
+                src={sourceImageUrl}
+                alt="Source concept"
+                className="w-full h-full object-contain opacity-30"
+              />
+              {bbox && (
+                <div
+                  className="absolute border-2 border-dashed border-primary rounded-md bg-primary/10"
+                  style={{
+                    left: `${bbox.x * 100}%`,
+                    top: `${bbox.y * 100}%`,
+                    width: `${bbox.w * 100}%`,
+                    height: `${bbox.h * 100}%`,
+                  }}
+                />
+              )}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <div className="rounded-md bg-surface-0/90 backdrop-blur px-3 py-2 border border-border inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                    Isolating {label}…
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* PRETRIM: lasso on the original concept image, before AI render */}
         {stage === "pretrim" && sourceImageUrl && (
@@ -573,12 +659,12 @@ export function ExtractedPartPreview({
         {(stage === "rendering" || stage === "review" || stage === "meshing" || stage === "ready") && (
           <div className="relative flex-1 min-h-0 flex flex-col">
             <div className="flex-1 min-h-0 grid gap-2 grid-rows-3 md:grid-rows-1 md:grid-cols-3">
-              {/* Pane 1 — On car (original concept reference) */}
+              {/* Pane 1 — On car (isolated crop if available, else original) */}
               <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
-                {sourceImageUrl ? (
+                {(isolatedUrl || sourceImageUrl) ? (
                   <img
-                    src={sourceImageUrl}
-                    alt="Original part on car"
+                    src={isolatedUrl ?? sourceImageUrl!}
+                    alt={isolatedUrl ? "Isolated part" : "Original part on car"}
                     className="w-full h-full object-contain"
                   />
                 ) : (
@@ -587,7 +673,7 @@ export function ExtractedPartPreview({
                   </div>
                 )}
                 <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
-                  On car
+                  {isolatedUrl ? "Isolated" : "On car"}
                 </span>
               </div>
 
@@ -717,9 +803,21 @@ export function ExtractedPartPreview({
 
           {stage === "review" && (
             <>
-              <Button variant="outline" onClick={() => runRender(undefined, true)}>
+              <Button variant="outline" onClick={() => runRender(undefined, true, isolatedUrl ?? undefined)}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Regenerate
               </Button>
+              {isolatedUrl && sourceImageUrl && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setIsolatedUrl(null);
+                    setStage("pretrim");
+                  }}
+                  title="Drop into the manual lasso to re-isolate the part"
+                >
+                  <Lasso className="h-4 w-4 mr-1" /> Manual trim
+                </Button>
+              )}
               {!trimOpen ? (
                 <Button variant="outline" onClick={() => setTrimOpen(true)}>
                   <Scissors className="h-4 w-4 mr-1" /> {maskedUrl ? "Re-trim" : "Trim"}
