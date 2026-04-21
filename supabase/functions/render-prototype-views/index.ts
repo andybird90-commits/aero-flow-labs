@@ -91,7 +91,6 @@ async function runRender(
   userId: string,
   revisionNote: string,
 ): Promise<void> {
-  const adminClient = admin;
   {
     const { data: proto, error: protoErr } = await admin
       .from("prototypes")
