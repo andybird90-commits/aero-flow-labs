@@ -488,9 +488,10 @@ function CreatePrototypeDialog({
 function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | null; onClose: () => void }) {
   const { toast } = useToast();
   const [meshProgress, setMeshProgress] = useState(0);
-  const [busy, setBusy] = useState<"render" | "mesh" | "fit" | "refine" | null>(null);
+  const [busy, setBusy] = useState<"render" | "mesh" | "fit" | "refine" | "mask" | null>(null);
   const [revisionNote, setRevisionNote] = useState("");
   const [refineNote, setRefineNote] = useState("");
+  const [maskingSource, setMaskingSource] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
   const sources = useMemo(() => ((prototype?.source_image_urls as string[]) ?? []), [prototype]);
@@ -504,6 +505,12 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
     () => (((prototype as any)?.isolated_ref_urls as string[]) ?? []),
     [prototype],
   );
+  const sourceMasks = useMemo(
+    () => (((prototype as any)?.source_mask_urls as Array<{ source_index: number; url: string }>) ?? []),
+    [prototype],
+  );
+  const primarySourceIdx: number = (prototype as any)?.primary_source_index ?? 0;
+  const hasMaskForPrimary = sourceMasks.some((m) => m?.source_index === primarySourceIdx);
   const referenceStatus: string = (prototype as any)?.reference_status ?? "idle";
   const referenceError: string | null = (prototype as any)?.reference_error ?? null;
   const placement: string | null = (prototype as any)?.placement_hint ?? null;
