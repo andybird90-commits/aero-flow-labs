@@ -54,6 +54,20 @@ const MODE_OPTIONS: Array<{ value: PrototypeGenerationMode; label: string; help:
 import { fetchAsDownloadableMesh } from "@/lib/glb-to-stl";
 
 const MAX_FILES = 5;
+const REFINE_PRESETS = [
+  {
+    label: "Remove OEM vent",
+    instruction: "Remove the underlying factory vent or grille behind the aftermarket add-on. Keep the add-on itself unchanged.",
+  },
+  {
+    label: "Remove bodywork",
+    instruction: "Remove any surrounding host-car bodywork, body-colour panel, wheel-arch or bumper surface. Keep only the standalone aftermarket piece.",
+  },
+  {
+    label: "Keep only add-on",
+    instruction: "Keep only the aftermarket add-on piece. Delete anything that belongs to the original car, even if it touches or sits behind the add-on.",
+  },
+] as const;
 
 export default function PrototyperPage() {
   const { user } = useAuth();
@@ -619,8 +633,8 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
     }
   };
 
-  const refineReference = async () => {
-    const instruction = refineNote.trim();
+  const refineReference = async (overrideInstruction?: string) => {
+    const instruction = (overrideInstruction ?? refineNote).trim();
     if (!instruction) return;
     setBusy("refine");
     try {
@@ -858,26 +872,43 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
                 )}
               </div>
               {isolatedRefs[0] && (
-                <div className="flex gap-1">
-                  <Input
-                    value={refineNote}
-                    onChange={(e) => setRefineNote(e.target.value)}
-                    placeholder='Cleanup, e.g. "remove the small grille on the left"'
-                    className="h-7 text-[11px]"
-                    disabled={busy !== null}
-                    onKeyDown={(e) => { if (e.key === "Enter" && refineNote.trim() && busy === null) refineReference(); }}
-                    maxLength={500}
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-[10px] shrink-0"
-                    onClick={refineReference}
-                    disabled={busy !== null || !refineNote.trim()}
-                    title="Apply this cleanup to the isolated reference"
-                  >
-                    {busy === "refine" ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />Apply</>}
-                  </Button>
+                <div className="space-y-1">
+                  <div className="flex gap-1">
+                    <Input
+                      value={refineNote}
+                      onChange={(e) => setRefineNote(e.target.value)}
+                      placeholder='Cleanup, e.g. "remove the factory vent behind the scoop"'
+                      className="h-7 text-[11px]"
+                      disabled={busy !== null}
+                      onKeyDown={(e) => { if (e.key === "Enter" && refineNote.trim() && busy === null) refineReference(); }}
+                      maxLength={500}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-[10px] shrink-0"
+                      onClick={() => refineReference()}
+                      disabled={busy !== null || !refineNote.trim()}
+                      title="Apply this cleanup to the isolated reference"
+                    >
+                      {busy === "refine" ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />Apply</>}
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {REFINE_PRESETS.map((preset) => (
+                      <Button
+                        key={preset.label}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[10px]"
+                        disabled={busy !== null}
+                        onClick={() => refineReference(preset.instruction)}
+                      >
+                        {preset.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
 
     const { data: proto, error: protoErr } = await admin
       .from("prototypes")
-      .select("id, user_id, isolated_ref_urls, source_image_urls")
+      .select("id, user_id, title, notes, placement_hint, isolated_ref_urls, source_image_urls")
       .eq("id", prototype_id)
       .eq("user_id", userId)
       .maybeSingle();
@@ -65,8 +65,12 @@ Deno.serve(async (req) => {
       return json({ error: "Could not load current isolated reference" }, 500);
     }
 
-    // Optionally include original source photos as secondary context so the model
-    // knows what the *real* part looks like vs what was incorrectly isolated.
+    const partDescription = [((proto as any).title ?? "").toString().trim(), ((proto as any).notes ?? "").toString().trim()]
+      .filter(Boolean).join(" — ") || "an aftermarket aero part";
+    const placement = ((proto as any).placement_hint ?? "").toString().trim();
+
+    // Include original source photos as secondary context so the model knows what
+    // the real part looks like versus what belongs to the host car.
     const sourceUrls = ((proto as any).source_image_urls as string[] | null) ?? [];
     const sourceData: string[] = [];
     for (const url of sourceUrls.slice(0, 2)) {
@@ -75,23 +79,28 @@ Deno.serve(async (req) => {
     }
 
     const prompt = [
-      `The FIRST attached image is the current isolated product photo of an aftermarket aero part on a white background.`,
-      sourceData.length ? `The remaining ${sourceData.length} image(s) are the ORIGINAL real-world photos — use them only to verify what the real part looks like.` : ``,
+      `The FIRST attached image is the current isolated product photo of an aftermarket aero add-on part on a white background.`,
+      `Part description: ${partDescription}.`,
+      placement ? `Placement on car: ${placement}.` : ``,
+      sourceData.length ? `The remaining ${sourceData.length} image(s) are the ORIGINAL real-world photos — use them to distinguish the aftermarket add-on from the host car body.` : ``,
       ``,
       `USER CLEANUP INSTRUCTION (HIGHEST PRIORITY — follow literally):`,
       cleanInstruction,
       ``,
       `RULES:`,
-      `- Apply the cleanup to the FIRST image. Output the corrected isolated product photo.`,
+      `- Apply the cleanup to the FIRST image and output the corrected isolated product photo.`,
       `- Keep the SAME camera angle, SAME lighting, SAME white seamless background, SAME framing.`,
-      `- Keep every other detail of the part identical — only change what the instruction asks for.`,
-      `- If the instruction asks to remove something, remove it cleanly and repaint the area with the matching white studio background, OR continue the part's surface naturally if the removed thing was attached to it.`,
+      `- Keep every real feature of the aftermarket add-on identical — only change what the instruction asks for.`,
+      `- CRITICAL DISTINCTION: preserve the aftermarket add-on piece; remove anything that belongs to the original car body.`,
+      `- "grille", "vent", "bodywork", "panel", "opening behind it", "factory intake", or similar wording should be interpreted as HOST-CAR/OEM features to remove, unless the instruction explicitly says to remove slats or vanes that are enclosed inside the add-on itself.`,
+      `- Remove any underlying factory vent/grille, bumper aperture, body-colour panel, wheel-arch edge, door skin, or negative space from the host car if it was mistakenly included in the isolated image.`,
+      `- If the removed element was behind the add-on, fill that area with the clean white studio background; if it was fused into the silhouette by mistake, continue the add-on surface naturally.`,
       `- ABSOLUTELY NO car body, no hands, no people, no other objects in the frame.`,
       `- STRIP all logos, badges, embossed text, brand marks and decals.`,
       `- Do NOT add bolts, rivets, mounting tabs, screws, fasteners, brackets or hardware.`,
       `- No labels, annotations, text, watermarks or split-screen.`,
       ``,
-      `Output: ONE clean isolated photoreal product shot of the part on white, with the cleanup applied.`,
+      `Output: ONE clean isolated photoreal product shot of the add-on part on white, with all host-car artefacts removed.`,
     ].filter(Boolean).join("\n");
 
     const refsForCall = [currentRef, ...sourceData];

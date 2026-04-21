@@ -93,10 +93,14 @@ Deno.serve(async (req) => {
       `You are looking at ${refDataUrls.length} reference photo(s) of a physical aftermarket aero part${placement ? ` for the ${placement} of a car` : ""}.`,
       `Description: ${partDescription}.`,
       ``,
-      `TASK: Produce ONE clean photoreal product photograph of THE EXACT PART, completely isolated from the surrounding car / hands / clutter / dirt / decals.`,
+      `TASK: Produce ONE clean photoreal product photograph of THE EXACT AFTERMARKET ADD-ON PART ONLY, completely isolated from the surrounding car / hands / clutter / dirt / decals.`,
       ``,
       `RULES:`,
-      `- Match the part shape EXACTLY as shown in the reference photos. Trace the outline. Copy every vent, slat, fin, opening, return, crease and proportion. Do not invent, idealise or substitute a generic part.`,
+      `- Match the aftermarket add-on shape EXACTLY as shown in the reference photos. Trace the outline. Copy every vent, slat, fin, opening, return, crease and proportion of the ADD-ON PART only.`,
+      `- CRITICAL DISTINCTION: the target object is the aftermarket piece itself, NOT the host car body it is attached to or sitting over.`,
+      `- Remove any underlying OEM/factory features that belong to the car: factory vent grilles, bumper apertures, door skin, wheel arch, body-colour panel edges, intake openings, surrounding bodywork and any negative space belonging to the car shell.`,
+      `- If the photo shows the add-on installed on top of an existing factory intake or grille, keep only the protruding self-contained add-on and DELETE the factory opening behind it.`,
+      `- If unsure, prefer keeping only the standalone protruding object and discard flush surrounding car surfaces.`,
       `- Front 3/4 hero angle, slightly above, so the silhouette and depth are obvious.`,
       `- Background: pure white seamless cyclorama. Soft even studio lighting. Gentle ground contact shadow.`,
       `- Material: keep the part's real material if obvious from the photos (e.g. carbon fibre, plastic, fibreglass, painted), but strip dirt, scratches and reflections that hide the shape.`,
@@ -105,7 +109,7 @@ Deno.serve(async (req) => {
       `- Do NOT add bolts, rivets, mounting tabs, screws, fasteners, brackets or hardware. Fixing happens after manufacturing.`,
       `- No labels, annotations, text, watermarks or split-screen.`,
       ``,
-      `Output: ONE clean isolated photoreal product shot of the part on white.`,
+      `Output: ONE clean isolated photoreal product shot of the add-on part on white, with no host-car bodywork remaining.`,
     ].join("\n");
 
     const result = await lovableGenerateImageWithFallback({
