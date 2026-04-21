@@ -938,12 +938,17 @@ export type Database = {
           fit_preview_status: string
           fit_preview_url: string | null
           garage_car_id: string | null
+          generation_mode: string
           glb_url: string | null
           id: string
+          isolated_ref_urls: Json
           mesh_error: string | null
           mesh_status: string
           mesh_task_id: string | null
           notes: string | null
+          placement_hint: string | null
+          reference_error: string | null
+          reference_status: string
           render_error: string | null
           render_status: string
           render_urls: Json
@@ -960,12 +965,17 @@ export type Database = {
           fit_preview_status?: string
           fit_preview_url?: string | null
           garage_car_id?: string | null
+          generation_mode?: string
           glb_url?: string | null
           id?: string
+          isolated_ref_urls?: Json
           mesh_error?: string | null
           mesh_status?: string
           mesh_task_id?: string | null
           notes?: string | null
+          placement_hint?: string | null
+          reference_error?: string | null
+          reference_status?: string
           render_error?: string | null
           render_status?: string
           render_urls?: Json
@@ -982,12 +992,17 @@ export type Database = {
           fit_preview_status?: string
           fit_preview_url?: string | null
           garage_car_id?: string | null
+          generation_mode?: string
           glb_url?: string | null
           id?: string
+          isolated_ref_urls?: Json
           mesh_error?: string | null
           mesh_status?: string
           mesh_task_id?: string | null
           notes?: string | null
+          placement_hint?: string | null
+          reference_error?: string | null
+          reference_status?: string
           render_error?: string | null
           render_status?: string
           render_urls?: Json
