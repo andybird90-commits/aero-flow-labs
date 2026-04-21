@@ -189,6 +189,7 @@ export function ExtractedPartPreview({
         if (hit) return;
         if (signal?.cancelled) return;
       }
+      const shouldForwardHotspotIntent = !!bbox && !overrideSourceUrl;
       const { data, error } = await supabase.functions.invoke("render-isolated-part", {
         body: {
           concept_id: conceptId,
@@ -198,7 +199,7 @@ export function ExtractedPartPreview({
           // Forward picked-part intent so Gemini renders exactly the part
           // we picked, even if neighbours are visible in the source crop.
           // Edge function also falls back to concept_parts.isolated_meta.
-          ...(bbox ? { bbox, picked_kind: kind } : {}),
+          ...(shouldForwardHotspotIntent ? { bbox, picked_kind: kind } : {}),
         },
       });
       if (signal?.cancelled) return;
@@ -370,7 +371,7 @@ export function ExtractedPartPreview({
   // Send the user's lasso/click marks to the SAM-backed segment-part edge
   // function and replace the hero render with the masked output.
   const onSnap = async () => {
-    const sourceUrl = images[0]?.url;
+    const sourceUrl = maskedUrl ?? images[0]?.url;
     if (!sourceUrl) return;
     if (trimPoints.length === 0 && trimLasso.length < 3) {
       toast({
@@ -913,7 +914,7 @@ export function ExtractedPartPreview({
                 </Button>
               )}
               {!trimOpen ? (
-                <Button variant="outline" onClick={() => setTrimOpen(true)}>
+                  <Button variant="outline" onClick={() => { resetTrim(); setTrimOpen(true); }}>
                   <Scissors className="h-4 w-4 mr-1" /> {maskedUrl ? "Re-trim" : "Trim"}
                 </Button>
               ) : (
