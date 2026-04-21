@@ -146,7 +146,31 @@ export function ExtractedPartPreview({
     return true;
   };
 
-  // Run the AI render. Pass `force` to bypass cache and always regenerate.
+  // Compare the source crop and the AI render pixel-for-pixel to catch
+  // cases where the model dropped detail (missing arch fairing, narrowed
+  // skirt etc.). Persists the result so re-opening the modal is instant.
+  const runFidelityCheck = async (sourceUrl: string, renderUrl: string) => {
+    setScoring(true);
+    try {
+      const result = await scoreFidelity(sourceUrl, renderUrl);
+      setFidelity(result);
+      // Best-effort persistence — don't block the UI on it.
+      void supabase
+        .from("concept_parts")
+        .update({
+          fidelity_score: result.score,
+          fidelity_breakdown: result.breakdown as any,
+        })
+        .eq("concept_id", conceptId)
+        .eq("kind", kind);
+    } catch (e) {
+      console.error("Fidelity check failed", e);
+      setFidelity(null);
+    } finally {
+      setScoring(false);
+    }
+  };
+
   // Pass `overrideSourceUrl` (typically a pre-trimmed crop) to push only that
   // image to Gemini as the sole reference.
   const runRender = async (
