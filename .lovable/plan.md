@@ -1,105 +1,85 @@
 
-## Fix concept generation so it actually responds to the brief
 
-The Concepts step is producing near-stock cars even when the brief says "aggressive time attack". Looking at the screenshot: an aggressive time attack request returned two essentially OEM Audi TTs labeled "OEM+ refined". That means the brief intent (aggressiveness, build style, target discipline) is either being ignored, overridden by a default "subtle" template, or not being injected into the per-variation prompts.
+## New flow: export the whole carbon kit as a single mesh
 
-This plan fixes the concept generator so the brief drives the output and adds visible controls so you can steer it.
+Instead of trying to split the bumper, splitter, arches, diffuser, wing etc. into separate parts (which is where the app keeps mis-identifying things like "this is part of an arch"), we treat the entire carbon-only render set as **one combined kit** and produce **one combined STL/GLB**. The user splits it apart in Fusion / Blender / similar afterwards.
 
-## What's going wrong
+This is much more honest: the AI never has to *understand* what an arch is — it only has to mesh the silhouette it can already see in the carbon-only renders.
 
-There are three likely causes, all in `supabase/functions/generate-concepts`:
+## What changes
 
-1. The variation labels (e.g. "OEM+ refined", "Track-focused", "Wide-body") are hardcoded and each one carries its own restrictive description ("subtle, road-friendly, no giant wing, no flared arches"). Those per-variation rules are overriding the brief.
-2. The brief's aggression level / discipline (time attack, drift, stance, GT, rally) is not being weighted strongly enough in the prompt, or is appended after the variation template so the template wins.
-3. The image model is being told to "preserve factory identity" globally, which kills aggressive transformations.
+### 1. New action on the concept card
 
-## What to build
+When the user clicks **Carbon only** and the carbon renders are ready, we expose a new primary CTA on each card:
 
-### 1. Make the brief the primary driver, not the variation label
-
-Rewrite the prompt assembly in `generate-concepts` so the order of authority is:
-
-```text
-1. Discipline (time attack / drift / stance / GT / rally / show)
-2. Aggression level (subtle / moderate / aggressive / extreme)
-3. User's free-text brief
-4. Variation flavor (only used to differentiate the 4 tiles)
-5. Car identity (only to keep it the same model + colour)
+```
+[ Mesh full carbon kit → ]
 ```
 
-If the brief says "aggressive time attack", every variation must respect that. The variations then differ by *approach* (e.g. "GT3-style aero", "JDM time attack", "Euro touring car", "minimal track day") — not by aggression.
+This replaces the per-part "Pick parts" route as the recommended path for getting a printable file. Per-part picking stays available as a secondary tool for users who really want one piece, but it stops being the headline action.
 
-### 2. Replace the fixed "OEM+ refined / Track / Wide-body / Show" set with brief-aware variations
+### 2. New edge function: `meshify-carbon-kit`
 
-Generate the 4 variation labels and descriptions dynamically from the brief, using a quick text model call before the image calls:
+A thin variant of the existing `meshify-part` flow, but:
 
-- Input: discipline + aggression + brief text + car info
-- Output: 4 short variation specs, each with `{ label, short_description, key_aero_features[] }`
-- These are then used as the per-tile prompt seeds
+- **Input**: all available carbon-only renders for that concept (front 3/4, side, rear 3/4, rear) — multi-view, in canonical order.
+- **Prompt**: tuned for a *combined* aftermarket kit, not a single part.
+- **Pixel sizing preserved** (see section 3).
+- **Output**: single GLB stored in `concept-renders` bucket, plus a derived STL.
+- Persists to a new column on `concepts`: `carbon_kit_glb_url`, `carbon_kit_stl_url`, `carbon_kit_status`, `carbon_kit_error`.
 
-This stops the situation where you ask for time attack and still get an "OEM+ refined" tile with "no giant wing".
+Rodin Gen-2 (Ultra) on Replicate already accepts multi-view input via the `images` param — same model we use for `meshify-part`, just fed the 4 carbon renders together so it reconstructs them as one coherent kit instead of 4 separate parts.
 
-### 3. Strip the "preserve factory identity" language for aggressive briefs
+### 3. Maintain pixel sizing as much as possible
 
-Conditionally swap the system prompt:
+Three things together let us preserve scale across the four views:
 
-- subtle → keep current "preserve factory identity, restrained" wording
-- moderate → "noticeably modified but street legal"
-- aggressive → "heavily modified track car, factory identity is secondary to function"
-- extreme → "full silhouette/wide-body/time attack build, OEM only as a starting point"
+1. **Use the same camera framing for every carbon render**. The carbon-only isolation already keeps each part at the *exact same pixel position* as in the source render (the existing prompt enforces this). We extend that contract: each carbon render is canvas-padded to the **same square size** (e.g. 1024 × 1024) before being sent to Rodin. No per-image cropping. This keeps the inter-view scale ratio truthful.
+2. **Embed a known scale anchor**. Before meshing, we composite a **1 m horizontal scale bar** into a corner of one of the carbon views (off the part silhouette, on the grey backdrop). Rodin will replicate scale from the multi-view geometry; the bar gives us a post-mesh ruler. After meshing we read the bar back from the source view, compute its mesh-space length, and rescale the GLB so 1 unit = 1 m. The result: the exported STL opens in Fusion at the correct real-world dimensions instead of being arbitrary "Rodin units".
+3. **Reuse the car bbox if we have a hero STL**. When the project's car has a repaired hero STL (we already track `car_stls.bbox_min_mm` / `bbox_max_mm`), we use the stock car's known length as a second cross-check and snap the kit's scale to it. If no hero STL exists, the scale-bar method is the fallback.
 
-### 4. Add explicit aero requirements per discipline
+### 4. Schema additions
 
-When discipline = time attack, the prompt should require (unless the user says otherwise):
-- large rear wing
-- front splitter with canards
-- hood vents or louvers
-- wide fenders or over-fenders
-- side skirts with strakes
-- aggressive stance
+New columns on `concepts`:
 
-Same approach for drift / stance / GT / rally — each discipline gets a baseline aero kit list that the model must include.
+- `carbon_kit_status` text default `'idle'` (idle / queued / generating / ready / failed)
+- `carbon_kit_error` text
+- `carbon_kit_task_id` text (Rodin prediction id, for polling)
+- `carbon_kit_glb_url` text
+- `carbon_kit_stl_url` text
+- `carbon_kit_scale_m` numeric (the recovered metres-per-unit factor, for transparency)
 
-### 5. Surface the controls in the UI so you can override
+No table-creation, no RLS changes — `concepts` already has user-scoped RLS.
 
-In the Brief / Concepts UI, add explicit selectors instead of relying only on free text:
+### 5. UI surface
 
-- **Discipline**: Time attack, Drift, Stance, GT, Rally, Show, Street
-- **Aggression**: Subtle, Moderate, Aggressive, Extreme
-- **Must include** (chips): Big wing, Wide body, Splitter, Canards, Diffuser, Hood vents, Roof scoop
-- **Must avoid** (chips): same list, inverted
+On the concept card, when `carbonMode` is on:
 
-These map directly into the prompt. They are pre-filled from the brief text via a quick AI parse, but you can override.
+- New button: **Mesh full kit** (or "Re-mesh" if `carbon_kit_status === 'ready'`).
+- Inline progress: "Reconstructing combined kit… ~60s".
+- When ready: two download buttons — **Download GLB** and **Download STL** — labelled with "Open in Fusion / Blender to split into parts".
+- Small caption: *"This is the entire carbon kit as one mesh. Use your CAD tool to split it into individual parts."*
 
-### 6. Add a "Regenerate this tile" with a stronger steer
+Per-tile **Pick parts** stays, demoted to a secondary action.
 
-On each concept card, add a small **"More aggressive"** / **"Different direction"** button that re-runs only that tile with a stronger modifier appended. Avoids regenerating all 4.
+### 6. Library + Marketplace
 
-### 7. Show the actual prompt used per tile
-
-Add a small "View prompt" disclosure under each concept card. This makes it obvious when the prompt is the problem vs the model. Useful for you while we tune this.
+When the kit is ready, we also auto-publish it as a `library_items` row with `kind = 'carbon_kit_mesh'` so it shows up in the user's Library and is available for marketplace listing — same pattern the existing `aero_kit_mesh` triggers use.
 
 ## Files touched
 
-- `supabase/functions/generate-concepts/index.ts` — prompt rewrite, dynamic variation generation, discipline/aggression branching
-- `src/pages/Brief.tsx` — discipline + aggression + must-include/avoid controls
-- `src/pages/Concepts.tsx` — per-tile regenerate, "view prompt" disclosure
-- `src/lib/repo.ts` — pass new brief fields through
-- `supabase/migrations/*` — add `discipline`, `aggression`, `must_include[]`, `must_avoid[]` to the brief/project record, plus `prompt_used` on the concept row
+- `supabase/functions/meshify-carbon-kit/index.ts` — new function
+- `supabase/functions/_shared/scale-anchor.ts` — small helper to composite + read the scale bar (server-side, uses image bytes)
+- `supabase/functions/isolate-carbon-bodywork/index.ts` — pad outputs to a fixed square canvas so all four views share the same pixel scale
+- `supabase/migrations/*.sql` — new `carbon_kit_*` columns on `concepts`; extend `sync_concept_library_items()` trigger to also publish the kit GLB
+- `src/lib/repo.ts` — `useMeshifyCarbonKit`, `useCarbonKitStatus` hooks
+- `src/pages/Concepts.tsx` — new CTA + progress + download buttons inside the carbon mode panel
+- `src/integrations/supabase/types.ts` — regenerated for the new columns
 
-## Resulting behaviour
+## What this fixes
 
-For a brief like "super aggressive time attack build":
+- The "what is an arch" failure mode disappears — we never ask the AI to label parts.
+- One mesh per concept = one Fusion import, much faster iteration.
+- Pixel sizing is locked across views (uniform canvas + scale anchor + optional hero-STL snap), so the kit imports at correct dimensions.
+- Per-part picking is preserved for power users but is no longer the default.
 
-- All 4 tiles arrive with big wings, splitters, canards, wide arches.
-- Tiles differ by *style* (GT3 / JDM / Euro touring / minimal track) not by *aggressiveness*.
-- "OEM+ refined" no longer appears unless aggression is set to subtle.
-- You can click "More aggressive" on a single tile to push it further.
-- You can see the exact prompt that produced each tile.
-
-## Recommended first slice
-
-1. Backend prompt rewrite in `generate-concepts` (biggest impact, fixes the immediate bug).
-2. Dynamic variation labels from the brief.
-3. Discipline + aggression selectors in the Brief UI.
-4. Per-tile regenerate + "view prompt".
