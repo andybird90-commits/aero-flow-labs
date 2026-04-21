@@ -198,6 +198,10 @@ function BriefInner({ projectId }: { projectId: string }) {
         rights_confirmed: rights,
         style_preset_id: stylePresetId,
         reference_image_paths: referencePaths,
+        discipline: discipline === "auto" ? null : discipline,
+        aggression: aggression === "auto" ? null : aggression,
+        must_include: mustInclude,
+        must_avoid: mustAvoid,
       } as any,
     });
     setCustomConstraint("");
