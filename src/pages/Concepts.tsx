@@ -389,6 +389,27 @@ function ConceptCard({
 
       <div className="absolute top-2 right-2 flex items-center gap-1.5">
         <button
+          onClick={(e) => { e.stopPropagation(); void handleCarbonToggle(); }}
+          disabled={carbonBusy}
+          className={cn(
+            "rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border backdrop-blur transition-colors",
+            carbonMode
+              ? "bg-foreground text-background border-foreground"
+              : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
+            carbonBusy && "opacity-70 cursor-wait",
+          )}
+          title={
+            carbonStatus === "failed" && carbonError
+              ? `Carbon isolation failed: ${carbonError}. Click to retry.`
+              : carbonBusy
+                ? "Generating carbon-only renders…"
+                : "Show only the aftermarket carbon bodywork"
+          }
+        >
+          {carbonBusy ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Boxes className="h-3 w-3" />}
+          {carbonStatus === "failed" ? "Retry carbon" : carbonMode ? "Carbon on" : "Carbon only"}
+        </button>
+        <button
           onClick={(e) => { e.stopPropagation(); setPickMode((p) => !p); }}
           className={cn(
             "rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border backdrop-blur transition-colors",
@@ -412,6 +433,24 @@ function ConceptCard({
           </button>
         )}
       </div>
+
+      {carbonMode && !current && (
+        <div className="absolute inset-0 grid place-items-center text-center px-6 pointer-events-none">
+          <div className="space-y-2 max-w-xs">
+            <Boxes className="mx-auto h-8 w-8 text-muted-foreground" />
+            <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              {carbonBusy
+                ? "Isolating carbon parts…"
+                : carbonStatus === "failed"
+                  ? "Carbon isolation failed. Tap retry."
+                  : "No carbon-only renders yet."}
+            </div>
+            {carbonBusy && (
+              <RefreshCw className="mx-auto h-4 w-4 animate-spin text-primary" />
+            )}
+          </div>
+        </div>
+      )}
 
       {hasMultiple && !pickMode && (
         <>
