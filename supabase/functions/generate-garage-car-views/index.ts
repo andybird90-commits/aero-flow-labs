@@ -12,6 +12,7 @@
  * Returns: { ok: true } (immediate; status updates land on the row)
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { lovableGenerateImageWithFallback } from "../_shared/lovable-image.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,6 +56,8 @@ const ANGLES = [
     framing: "direct rear view showing the full back of the car, taillights visible",
   },
 ];
+
+type AngleKey = (typeof ANGLES)[number]["key"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -134,75 +137,31 @@ async function runGeneration(
   const colorClause = car.color ? `Paint colour: ${car.color}.` : "";
   const notesClause = car.notes ? `Additional notes: ${car.notes}.` : "";
 
-  // The hero (front 3/4) image anchors identity for every other angle.
-  // For partial regeneration we may not be regenerating it — in that case
-  // reuse whichever existing reference is available as the visual anchor.
-  let heroDataUrl: string | null = null;
-  const willGenerateHero = anglesToRun.some((a) => a.key === "front34");
-  if (!willGenerateHero) {
-    const existingAnchor =
-      car.ref_front34_url ||
-      car.ref_side_url ||
-      car.ref_front_url ||
-      car.ref_rear34_url ||
-      car.ref_rear_url ||
-      car.ref_side_opposite_url;
-    if (existingAnchor) heroDataUrl = existingAnchor; // public https url is fine
+  const references: Partial<Record<AngleKey, string>> = {};
+  for (const angle of ANGLES) {
+    const existing = car[angle.column];
+    if (typeof existing === "string" && existing) references[angle.key] = existing;
   }
 
   for (const angle of anglesToRun) {
-    const isHero = angle.key === "front34" && willGenerateHero;
-    const promptText = isHero
-      ? [
-          `Photorealistic studio photograph of a STOCK FACTORY ${carLabel}. ` +
-            `${colorClause} ${notesClause}`,
-          `CRITICAL: This is the OEM, unmodified vehicle exactly as it left the factory. ` +
-            `No body kit, no aftermarket parts, no modifications. Stock bumpers, stock wheels, ` +
-            `stock ride height, stock badging, stock everything.`,
-          `Camera framing: ${angle.framing}.`,
-          `Style: clean automotive press photo, dark seamless studio backdrop, soft even ` +
-            `professional lighting with subtle rim highlights, sharp focus, accurate proportions.`,
-          `No text, no watermark, no UI overlays, no people, no other vehicles.`,
-        ].join(" ")
-      : [
-          `The attached image is a stock factory ${carLabel} that we already approved.`,
-          `Render THE EXACT SAME PHYSICAL CAR — same paint colour, same wheels, same trim, ` +
-            `same ride height, same badging — but viewed from a different camera angle.`,
-          `Camera framing: ${angle.framing}.`,
-          `Match the reference's lighting style, backdrop, and overall mood exactly.`,
-          `This is still a stock OEM vehicle, no modifications.`,
-          `No text, no watermark, no UI overlays.`,
-        ].join(" ");
-
-    const content: any[] = [{ type: "text", text: promptText }];
-    if (!isHero && heroDataUrl) {
-      content.push({ type: "image_url", image_url: { url: heroDataUrl } });
-    }
-
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3.1-flash-image-preview",
-        messages: [{ role: "user", content }],
-        modalities: ["image", "text"],
-      }),
+    const promptText = buildAnglePrompt({
+      angleKey: angle.key,
+      carLabel,
+      colorClause,
+      notesClause,
     });
-
-    if (!aiResp.ok) {
-      const t = await aiResp.text();
-      throw new Error(`Gateway ${aiResp.status} on ${angle.key}: ${t.slice(0, 200)}`);
+    const referenceImages = getReferenceImagesForAngle(angle.key, references);
+    const generated = await lovableGenerateImageWithFallback({
+      apiKey: LOVABLE_API_KEY,
+      prompt: promptText,
+      referenceImages,
+    });
+    const dataUrl = generated.dataUrl;
+    if (!generated.ok || !dataUrl?.startsWith("data:image/")) {
+      throw new Error(`Image generation failed for ${angle.key}: ${generated.error ?? "no image returned"}`);
     }
-    const j = await aiResp.json();
-    const dataUrl: string | undefined = j?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    if (!dataUrl?.startsWith("data:image/")) {
-      throw new Error(`No image in response for ${angle.key}`);
-    }
 
-    if (isHero) heroDataUrl = dataUrl;
+    references[angle.key] = dataUrl;
 
     const m = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.*)$/i);
     if (!m) throw new Error("invalid data URL");
@@ -218,12 +177,101 @@ async function runGeneration(
     const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
 
     await admin.from("garage_cars").update({ [angle.column]: publicUrl }).eq("id", car.id);
+    references[angle.key] = publicUrl;
   }
 
   await admin.from("garage_cars").update({
     generation_status: "ready",
     generation_error: null,
   }).eq("id", car.id);
+}
+
+function buildAnglePrompt({
+  angleKey,
+  carLabel,
+  colorClause,
+  notesClause,
+}: {
+  angleKey: AngleKey;
+  carLabel: string;
+  colorClause: string;
+  notesClause: string;
+}) {
+  const baseIdentity = [
+    `Stock factory ${carLabel}.`,
+    colorClause,
+    notesClause,
+    `This must stay OEM and unmodified: stock bumpers, stock wheels, stock ride height, stock trim, stock badging.`,
+    `Photoreal studio press photography on a dark seamless backdrop with soft even lighting, accurate proportions, sharp focus, subtle floor reflection.`,
+    `No text, no watermark, no UI overlays, no people, no other vehicles.`,
+  ].filter(Boolean).join(" ");
+
+  if (angleKey === "front34") {
+    return `${baseIdentity} Camera framing: front three-quarter view from the driver's side, slight low angle, full car visible.`;
+  }
+
+  if (angleKey === "side") {
+    return [
+      `The attached reference shows the approved exact same car identity for ${carLabel}.`,
+      baseIdentity,
+      `Camera framing: pure side profile view from one flank only, perfectly perpendicular, full body in frame bumper-to-bumper, both wheels fully visible.`,
+      `Keep this as Side A, with crisp side-profile geometry and no three-quarter drift.`,
+    ].join(" ");
+  }
+
+  if (angleKey === "side_opposite") {
+    return [
+      `The attached references show the approved exact same car identity for ${carLabel}, including the already-approved first side profile.`,
+      baseIdentity,
+      `Camera framing: pure side profile of the OPPOSITE flank from the approved side reference, perfectly perpendicular, full body in frame bumper-to-bumper, both wheels fully visible.`,
+      `CRITICAL: Do not repeat Side A. Render Side B only — the other side of the car. Preserve all identity cues while moving side-specific details to the opposite flank, such as fuel door or charging-port placement when applicable.`,
+      `Match the studio lighting and ride height exactly to the other side reference.`,
+    ].join(" ");
+  }
+
+  if (angleKey === "front") {
+    return [
+      `The attached reference shows the approved exact same car identity for ${carLabel}.`,
+      baseIdentity,
+      `Camera framing: direct front view, perpendicular to the car, headlights and grille fully visible, full width in frame.`,
+      `Keep the exact same lighting, wheel design, paint, and stance as the references.`,
+    ].join(" ");
+  }
+
+  if (angleKey === "rear34") {
+    return [
+      `The attached reference shows the approved exact same car identity for ${carLabel}.`,
+      baseIdentity,
+      `Camera framing: rear three-quarter view from the passenger side, full car visible.`,
+      `Match the reference lighting, backdrop, and precise stock body geometry exactly.`,
+    ].join(" ");
+  }
+
+  return [
+    `The attached reference shows the approved exact same car identity for ${carLabel}.`,
+    baseIdentity,
+    `Camera framing: direct rear view showing the full back of the car, taillights visible.`,
+    `Keep the image perfectly centred and OEM-accurate.`,
+  ].join(" ");
+}
+
+function getReferenceImagesForAngle(
+  angleKey: AngleKey,
+  references: Partial<Record<AngleKey, string>>,
+) {
+  const desiredOrder: Record<AngleKey, AngleKey[]> = {
+    front34: [],
+    front: ["front34"],
+    side: ["front34", "front"],
+    side_opposite: ["side", "front34", "front", "rear34"],
+    rear34: ["front34", "side_opposite", "side"],
+    rear: ["rear34", "side_opposite", "front34"],
+  };
+
+  return desiredOrder[angleKey]
+    .map((key) => references[key])
+    .filter((value, index, arr): value is string => !!value && arr.indexOf(value) === index)
+    .slice(0, 3);
 }
 
 function json(body: unknown, status = 200) {
