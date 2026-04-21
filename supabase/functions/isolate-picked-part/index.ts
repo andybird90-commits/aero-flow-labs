@@ -91,11 +91,28 @@ Deno.serve(async (req) => {
     const W = srcImg.width;
     const H = srcImg.height;
 
-    // Pad generously (30%) so we keep mounting tabs, vents, skirt extensions
-    // and any fairing that blends the part into adjacent bodywork. The
-    // downstream renderer needs that context to draw the part correctly.
-    const padX = Math.max(0.06, w * 0.30);
-    const padY = Math.max(0.06, h * 0.30);
+    // Tight crop: 8% pad (just enough to keep mounting tabs and the
+    // immediate fairing) with a hard ceiling so the cropped box can't grow
+    // past 1.4× the original bbox area. Previously we used 30% which on
+    // tightly-packed concepts swallowed neighbouring parts whole.
+    const PAD_FRAC = 0.08;
+    const MAX_AREA_RATIO = 1.4;
+    let padX = Math.max(0.015, w * PAD_FRAC);
+    let padY = Math.max(0.015, h * PAD_FRAC);
+    // Enforce area ceiling: ((w+2px)*(h+2py)) / (w*h) <= MAX_AREA_RATIO.
+    // Solve quadratic in a uniform scale factor s applied to padX/padY.
+    const baseArea = Math.max(1e-6, w * h);
+    const enforce = (sx: number, sy: number) => (w + 2 * sx) * (h + 2 * sy) / baseArea;
+    if (enforce(padX, padY) > MAX_AREA_RATIO) {
+      // Binary search for the largest uniform scale that stays under the cap.
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 18; i++) {
+        const mid = (lo + hi) / 2;
+        if (enforce(padX * mid, padY * mid) <= MAX_AREA_RATIO) lo = mid; else hi = mid;
+      }
+      padX *= lo;
+      padY *= lo;
+    }
     const cx = Math.max(0, x - padX);
     const cy = Math.max(0, y - padY);
     const cw = Math.min(1 - cx, w + padX * 2);
@@ -129,9 +146,28 @@ Deno.serve(async (req) => {
       .eq("kind", body.part_kind)
       .maybeSingle();
 
+    // Sidecar metadata so render-isolated-part knows what was picked
+    // (kind + bbox of the part inside the cropped image, in [0,1] coords
+    // relative to the crop itself).
+    const isolated_meta = {
+      part_kind: body.part_kind,
+      label: body.part_label ?? null,
+      // Original full-image bbox of the part (the AI hotspot)
+      source_bbox: { x, y, w, h },
+      // Crop box used (full-image coords)
+      crop_bbox: { x: cx, y: cy, w: cw, h: ch },
+      // Part bbox inside the crop, normalised 0..1
+      bbox_in_crop: cw > 0 && ch > 0 ? {
+        x: Math.max(0, (x - cx) / cw),
+        y: Math.max(0, (y - cy) / ch),
+        w: Math.min(1, w / cw),
+        h: Math.min(1, h / ch),
+      } : { x: 0, y: 0, w: 1, h: 1 },
+    };
+
     if (existingRow) {
       await admin.from("concept_parts")
-        .update({ isolated_source_url: isolated_url })
+        .update({ isolated_source_url: isolated_url, isolated_meta })
         .eq("id", existingRow.id);
     } else {
       await admin.from("concept_parts").insert({
@@ -143,6 +179,7 @@ Deno.serve(async (req) => {
         source: "extracted",
         render_urls: [],
         isolated_source_url: isolated_url,
+        isolated_meta,
       });
     }
 
