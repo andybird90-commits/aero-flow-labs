@@ -907,7 +907,11 @@ export function useMeshifyCarbonKit() {
         body: { action: "start", concept_id: conceptId },
       });
       if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
+      const d = data as any;
+      if (d?.status === "rate_limited") {
+        throw new Error(d.message ?? `Rate limited — try again in ${d.retry_after ?? 10}s.`);
+      }
+      if (d?.error) throw new Error(d.error);
       return data as { task_id?: string; status: string };
     },
     onSuccess: (_d, conceptId) => {
