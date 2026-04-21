@@ -75,19 +75,55 @@ Deno.serve(async (req) => {
     }
 
     const label = body.part_label || body.part_kind.replace(/[_-]+/g, " ");
-    const pct = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 100);
+
+    // ── Step 1: deterministic server-side crop with padding ───────────────
+    // We do NOT trust the AI to "keep only X" — it will redraw the whole kit.
+    // Instead we crop the source image to the bbox (with generous padding) so
+    // the model literally cannot see the rest of the car.
+    const { Image } = await import("https://deno.land/x/imagescript@1.2.17/mod.ts");
+    const srcResp = await fetch(body.source_image_url);
+    if (!srcResp.ok) return json({ error: `source fetch ${srcResp.status}` }, 500);
+    const srcBuf = new Uint8Array(await srcResp.arrayBuffer());
+    const srcImg = await Image.decode(srcBuf);
+    const W = srcImg.width;
+    const H = srcImg.height;
+
+    // Pad by 18% of the bbox size on every side so we don't clip mounting
+    // tabs / vents. Clamp to image bounds.
+    const padX = Math.max(0.04, w * 0.18);
+    const padY = Math.max(0.04, h * 0.18);
+    const cx = Math.max(0, x - padX);
+    const cy = Math.max(0, y - padY);
+    const cw = Math.min(1 - cx, w + padX * 2);
+    const ch = Math.min(1 - cy, h + padY * 2);
+
+    const px = Math.max(0, Math.round(cx * W));
+    const py = Math.max(0, Math.round(cy * H));
+    const pw = Math.max(8, Math.round(cw * W));
+    const ph = Math.max(8, Math.round(ch * H));
+    const cropped = srcImg.clone().crop(px, py, Math.min(pw, W - px), Math.min(ph, H - py));
+    const croppedPng = await cropped.encode();
+    const croppedB64 = btoa(String.fromCharCode(...croppedPng));
+    const croppedDataUrl = `data:image/png;base64,${croppedB64}`;
+
+    // ── Step 2: AI cleanup pass ───────────────────────────────────────────
+    // Now the input image already shows mostly the part; ask the model to
+    // erase any leftover surrounding car bits and place the part on a clean
+    // grey studio backdrop. It cannot invent a whole kit because the source
+    // pixels for the rest of the car are gone.
     const prompt =
-      `Keep ONLY the ${label} located in the highlighted region of this image ` +
-      `(roughly ${pct(x)}% from the left, ${pct(y)}% from the top, ` +
-      `${pct(w)}% wide, ${pct(h)}% tall). ` +
-      `Completely ERASE everything else — the rest of the car body, other carbon parts, ` +
-      `wheels, tyres, glass, lights, mirrors, ground and the entire background. ` +
-      `Replace them with a clean medium-grey studio backdrop with soft, even product lighting ` +
-      `and a subtle ground shadow under the part. ` +
-      `Preserve the EXACT silhouette, proportions, mounting tabs, vents, weave direction and ` +
-      `surface curvature of the kept part — do not redesign, restyle or smooth it. ` +
-      `Output a single product-style render of just the ${label}. ` +
-      `No car body, no wheels, no background, no text, no watermark.`;
+      `This image is a tight crop showing the ${label} of a car, with some surrounding ` +
+      `bodywork and background still visible at the edges. ` +
+      `Your job is ONLY to clean up the background — DO NOT redraw, restyle, extend ` +
+      `or add anything. ` +
+      `Erase any leftover car body, wheels, tyres, glass, lights, ground and original ` +
+      `background, replacing them with a clean medium-grey studio backdrop with soft, ` +
+      `even product lighting and a subtle ground shadow under the part. ` +
+      `Preserve the EXACT silhouette, proportions, mounting tabs, vents, weave direction ` +
+      `and surface curvature of the ${label} — pixel-faithful to the input. ` +
+      `Output a single product-style render of just the ${label} on grey. ` +
+      `Absolutely no other car parts, no wheels, no fenders or skirts beyond the ${label} ` +
+      `itself, no text, no watermark.`;
 
     const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -102,7 +138,7 @@ Deno.serve(async (req) => {
           role: "user",
           content: [
             { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: body.source_image_url } },
+            { type: "image_url", image_url: { url: croppedDataUrl } },
           ],
         }],
       }),
