@@ -599,6 +599,87 @@ export type Database = {
           },
         ]
       }
+      frozen_parts: {
+        Row: {
+          anchor_points: Json
+          bbox: Json
+          category: string
+          created_at: string
+          garage_car_id: string | null
+          id: string
+          mask_url: string | null
+          mount_zone: string
+          name: string
+          preview_url: string | null
+          prototype_id: string
+          side: string
+          silhouette_locked: boolean
+          silhouette_url: string | null
+          source_image_url: string | null
+          symmetry_allowed: boolean
+          updated_at: string
+          user_id: string
+          view_angle: string
+        }
+        Insert: {
+          anchor_points?: Json
+          bbox?: Json
+          category?: string
+          created_at?: string
+          garage_car_id?: string | null
+          id?: string
+          mask_url?: string | null
+          mount_zone?: string
+          name?: string
+          preview_url?: string | null
+          prototype_id: string
+          side?: string
+          silhouette_locked?: boolean
+          silhouette_url?: string | null
+          source_image_url?: string | null
+          symmetry_allowed?: boolean
+          updated_at?: string
+          user_id: string
+          view_angle?: string
+        }
+        Update: {
+          anchor_points?: Json
+          bbox?: Json
+          category?: string
+          created_at?: string
+          garage_car_id?: string | null
+          id?: string
+          mask_url?: string | null
+          mount_zone?: string
+          name?: string
+          preview_url?: string | null
+          prototype_id?: string
+          side?: string
+          silhouette_locked?: boolean
+          silhouette_url?: string | null
+          source_image_url?: string | null
+          symmetry_allowed?: boolean
+          updated_at?: string
+          user_id?: string
+          view_angle?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "frozen_parts_garage_car_id_fkey"
+            columns: ["garage_car_id"]
+            isOneToOne: false
+            referencedRelation: "garage_cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "frozen_parts_prototype_id_fkey"
+            columns: ["prototype_id"]
+            isOneToOne: false
+            referencedRelation: "prototypes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       garage_cars: {
         Row: {
           color: string | null
@@ -986,6 +1067,7 @@ export type Database = {
           mesh_task_id: string | null
           notes: string | null
           placement_hint: string | null
+          placement_manifest: Json
           primary_source_index: number
           reference_error: string | null
           reference_status: string
@@ -1015,6 +1097,7 @@ export type Database = {
           mesh_task_id?: string | null
           notes?: string | null
           placement_hint?: string | null
+          placement_manifest?: Json
           primary_source_index?: number
           reference_error?: string | null
           reference_status?: string
@@ -1044,6 +1127,7 @@ export type Database = {
           mesh_task_id?: string | null
           notes?: string | null
           placement_hint?: string | null
+          placement_manifest?: Json
           primary_source_index?: number
           reference_error?: string | null
           reference_status?: string
