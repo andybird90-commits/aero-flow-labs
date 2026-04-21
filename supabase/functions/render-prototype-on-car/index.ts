@@ -79,9 +79,10 @@ Deno.serve(async (req) => {
       .update({ fit_preview_status: "rendering", fit_preview_error: null })
       .eq("id", prototype_id);
 
-    // Inline car ref + part refs as data URLs so OpenAI definitely sees them.
+    // Inline part refs FIRST then car ref last — gpt-image-1 weights earlier refs more heavily
+    // for shape, so putting the part first makes it copy the part more faithfully.
     const refDataUrls: string[] = [];
-    for (const url of [carRefUrl, ...partRefUrls]) {
+    for (const url of [...partRefUrls, carRefUrl]) {
       try {
         const r = await fetch(url);
         if (!r.ok) continue;
@@ -99,23 +100,29 @@ Deno.serve(async (req) => {
 
     const carLabel = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
     const partRefDescription = heroUrl
-      ? `IMAGE 2 is a clay render of an aftermarket aero part the user is prototyping for that car.`
-      : `The remaining images are reference photos of an aftermarket aero part the user wants fitted to that car.`;
+      ? `THE FIRST IMAGE is a clay render of the aftermarket aero part the user is prototyping.`
+      : `THE FIRST ${partRefUrls.length} IMAGE(S) are reference photos of the aftermarket aero part the user wants fitted.`;
 
     const prompt = [
-      `IMAGE 1 is a photo of the user's car: ${carLabel}${car.color ? ` (${car.color})` : ""}.`,
-      partRefDescription,
+      `You are given reference photos in two groups:`,
+      `  • ${partRefDescription} STUDY THESE FIRST. Memorise the exact silhouette, opening, vents, slats, depth, curvature, edge treatment and proportions. The part you draw MUST match these as closely as possible — do NOT invent a generic shape, do NOT idealise it, do NOT swap it for a similar-looking part.`,
+      `  • THE LAST IMAGE is the user's car: ${carLabel}${car.color ? ` (${car.color})` : ""}.`,
       ``,
-      `TASK: Produce a single photoreal image of IMAGE 1's car with the part fitted in its correct location, rendered in real CARBON FIBRE.`,
+      `TASK: Produce ONE photoreal image of that exact car with that exact part bonded onto it in real CARBON FIBRE.`,
       ``,
-      `Rules:`,
-      `- Keep the car in IMAGE 1 unchanged: same angle, same colour, same lighting, same background, same wheels, same proportions.`,
-      `- Place the part in its anatomically correct location on the car (e.g. side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, etc).`,
-      `- Render the part in real glossy 2x2 twill carbon fibre with a clear-coat. Match the scene's lighting and reflections so it looks bonded on, not pasted.`,
-      `- Match scale and perspective to the car. The part must look like it belongs there.`,
+      `Rules for the CAR (last image):`,
+      `- Keep the car identical to the reference: same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
+      `- Do NOT crop the car — the whole car visible in the reference must remain visible in the output, with comfortable margin around it.`,
+      ``,
+      `Rules for the PART (first images):`,
+      `- COPY THE PART AS DRAWN. Match its silhouette, opening shape, internal slats/vents, return depth and proportions exactly. Do not improvise.`,
+      `- Place it in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, etc).`,
+      `- Render it in real glossy 2x2 twill carbon fibre with a clear-coat. Match the scene's lighting/reflections so it looks bonded on, not pasted.`,
+      `- Match scale and perspective to the car — it must look like it actually fits.`,
       `- Do NOT add bolts, rivets, mounting tabs or fasteners — assume it's bonded on.`,
-      `- Do NOT add text, badges, logos, watermarks.`,
-      `- Output a clean photoreal image, no labels, no annotations, no split-screen.`,
+      `- STRIP all logos, badges, embossed text, brand marks, model names and decals from the part.`,
+      ``,
+      `Output: a clean photoreal image of the whole car with the part fitted, no labels, no annotations, no split-screen, no text, no watermarks.`,
     ].join("\n");
 
     let imgUrl: string | undefined;
