@@ -325,6 +325,7 @@ function ConceptCard({
   onDelete: () => void;
   onBuildKit: () => void;
 }) {
+  const { toast } = useToast();
   const initialAeroStatus = ((concept as any).aero_kit_status ?? "idle") as AeroKitStatus;
   const initialAeroError = (concept as any).aero_kit_error as string | null | undefined;
   const initialAeroWarning = (concept as any).aero_kit_warning as string | null | undefined;
