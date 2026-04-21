@@ -417,13 +417,16 @@ function CreatePrototypeDialog({
 function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | null; onClose: () => void }) {
   const { toast } = useToast();
   const [meshProgress, setMeshProgress] = useState(0);
-  const [busy, setBusy] = useState<"render" | "mesh" | null>(null);
+  const [busy, setBusy] = useState<"render" | "mesh" | "fit" | null>(null);
   const [revisionNote, setRevisionNote] = useState("");
   const mountRef = useRef<HTMLDivElement>(null);
 
   const sources = useMemo(() => ((prototype?.source_image_urls as string[]) ?? []), [prototype]);
   const renders = useMemo(() => ((prototype?.render_urls as Array<{ angle: string; url: string }>) ?? []), [prototype]);
   const glbUrl = prototype?.glb_url ?? null;
+  const fitUrl = (prototype as any)?.fit_preview_url ?? null;
+  const fitStatus = (prototype as any)?.fit_preview_status ?? "idle";
+  const garageCarId = (prototype as any)?.garage_car_id ?? null;
 
   // Three.js viewer
   useEffect(() => {
