@@ -13,7 +13,8 @@
  * directly from `part-geometry.ts`.
  */
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Loader2, Pencil, Check, X, Undo2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Loader2, Pencil, Check, Undo2, ArrowRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
