@@ -387,12 +387,17 @@ function ConceptCard({
         />
       )}
 
-      <div className="absolute top-2 right-2 flex items-center gap-1.5">
+      <div className={cn(
+        "absolute top-2 right-2 flex items-center gap-1.5",
+        // In the zoom dialog the built-in close (X) sits at top-right, so
+        // shift this toolbar left to avoid the click target overlapping it.
+        variant === "zoom" && "right-12",
+      )}>
         <button
           onClick={(e) => { e.stopPropagation(); void handleCarbonToggle(); }}
           disabled={carbonBusy}
           className={cn(
-            "rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border backdrop-blur transition-colors",
+            "rounded-md px-3 py-1.5 inline-flex items-center gap-1.5 text-xs text-mono uppercase tracking-widest border backdrop-blur transition-colors",
             carbonMode
               ? "bg-foreground text-background border-foreground"
               : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
@@ -406,30 +411,30 @@ function ConceptCard({
                 : "Show only the aftermarket carbon bodywork"
           }
         >
-          {carbonBusy ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Boxes className="h-3 w-3" />}
+          {carbonBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Boxes className="h-3.5 w-3.5" />}
           {carbonStatus === "failed" ? "Retry carbon" : carbonMode ? "Carbon on" : "Carbon only"}
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); setPickMode((p) => !p); }}
           className={cn(
-            "rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border backdrop-blur transition-colors",
+            "rounded-md px-3 py-1.5 inline-flex items-center gap-1.5 text-xs text-mono uppercase tracking-widest border backdrop-blur transition-colors",
             pickMode
               ? "bg-primary/90 text-primary-foreground border-primary"
               : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
           )}
           title="Click any part on the render to extract it as STL"
         >
-          <MousePointer2 className="h-3 w-3" />
+          <MousePointer2 className="h-3.5 w-3.5" />
           {pickMode ? "Picking" : "Pick parts"}
         </button>
         {variant === "card" && <StatusChip tone={tone as any} size="sm">{concept.status}</StatusChip>}
         {variant === "card" && current && !pickMode && (
           <button
             onClick={(e) => { e.stopPropagation(); setZoomOpen(true); }}
-            className="rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border bg-surface-0/85 text-muted-foreground border-border hover:text-foreground backdrop-blur transition-colors"
+            className="rounded-md px-2 py-1.5 inline-flex items-center gap-1 text-xs text-mono uppercase tracking-widest border bg-surface-0/85 text-muted-foreground border-border hover:text-foreground backdrop-blur transition-colors"
             title="Open large view"
           >
-            <Maximize2 className="h-3 w-3" />
+            <Maximize2 className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
