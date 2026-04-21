@@ -212,15 +212,13 @@ Deno.serve(async (req) => {
       const partLabel = body.part_label || body.part_kind.replace(/[_-]+/g, " ");
 
       const prompt =
-        `Edit this image to ISOLATE just one car body part for use as a 3D-meshing reference.\n\n` +
+        `Edit this image to ISOLATE one car body part on a clean backdrop. ` +
+        `The output is a SINGLE-VIEW reference image — downstream 3D software handles depth and back-side inference, ` +
+        `so you MUST NOT invent a back surface, interior, underside, or any new angle of the part. ` +
+        `Treat your output like a flat sticker cut from the source photo.\n\n` +
         `${ERASURE_PROMPT[body.part_kind]}\n\n` +
-        `Output requirements:\n` +
-        `• Keep the part's silhouette, scale, position and surface detail PIXEL-IDENTICAL.\n` +
-        `• Replace everything that is NOT the ${partLabel} with a clean, neutral light-grey ` +
-        `studio backdrop (#E5E5E5, smooth, no gradient, no shadows beyond a faint contact shadow).\n` +
-        `• Do not stylise, smooth, simplify, mirror or symmetrise the part.\n` +
-        `• Do not add new geometry, lights, logos, watermarks, text or reflections.\n` +
-        `• Keep the part centred and the same orientation it had in the source image.`;
+        `${ERASE_RULES}\n\n` +
+        `(Target part name for reference: ${partLabel}.)`;
 
       const erase = await lovableGenerateImageWithFallback({
         apiKey: LOVABLE_API_KEY,
