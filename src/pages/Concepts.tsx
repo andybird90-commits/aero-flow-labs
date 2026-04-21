@@ -543,6 +543,8 @@ function ConceptCard({
           </div>
         )}
 
+        <ConceptRegenAndPrompt concept={concept} projectId={projectId} />
+
         {/* Boolean aero-kit trigger — only when project has a manifold hero STL. */}
         {(concept.status === "approved" || concept.status === "favourited") && (
           <div className="pt-2 border-t border-border space-y-2">
