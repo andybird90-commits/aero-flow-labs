@@ -1,142 +1,105 @@
 
-## Stabilize Prototyper by splitting it into clear modes
+## Fix concept generation so it actually responds to the brief
 
-The current flow asks one image-edit model to do too many things at once: understand the uploaded part, decide where it belongs, redraw it, and blend it onto the car. That is why even clean photos can come back as a generic approximation.
+The Concepts step is producing near-stock cars even when the brief says "aggressive time attack". Looking at the screenshot: an aggressive time attack request returned two essentially OEM Audi TTs labeled "OEM+ refined". That means the brief intent (aggressiveness, build style, target discipline) is either being ignored, overridden by a default "subtle" template, or not being injected into the per-variation prompts.
 
-### What to build
+This plan fixes the concept generator so the brief drives the output and adds visible controls so you can steer it.
 
-#### 1. Replace the single ambiguous workflow with 3 explicit modes
-Add a mode selector in the prototype dialog and workspace:
+## What's going wrong
 
-1. **Exact replica from photos**
-   - For users who already have a real part and want it copied as faithfully as possible.
-   - Requires uploaded photos.
-   - Prioritises shape match over creativity.
+There are three likely causes, all in `supabase/functions/generate-concepts`:
 
-2. **Design from description**
-   - For users who want the AI to invent the part.
-   - No photos required.
-   - Uses title + notes + garage car context.
+1. The variation labels (e.g. "OEM+ refined", "Track-focused", "Wide-body") are hardcoded and each one carries its own restrictive description ("subtle, road-friendly, no giant wing, no flared arches"). Those per-variation rules are overriding the brief.
+2. The brief's aggression level / discipline (time attack, drift, stance, GT, rally) is not being weighted strongly enough in the prompt, or is appended after the variation template so the template wins.
+3. The image model is being told to "preserve factory identity" globally, which kills aggressive transformations.
 
-3. **Inspired by photos**
-   - Uses uploaded photos as inspiration, not as ground truth.
-   - Good for “make me something like this, but cleaner / more aggressive”.
+## What to build
 
-This removes the current confusion where “replicate exactly” and “AI generation” are mixed together.
+### 1. Make the brief the primary driver, not the variation label
 
-#### 2. Make the “exact replica” path multi-step instead of one-shot
-For **Exact replica from photos**, change the render pipeline to:
+Rewrite the prompt assembly in `generate-concepts` so the order of authority is:
 
 ```text
-Uploaded part photos
-   -> isolate the part from background / surrounding car
-   -> create a clean standalone reference render
-   -> generate on-car preview using that isolated part as the source of truth
-   -> generate clay hero + clay back views for meshing
+1. Discipline (time attack / drift / stance / GT / rally / show)
+2. Aggression level (subtle / moderate / aggressive / extreme)
+3. User's free-text brief
+4. Variation flavor (only used to differentiate the 4 tiles)
+5. Car identity (only to keep it the same model + colour)
 ```
 
-This gives the model a much cleaner target and stops it trying to infer the part from a busy photo.
+If the brief says "aggressive time attack", every variation must respect that. The variations then differ by *approach* (e.g. "GT3-style aero", "JDM time attack", "Euro touring car", "minimal track day") — not by aggression.
 
-#### 3. Add a placement control so the model stops guessing
-Add a simple placement selector in the UI:
+### 2. Replace the fixed "OEM+ refined / Track / Wide-body / Show" set with brief-aware variations
 
-- Front bumper
-- Bonnet / hood
-- Side intake / side skirt area
-- Rear bumper / diffuser area
-- Bootlid / rear wing area
-- Other
+Generate the 4 variation labels and descriptions dynamically from the brief, using a quick text model call before the image calls:
 
-Optional follow-up: let the user click a rough zone on the garage image later, but the first step is a placement dropdown. This will dramatically improve on-car results because the model currently has to guess where the part belongs.
+- Input: discipline + aggression + brief text + car info
+- Output: 4 short variation specs, each with `{ label, short_description, key_aero_features[] }`
+- These are then used as the per-tile prompt seeds
 
-#### 4. Use Lovable AI image models for the image workflow
-Move the prototype image generation away from the current OpenAI-only helper and onto Lovable AI image models, using:
+This stops the situation where you ask for time attack and still get an "OEM+ refined" tile with "no giant wing".
 
-- fast default: `google/gemini-3.1-flash-image-preview`
-- higher-fidelity retry/fallback: `google/gemini-3-pro-image-preview`
+### 3. Strip the "preserve factory identity" language for aggressive briefs
 
-These models are already used elsewhere in the project and fit the current image-editing pattern better.
+Conditionally swap the system prompt:
 
-#### 5. Add a visible “reference processing” stage in the UI
-Show the user what the system extracted before the final render:
+- subtle → keep current "preserve factory identity, restrained" wording
+- moderate → "noticeably modified but street legal"
+- aggressive → "heavily modified track car, factory identity is secondary to function"
+- extreme → "full silhouette/wide-body/time attack build, OEM only as a starting point"
 
-- Source photos
-- Isolated part reference
-- On-car preview
-- Clay views
+### 4. Add explicit aero requirements per discipline
 
-If the isolated reference is wrong, the user immediately knows the issue happened upstream instead of wasting time re-rendering blindly.
+When discipline = time attack, the prompt should require (unless the user says otherwise):
+- large rear wing
+- front splitter with canards
+- hood vents or louvers
+- wide fenders or over-fenders
+- side skirts with strakes
+- aggressive stance
 
-#### 6. Tighten the meaning of each button
-Update the workspace actions:
+Same approach for drift / stance / GT / rally — each discipline gets a baseline aero kit list that the model must include.
 
-- **Render exact fit** for exact-photo mode
-- **Generate concept preview** for description mode
-- **Re-fit on car** only re-runs the on-car composite
-- **Make 3D model** still depends on approved clay renders
+### 5. Surface the controls in the UI so you can override
 
-This makes the output intent obvious.
+In the Brief / Concepts UI, add explicit selectors instead of relying only on free text:
 
-### Recommended implementation order
+- **Discipline**: Time attack, Drift, Stance, GT, Rally, Show, Street
+- **Aggression**: Subtle, Moderate, Aggressive, Extreme
+- **Must include** (chips): Big wing, Wide body, Splitter, Canards, Diffuser, Hood vents, Roof scoop
+- **Must avoid** (chips): same list, inverted
 
-1. Add workflow mode + placement selector to the prototype data and UI.
-2. Add isolated-part preprocessing for photo-based prototypes.
-3. Switch prototype image generation helper to Lovable AI image models.
-4. Update `render-prototype-views` to branch by mode.
-5. Update `render-prototype-on-car` to use isolated refs + placement hints.
-6. Update workspace UI to show the extra “isolated reference” stage and clearer actions.
+These map directly into the prompt. They are pre-filled from the brief text via a quick AI parse, but you can override.
 
-### User-facing behaviour after the change
+### 6. Add a "Regenerate this tile" with a stronger steer
 
-#### Exact replica from photos
-- User uploads clean photos.
-- User chooses where the part belongs.
-- App first isolates the part.
-- App shows the isolated part.
-- App then fits that exact part onto the selected garage car.
-- Clay views are generated from the isolated part, not guessed from the full car photo.
+On each concept card, add a small **"More aggressive"** / **"Different direction"** button that re-runs only that tile with a stronger modifier appended. Avoids regenerating all 4.
 
-#### Design from description
-- User types the part idea.
-- App designs it from scratch and fits it to the car.
-- No expectation of photo matching.
+### 7. Show the actual prompt used per tile
 
-#### Inspired by photos
-- User uploads photos.
-- App uses them as style/shape inspiration, not strict ground truth.
+Add a small "View prompt" disclosure under each concept card. This makes it obvious when the prompt is the problem vs the model. Useful for you while we tune this.
 
-### Technical details
+## Files touched
 
-- Add new prototype fields for:
-  - `generation_mode` (`exact_photo`, `text_design`, `inspired_photo`)
-  - `placement_hint`
-  - optional `isolated_ref_urls`
-  - optional `reference_status` / `reference_error`
-- Update `render-prototype-views` so the job becomes:
-  - preprocess references if photo-based
-  - on-car render with placement hint
-  - clay hero
-  - clay back
-- Update `render-prototype-on-car` so it prefers isolated part refs over raw uploaded photos.
-- Replace or extend `_shared/openai-image.ts` with a provider-agnostic helper for Lovable AI image models.
-- Keep background execution + polling pattern already added for long renders.
+- `supabase/functions/generate-concepts/index.ts` — prompt rewrite, dynamic variation generation, discipline/aggression branching
+- `src/pages/Brief.tsx` — discipline + aggression + must-include/avoid controls
+- `src/pages/Concepts.tsx` — per-tile regenerate, "view prompt" disclosure
+- `src/lib/repo.ts` — pass new brief fields through
+- `supabase/migrations/*` — add `discipline`, `aggression`, `must_include[]`, `must_avoid[]` to the brief/project record, plus `prompt_used` on the concept row
 
-### Files touched
+## Resulting behaviour
 
-- `src/pages/Prototyper.tsx`
-- `src/lib/repo.ts`
-- `supabase/functions/render-prototype-views/index.ts`
-- `supabase/functions/render-prototype-on-car/index.ts`
-- `supabase/functions/_shared/openai-image.ts` or a new shared image helper
-- `supabase/migrations/*` for new prototype columns
+For a brief like "super aggressive time attack build":
 
-### Best option to implement first
+- All 4 tiles arrive with big wings, splitters, canards, wide arches.
+- Tiles differ by *style* (GT3 / JDM / Euro touring / minimal track) not by *aggressiveness*.
+- "OEM+ refined" no longer appears unless aggression is set to subtle.
+- You can click "More aggressive" on a single tile to push it further.
+- You can see the exact prompt that produced each tile.
 
-Start with this combination:
+## Recommended first slice
 
-1. **Mode selector**
-2. **Placement selector**
-3. **Photo isolation stage**
-4. **Lovable AI image models for exact-photo mode**
-
-That is the highest-impact fix for “I gave it clean images and it still doesn’t copy them”.
+1. Backend prompt rewrite in `generate-concepts` (biggest impact, fixes the immediate bug).
+2. Dynamic variation labels from the brief.
+3. Discipline + aggression selectors in the Brief UI.
+4. Per-tile regenerate + "view prompt".
