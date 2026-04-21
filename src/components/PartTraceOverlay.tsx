@@ -316,11 +316,11 @@ export function PartTraceOverlay({ active, view, projectId }: Props) {
             {existingParts.filter((p) => p.enabled).length} part{existingParts.filter((p) => p.enabled).length === 1 ? "" : "s"} in kit
           </span>
           <Link
-            to={`/parts?project=${projectId}`}
+            to={`/refine?project=${projectId}&part=${selectedKind}`}
             onClick={(e) => e.stopPropagation()}
             className="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-mono uppercase tracking-widest text-primary hover:bg-primary/10"
           >
-            View 3D <ArrowRight className="h-2.5 w-2.5" />
+            Render selected <ArrowRight className="h-2.5 w-2.5" />
           </Link>
         </div>
       )}
