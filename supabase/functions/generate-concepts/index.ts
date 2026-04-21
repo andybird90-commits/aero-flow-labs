@@ -187,6 +187,12 @@ const FALLBACK_VARIATIONS: Variation[] = [
     modifier: "widebody arches, wide track, fitment-focused stance, lowered ride height",
     emphasis: "The car must visibly read as wide. Same brief otherwise.",
   },
+  {
+    title: "Aero-max direction",
+    direction: "Same brief intent with the most functional aero package: wing, splitter, vents, skirts and diffuser all clearly visible.",
+    modifier: "maximum functional aero, big wing, deep splitter, canards, vents, skirts, diffuser",
+    emphasis: "Do not return a near-stock car. The aero package must be obvious at thumbnail size.",
+  },
 ];
 
 const ANGLES: Array<{ key: AngleKey; label: string; framing: string }> = [
@@ -342,20 +348,20 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   const avoidLine = mustAvoid.length ? `MUST AVOID: ${mustAvoid.join(", ")}.` : "";
 
   const stylePrompt = [
-    vehicleLabel
-      ? `SUBJECT VEHICLE (the result MUST be this exact car, no other model): ${vehicleLabel}.`
-      : "",
     disciplineLine,
     aggressionLine,
-    preset?.prompt ? `Style DNA — ${preset.name}: ${preset.prompt}` : "",
     briefText
       ? (presetMode ? `Car-specific notes: ${briefText}` : `User brief: ${briefText}`)
       : "",
     includeLine,
     avoidLine,
+    preset?.prompt ? `Style DNA — ${preset.name}: ${preset.prompt}` : "",
     buildType ? `Build type: ${buildType}.` : "",
     styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
     styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
+    vehicleLabel
+      ? `SUBJECT VEHICLE (lowest styling priority; only identity/proportions): ${vehicleLabel}.`
+      : "",
   ].filter(Boolean).join(" ");
 
   // If a per-tile seed was supplied (regenerate flow), use just that single
