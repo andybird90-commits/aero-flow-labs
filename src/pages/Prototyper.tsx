@@ -503,11 +503,23 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      // Force-refresh in case realtime is slow/down so the workspace shows the new renders.
-      const { data: fresh } = await (supabase as any).from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
-      if (fresh) {
-        Object.assign(prototype, fresh);
+
+      // Function now runs in the background (returns 202). Poll until done.
+      const deadline = Date.now() + 5 * 60 * 1000;
+      let finalRow: any = null;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const { data: fresh } = await (supabase as any)
+          .from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
+        if (fresh) {
+          Object.assign(prototype, fresh);
+          if (fresh.render_status === "ready") { finalRow = fresh; break; }
+          if (fresh.render_status === "failed") {
+            throw new Error(fresh.render_error ?? "render failed");
+          }
+        }
       }
+      if (!finalRow) throw new Error("Render timed out");
       setRevisionNote("");
       toast({ title: "Renders ready" });
     } catch (e: any) {
