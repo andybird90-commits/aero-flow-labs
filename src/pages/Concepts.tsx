@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   useBrief, useConcepts, useUpdateConcept, useDeleteConcept,
   useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, useStylePreset, useActiveConceptSet,
-  useIsolateCarbon, useCarbonStatus, type Concept,
+  useIsolateCarbon, useCarbonStatus, useMeshifyCarbonKit, useCarbonKitStatus, type Concept,
 } from "@/lib/repo";
 import { AeroKitProgress, type AeroKitStatus } from "@/components/AeroKitProgress";
 import { useAuth } from "@/hooks/useAuth";
