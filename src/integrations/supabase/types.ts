@@ -934,6 +934,9 @@ export type Database = {
         Row: {
           car_context: string | null
           created_at: string
+          fit_preview_error: string | null
+          fit_preview_status: string
+          fit_preview_url: string | null
           garage_car_id: string | null
           glb_url: string | null
           id: string
@@ -953,6 +956,9 @@ export type Database = {
         Insert: {
           car_context?: string | null
           created_at?: string
+          fit_preview_error?: string | null
+          fit_preview_status?: string
+          fit_preview_url?: string | null
           garage_car_id?: string | null
           glb_url?: string | null
           id?: string
@@ -972,6 +978,9 @@ export type Database = {
         Update: {
           car_context?: string | null
           created_at?: string
+          fit_preview_error?: string | null
+          fit_preview_status?: string
+          fit_preview_url?: string | null
           garage_car_id?: string | null
           glb_url?: string | null
           id?: string

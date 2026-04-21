@@ -60,7 +60,7 @@ export default function PrototyperPage() {
         if (active) {
           // pick the latest version of the active prototype
           supabase.from("prototypes").select("*").eq("id", active.id).maybeSingle().then(({ data }) => {
-            if (data) setActive(data as Prototype);
+            if (data) setActive(data as unknown as Prototype);
           });
         }
       })
@@ -417,13 +417,16 @@ function CreatePrototypeDialog({
 function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | null; onClose: () => void }) {
   const { toast } = useToast();
   const [meshProgress, setMeshProgress] = useState(0);
-  const [busy, setBusy] = useState<"render" | "mesh" | null>(null);
+  const [busy, setBusy] = useState<"render" | "mesh" | "fit" | null>(null);
   const [revisionNote, setRevisionNote] = useState("");
   const mountRef = useRef<HTMLDivElement>(null);
 
   const sources = useMemo(() => ((prototype?.source_image_urls as string[]) ?? []), [prototype]);
   const renders = useMemo(() => ((prototype?.render_urls as Array<{ angle: string; url: string }>) ?? []), [prototype]);
   const glbUrl = prototype?.glb_url ?? null;
+  const fitUrl = (prototype as any)?.fit_preview_url ?? null;
+  const fitStatus = (prototype as any)?.fit_preview_status ?? "idle";
+  const garageCarId = (prototype as any)?.garage_car_id ?? null;
 
   // Three.js viewer
   useEffect(() => {
@@ -543,6 +546,24 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
     }
   };
 
+  const startFit = async () => {
+    setBusy("fit");
+    try {
+      const { data, error } = await supabase.functions.invoke("render-prototype-on-car", {
+        body: { prototype_id: prototype.id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const { data: fresh } = await (supabase as any).from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
+      if (fresh) Object.assign(prototype, fresh);
+      toast({ title: "Fit preview ready" });
+    } catch (e: any) {
+      toast({ title: "Fit preview failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const downloadStl = async () => {
     if (!glbUrl) return;
     try {
@@ -560,6 +581,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
   const isRendering = busy === "render" || prototype.render_status === "rendering";
   const isMeshing = busy === "mesh" || prototype.mesh_status === "meshing";
+  const isFitting = busy === "fit" || fitStatus === "rendering";
 
   return (
     <Dialog open={!!prototype} onOpenChange={(o) => !o && onClose()}>
@@ -657,6 +679,24 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
           </div>
         )}
 
+        {garageCarId && (fitUrl || isFitting) && (
+          <div className="rounded-md border border-border bg-surface-0 overflow-hidden relative" style={{ height: 220 }}>
+            <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+              Fit on car (carbon)
+            </span>
+            {isFitting ? (
+              <div className="absolute inset-0 grid place-items-center text-primary">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="text-[9px] font-mono uppercase tracking-widest">Fitting…</span>
+                </div>
+              </div>
+            ) : fitUrl ? (
+              <img src={fitUrl} alt="Part fitted on car" className="absolute inset-0 w-full h-full object-contain" />
+            ) : null}
+          </div>
+        )}
+
         {renders.length > 0 && (
           <div className="rounded-md border border-border bg-surface-0/40 p-2 space-y-1">
             <Label htmlFor="proto-revision" className="text-[10px] uppercase tracking-widest font-mono text-muted-foreground">
@@ -676,10 +716,20 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onClose}><X className="h-4 w-4 mr-1" /> Close</Button>
-          <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || sources.length === 0}>
+          <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || isFitting || sources.length === 0}>
             {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length ? (revisionNote.trim() ? "Re-render with note" : "Re-render views") : "Render views"}</>}
           </Button>
-          <Button onClick={startMesh} disabled={isMeshing || isRendering || renders.length === 0}>
+          {garageCarId && renders.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={startFit}
+              disabled={isRendering || isMeshing || isFitting}
+              title="Composite the part onto your garage car in carbon"
+            >
+              {isFitting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Fitting…</> : <><Car className="h-4 w-4 mr-1" /> {fitUrl ? "Re-fit on car" : "Show on car"}</>}
+            </Button>
+          )}
+          <Button onClick={startMesh} disabled={isMeshing || isRendering || isFitting || renders.length === 0}>
             {isMeshing ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Meshing…</> : <><Box className="h-4 w-4 mr-1" /> {glbUrl ? "Re-mesh" : "Make 3D model"}</>}
           </Button>
           {glbUrl && (
