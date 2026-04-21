@@ -660,9 +660,9 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
         </div>
 
         {/* SECONDARY GRID — sources / clay views / 3D */}
-        <div className="flex-1 min-h-0 grid gap-2 grid-rows-3 md:grid-rows-1 md:grid-cols-3">
+        <div className="grid gap-2 grid-cols-1 md:grid-cols-3" style={{ minHeight: "260px" }}>
           {/* Pane 1 — Source photos */}
-          <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden">
+          <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden" style={{ aspectRatio: "4 / 3" }}>
             <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
               Source
             </span>
@@ -679,7 +679,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
           </div>
 
           {/* Pane 2 — Clay views (hero + back) */}
-          <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden">
+          <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden" style={{ aspectRatio: "4 / 3" }}>
             <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
               Clay views
             </span>
@@ -712,7 +712,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
           </div>
 
           {/* Pane 3 — 3D mesh */}
-          <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden">
+          <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden" style={{ aspectRatio: "4 / 3" }}>
             <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
               3D mesh
             </span>
@@ -737,6 +737,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
             )}
           </div>
         </div>
+        </div>{/* /scrollable body */}
 
         {(prototype.render_error || prototype.mesh_error) && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 text-destructive text-xs p-3 font-mono whitespace-pre-wrap">
