@@ -657,10 +657,27 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
           </div>
         )}
 
+        {renders.length > 0 && (
+          <div className="rounded-md border border-border bg-surface-0/40 p-2 space-y-1">
+            <Label htmlFor="proto-revision" className="text-[10px] uppercase tracking-widest font-mono text-muted-foreground">
+              Revision note for next render
+            </Label>
+            <Textarea
+              id="proto-revision"
+              placeholder='e.g. "make the back more hollow", "remove the GT4 text", "sharpen the front edge", "make the opening bigger"'
+              value={revisionNote}
+              onChange={(e) => setRevisionNote(e.target.value)}
+              rows={2}
+              maxLength={1000}
+              disabled={isRendering || isMeshing}
+            />
+          </div>
+        )}
+
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onClose}><X className="h-4 w-4 mr-1" /> Close</Button>
           <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || sources.length === 0}>
-            {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length ? "Re-render views" : "Render views"}</>}
+            {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length ? (revisionNote.trim() ? "Re-render with note" : "Re-render views") : "Render views"}</>}
           </Button>
           <Button onClick={startMesh} disabled={isMeshing || isRendering || renders.length === 0}>
             {isMeshing ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Meshing…</> : <><Box className="h-4 w-4 mr-1" /> {glbUrl ? "Re-mesh" : "Make 3D model"}</>}
