@@ -101,7 +101,12 @@ async function runRender(
     if (protoErr || !proto) throw new Error("Prototype not found");
 
     const sourceUrls = (proto.source_image_urls as string[] | null) ?? [];
-    if (!sourceUrls.length) throw new Error("No source images uploaded");
+    const userNotesRaw = ((proto as any).notes ?? "").toString().trim();
+    const titleRaw = ((proto as any).title ?? "").toString().trim();
+    if (!sourceUrls.length && !userNotesRaw && !titleRaw) {
+      throw new Error("Add a description or upload reference photos");
+    }
+    const textOnly = sourceUrls.length === 0;
 
     // Optional: load garage car ref so we can do on-car shot first.
     let carRefDataUrl: string | null = null;
