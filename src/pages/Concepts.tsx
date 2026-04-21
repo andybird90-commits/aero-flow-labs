@@ -460,12 +460,13 @@ function ConceptCard({
 
   // Touch swipe — horizontal flick > 40px switches angles.
   const touchStartX = useRef<number | null>(null);
+  const anyPartMode = pickMode || traceMode;
   const onTouchStart = (e: React.TouchEvent) => {
-    if (!hasMultiple || pickMode) return;
+    if (!hasMultiple || anyPartMode) return;
     touchStartX.current = e.touches[0]?.clientX ?? null;
   };
   const onTouchEnd = (e: React.TouchEvent) => {
-    if (!hasMultiple || pickMode || touchStartX.current == null) return;
+    if (!hasMultiple || anyPartMode || touchStartX.current == null) return;
     const dx = (e.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current;
     touchStartX.current = null;
     if (Math.abs(dx) < 40) return;
@@ -479,12 +480,12 @@ function ConceptCard({
           <button
             type="button"
             onClick={(e) => {
-              if (pickMode) return;
+              if (anyPartMode) return;
               e.stopPropagation();
               setZoomOpen(true);
             }}
             className="absolute inset-0 block group"
-            title={pickMode ? "Pick a part" : "Open large view"}
+            title={anyPartMode ? "Pick or trace a part" : "Open large view"}
           >
             <img
               key={current.url}
@@ -492,7 +493,7 @@ function ConceptCard({
               alt={`${concept.title} — ${current.label}`}
               className="absolute inset-0 h-full w-full object-cover animate-fade-in"
             />
-            {!pickMode && (
+            {!anyPartMode && (
               <span className="absolute bottom-2 right-2 rounded-md bg-surface-0/85 backdrop-blur px-2 py-1 border border-border text-mono text-[10px] uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Maximize2 className="h-3 w-3" />
                 Expand
