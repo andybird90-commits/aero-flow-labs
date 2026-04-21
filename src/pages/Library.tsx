@@ -218,20 +218,30 @@ function ItemCard({
 
   const download = async () => {
     if (!item.asset_url) return;
-    const ext =
-      item.asset_mime === "image/png" ? "png" :
-      item.asset_mime === "model/stl" ? "stl" :
-      item.asset_mime === "model/gltf-binary" ? "glb" : "bin";
     try {
-      const r = await fetch(item.asset_url);
-      const blob = await r.blob();
+      const { fetchAsDownloadableMesh } = await import("@/lib/glb-to-stl");
+      const isImage = item.asset_mime?.startsWith("image/");
+      let blob: Blob;
+      let ext: string;
+      if (isImage) {
+        const r = await fetch(item.asset_url);
+        blob = await r.blob();
+        ext = item.asset_mime === "image/png" ? "png" : "jpg";
+      } else {
+        // Mesh asset: convert GLB → STL on the fly so CAD tools open it.
+        const out = await fetchAsDownloadableMesh(item.asset_url, item.asset_mime);
+        blob = out.blob;
+        ext = out.ext;
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `${item.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.${ext}`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {/* noop */}
+    } catch (e) {
+      console.error("download failed:", e);
+    }
   };
 
   return (
