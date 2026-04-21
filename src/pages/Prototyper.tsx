@@ -34,8 +34,23 @@ import {
   Beaker, Plus, Loader2, Wand2, Box, Download, Trash2, Upload, X, Image as ImageIcon, Car,
 } from "lucide-react";
 import {
-  useMyPrototypes, useCreatePrototype, useDeletePrototype, useGarageCars, type Prototype,
+  useMyPrototypes, useCreatePrototype, useDeletePrototype, useGarageCars, type Prototype, type PrototypeGenerationMode,
 } from "@/lib/repo";
+
+const PLACEMENT_OPTIONS = [
+  { value: "front_bumper", label: "Front bumper / splitter" },
+  { value: "bonnet", label: "Bonnet / hood" },
+  { value: "side", label: "Side intake / side skirt" },
+  { value: "rear_bumper", label: "Rear bumper / diffuser" },
+  { value: "bootlid", label: "Bootlid / rear wing" },
+  { value: "other", label: "Other" },
+] as const;
+
+const MODE_OPTIONS: Array<{ value: PrototypeGenerationMode; label: string; help: string }> = [
+  { value: "exact_photo", label: "Exact replica from photos", help: "Copy the part in your photos as faithfully as possible. Requires uploaded photos." },
+  { value: "text_design", label: "Design from description", help: "Let the AI invent the part from your description. No photos needed." },
+  { value: "inspired_photo", label: "Inspired by photos", help: "Use your photos as inspiration; AI produces a refined version." },
+];
 import { fetchAsDownloadableMesh } from "@/lib/glb-to-stl";
 
 const MAX_FILES = 5;
