@@ -246,12 +246,40 @@ function ConceptCard({
         : "neutral";
 
   // Build the ordered angle list for the turntable (front → side → rear-3/4 → rear).
-  const angles: Array<{ key: ViewKey; label: string; url: string | null }> = [
+  const c = concept as any;
+  const fullAngles: Array<{ key: ViewKey; label: string; url: string | null }> = [
     { key: "front",  label: "Front 3/4", url: concept.render_front_url },
     { key: "side",   label: "Side",      url: concept.render_side_url },
-    { key: "rear34", label: "Rear 3/4",  url: (concept as any).render_rear34_url as string | null },
+    { key: "rear34", label: "Rear 3/4",  url: c.render_rear34_url as string | null },
     { key: "rear",   label: "Rear",      url: concept.render_rear_url },
   ];
+  const carbonAngles: Array<{ key: ViewKey; label: string; url: string | null }> = [
+    { key: "front",  label: "Front 3/4", url: c.render_front_carbon_url ?? null },
+    { key: "side",   label: "Side",      url: c.render_side_carbon_url ?? null },
+    { key: "rear34", label: "Rear 3/4",  url: c.render_rear34_carbon_url ?? null },
+    { key: "rear",   label: "Rear",      url: c.render_rear_carbon_url ?? null },
+  ];
+
+  const initialCarbonStatus = (c.carbon_status as string | undefined) ?? "idle";
+  const carbonPolling = initialCarbonStatus === "generating" || initialCarbonStatus === "queued";
+  const polledCarbon = useCarbonStatus(concept.id, carbonPolling);
+  const carbonStatus = (polledCarbon.data?.carbon_status ?? initialCarbonStatus) as
+    "idle" | "generating" | "queued" | "ready" | "failed";
+  const carbonError = polledCarbon.data?.carbon_error ?? (c.carbon_error as string | null | undefined);
+  const carbonReady = carbonStatus === "ready";
+  const carbonBusy = carbonStatus === "generating" || carbonStatus === "queued";
+  const isolateCarbon = useIsolateCarbon();
+
+  // If the polled response carries fresh carbon URLs, prefer those.
+  const liveCarbonAngles = polledCarbon.data ? [
+    { key: "front"  as ViewKey, label: "Front 3/4", url: polledCarbon.data.render_front_carbon_url },
+    { key: "side"   as ViewKey, label: "Side",      url: polledCarbon.data.render_side_carbon_url },
+    { key: "rear34" as ViewKey, label: "Rear 3/4",  url: polledCarbon.data.render_rear34_carbon_url },
+    { key: "rear"   as ViewKey, label: "Rear",      url: polledCarbon.data.render_rear_carbon_url },
+  ] : carbonAngles;
+
+  const [carbonMode, setCarbonMode] = useState(false);
+  const angles = carbonMode ? liveCarbonAngles : fullAngles;
   const visibleAngles = angles.filter((a) => !!a.url) as Array<{ key: ViewKey; label: string; url: string }>;
 
   const [angleIdx, setAngleIdx] = useState(0);
@@ -259,6 +287,23 @@ function ConceptCard({
   const [zoomOpen, setZoomOpen] = useState(false);
   const current = visibleAngles[angleIdx];
   const hasMultiple = visibleAngles.length > 1;
+
+  // Keep angleIdx in range when toggling modes / data changes.
+  useEffect(() => {
+    if (angleIdx >= visibleAngles.length) setAngleIdx(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carbonMode, visibleAngles.length]);
+
+  const handleCarbonToggle = async () => {
+    if (carbonBusy) return;
+    if (carbonReady || carbonAngles.some((a) => !!a.url)) {
+      setCarbonMode((m) => !m);
+      return;
+    }
+    // First time — kick off generation and flip on optimistically.
+    setCarbonMode(true);
+    try { await isolateCarbon.mutateAsync(concept.id); } catch { /* surface via status */ }
+  };
 
   const goPrev = () => setAngleIdx((i) => (i - 1 + visibleAngles.length) % visibleAngles.length);
   const goNext = () => setAngleIdx((i) => (i + 1) % visibleAngles.length);
