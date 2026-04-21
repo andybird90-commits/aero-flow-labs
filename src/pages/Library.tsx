@@ -29,23 +29,25 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Box, Download, Trash2, Image as ImageIcon, Layers, Wrench,
-  Globe, Lock, Tag, Store, ImageOff, Beaker,
+  Globe, Lock, Tag, Store, ImageOff, Beaker, Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: string }> = {
-  concept_image:     { label: "Concept image", icon: ImageIcon, tone: "text-cyan-400"   },
-  aero_kit_mesh:     { label: "Aero kit",      icon: Layers,    tone: "text-amber-400"  },
-  concept_part_mesh: { label: "Single part",   icon: Wrench,    tone: "text-emerald-400"},
-  prototype_part_mesh: { label: "Prototype",   icon: Beaker,    tone: "text-fuchsia-400"},
+  concept_image:       { label: "Concept image", icon: ImageIcon, tone: "text-cyan-400"    },
+  aero_kit_mesh:       { label: "Aero kit",      icon: Layers,    tone: "text-amber-400"   },
+  concept_part_mesh:   { label: "Single part",   icon: Wrench,    tone: "text-emerald-400" },
+  prototype_part_mesh: { label: "Prototype",     icon: Beaker,    tone: "text-fuchsia-400" },
+  geometry_part_mesh:  { label: "Fitted part",   icon: Wand2,     tone: "text-violet-400"  },
 };
 
 const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
-  { id: "all",               label: "All" },
-  { id: "concept_image",     label: "Images" },
-  { id: "aero_kit_mesh",     label: "Aero kits" },
-  { id: "concept_part_mesh", label: "Parts" },
+  { id: "all",                 label: "All" },
+  { id: "concept_image",       label: "Images" },
+  { id: "aero_kit_mesh",       label: "Aero kits" },
+  { id: "concept_part_mesh",   label: "Parts" },
   { id: "prototype_part_mesh", label: "Prototypes" },
+  { id: "geometry_part_mesh",  label: "Fitted parts" },
 ];
 
 export default function LibraryPage() {
