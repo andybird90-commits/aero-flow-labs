@@ -88,6 +88,39 @@ export function ExtractedPartPreview({
   const [trimLasso, setTrimLasso] = useState<LassoPoint[]>([]);
   const [maskedUrl, setMaskedUrl] = useState<string | null>(null);
   const [snapping, setSnapping] = useState(false);
+  const [geometryDialogOpen, setGeometryDialogOpen] = useState(false);
+  const [baseMeshUrl, setBaseMeshUrl] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const bodyConforming = isBodyConforming(kind);
+
+  // Look up base car STL + project for the geometry worker dispatcher.
+  useEffect(() => {
+    if (!open || !bodyConforming) return;
+    let cancelled = false;
+    (async () => {
+      const { data: cp } = await supabase
+        .from("concept_parts")
+        .select("project_id")
+        .eq("concept_id", conceptId)
+        .eq("kind", kind)
+        .maybeSingle();
+      if (cancelled || !cp?.project_id) return;
+      setProjectId(cp.project_id);
+      const { data: geo } = await supabase
+        .from("geometries")
+        .select("stl_path")
+        .eq("project_id", cp.project_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled || !geo?.stl_path) return;
+      const { data: signed } = await supabase.storage
+        .from("geometries")
+        .createSignedUrl(geo.stl_path, 60 * 60);
+      if (!cancelled && signed?.signedUrl) setBaseMeshUrl(signed.signedUrl);
+    })();
+    return () => { cancelled = true; };
+  }, [open, bodyConforming, conceptId, kind]);
 
   // Reset trim state whenever the dialog opens or the underlying render changes.
   useEffect(() => {
