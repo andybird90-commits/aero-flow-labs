@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     const { data: proto, error: protoErr } = await admin
       .from("prototypes")
-      .select("id, user_id, title, car_context, source_image_urls")
+      .select("id, user_id, title, car_context, notes, replicate_exact, source_image_urls")
       .eq("id", prototype_id)
       .eq("user_id", userId)
       .maybeSingle();
