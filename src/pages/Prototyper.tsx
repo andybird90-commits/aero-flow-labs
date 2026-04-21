@@ -39,7 +39,8 @@ import { ModeSwitcher, type PrototyperMode } from "@/components/prototyper/ModeS
 import { PrototyperLeftPanel } from "@/components/prototyper/PrototyperLeftPanel";
 import { PrototyperCanvas } from "@/components/prototyper/PrototyperCanvas";
 import { PrototyperRightPanel } from "@/components/prototyper/PrototyperRightPanel";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, AlertTriangle } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const VIEW_FIELD_MAP: Record<ViewAngle, keyof GarageCar> = {
   front: "ref_front_url",
@@ -464,7 +465,19 @@ export default function Prototyper() {
   );
 }
 
-function NewPrototypeDialog(props: {
+function PausedBanner() {
+  return (
+    <div className="rounded-md border border-warning/40 bg-warning/10 text-warning px-3 py-2 text-xs flex items-start gap-2 mb-3">
+      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+      <div className="flex-1">
+        <span className="font-semibold">Prototyper is paused.</span>{" "}
+        Mounted-part picking on renders proved unreliable. Use{" "}
+        <Link to="/concepts" className="underline hover:text-foreground">Concepts → isolated parts</Link>{" "}
+        for new work. Existing prototypes remain available here.
+      </div>
+    </div>
+  );
+}
   open: boolean;
   onOpenChange: (b: boolean) => void;
   title: string;
