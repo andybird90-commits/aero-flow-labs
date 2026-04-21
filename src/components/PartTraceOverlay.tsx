@@ -258,8 +258,8 @@ export function PartTraceOverlay({ active, view, projectId }: Props) {
         enabled: true,
       });
       toast({
-        title: `${opt.label} saved`,
-        description: existing ? "Updated existing part — refine on the Refine page." : "Added to your kit. Refine sliders next.",
+        title: `${opt.label} rendered`,
+        description: "Open Render selected to inspect and refine this generated part.",
       });
       setBox(null);
     } catch (e: any) {
