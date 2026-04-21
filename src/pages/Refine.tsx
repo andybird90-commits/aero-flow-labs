@@ -1,17 +1,17 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
 import { CarViewer3D } from "@/components/CarViewer3D";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import {
   useGeometry, useActiveConceptSet, useFittedParts, useUpsertFittedPart,
   type FittedPart,
 } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowRight, Sliders, Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, Sliders, Eye, EyeOff, Download, Box } from "lucide-react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { downloadStl, partToStlString } from "@/lib/part-stl";
 
 interface RefineSpec {
   kind: string;
