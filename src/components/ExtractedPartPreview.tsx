@@ -195,6 +195,10 @@ export function ExtractedPartPreview({
           part_kind: kind,
           label,
           ...(overrideSourceUrl ? { source_image_url: overrideSourceUrl } : {}),
+          // Forward picked-part intent so Gemini renders exactly the part
+          // we picked, even if neighbours are visible in the source crop.
+          // Edge function also falls back to concept_parts.isolated_meta.
+          ...(bbox ? { bbox, picked_kind: kind } : {}),
         },
       });
       if (signal?.cancelled) return;

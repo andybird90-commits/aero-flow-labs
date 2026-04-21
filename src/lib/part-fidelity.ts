@@ -119,6 +119,46 @@ export function otsuMask(img: ImageData): Uint8Array {
   return below;
 }
 
+/**
+ * Keep only the largest 4-connected component in a binary mask. Other blobs
+ * are zeroed out. Used to focus IoU/edge comparisons on the primary object,
+ * ignoring small artifacts or neighbouring parts that happened to slip into
+ * the source crop. Iterative flood-fill — no recursion blowups.
+ */
+export function largestComponent(mask: Uint8Array, w: number, h: number): Uint8Array {
+  const visited = new Uint8Array(mask.length);
+  const stack = new Int32Array(mask.length);
+  const tmp = new Int32Array(mask.length);
+  let bestSize = 0;
+  let bestPixels: Int32Array | null = null;
+
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i] || visited[i]) continue;
+    let sp = 0;
+    stack[sp++] = i;
+    visited[i] = 1;
+    let count = 0;
+    while (sp > 0) {
+      const p = stack[--sp];
+      tmp[count++] = p;
+      const x = p % w;
+      const y = (p / w) | 0;
+      if (x > 0)     { const n = p - 1; if (mask[n] && !visited[n]) { visited[n] = 1; stack[sp++] = n; } }
+      if (x < w - 1) { const n = p + 1; if (mask[n] && !visited[n]) { visited[n] = 1; stack[sp++] = n; } }
+      if (y > 0)     { const n = p - w; if (mask[n] && !visited[n]) { visited[n] = 1; stack[sp++] = n; } }
+      if (y < h - 1) { const n = p + w; if (mask[n] && !visited[n]) { visited[n] = 1; stack[sp++] = n; } }
+    }
+    if (count > bestSize) {
+      bestSize = count;
+      bestPixels = tmp.slice(0, count);
+    }
+  }
+
+  const out = new Uint8Array(mask.length);
+  if (bestPixels) for (let k = 0; k < bestPixels.length; k++) out[bestPixels[k]] = 1;
+  return out;
+}
+
 /** Intersection-over-union of two binary masks (same length). */
 export function maskIoU(a: Uint8Array, b: Uint8Array): number {
   let inter = 0, uni = 0;
@@ -219,8 +259,14 @@ export async function scoreFidelity(sourceUrl: string, renderUrl: string): Promi
   const srcData = toCanvas(srcImg, WORK_SIZE);
   const rndData = toCanvas(rndImg, WORK_SIZE);
 
-  const srcMask = otsuMask(srcData);
-  const rndMask = otsuMask(rndData);
+  // Otsu, then take ONLY the largest connected component on each side.
+  // The source crop often contains neighbouring parts (vents, lip etc.) that
+  // the renderer is now explicitly told to ignore; comparing whole masks
+  // would produce a false MISMATCH when the render is correctly single-part.
+  const srcMaskRaw = otsuMask(srcData);
+  const rndMaskRaw = otsuMask(rndData);
+  const srcMask = largestComponent(srcMaskRaw, WORK_SIZE, WORK_SIZE);
+  const rndMask = largestComponent(rndMaskRaw, WORK_SIZE, WORK_SIZE);
 
   // 1) Silhouette IoU — re-centre+rescale both masks to their own bbox so
   // we don't penalise the AI for putting the part dead-centre when the
@@ -232,8 +278,8 @@ export async function scoreFidelity(sourceUrl: string, renderUrl: string): Promi
   const silhouette = maskIoU(srcNorm, rndNorm);
 
   // 2) Outline coverage — Sobel on grayscale, restricted to the part bbox
-  // by zeroing edges outside the mask (so background JPEG noise doesn't
-  // dominate).
+  // by zeroing edges outside the (largest-component) mask so neighbours and
+  // background noise don't dominate.
   const srcGray = toGray(srcData);
   const rndGray = toGray(rndData);
   const srcEdges = maskedEdges(srcGray, srcMask, WORK_SIZE, WORK_SIZE);
