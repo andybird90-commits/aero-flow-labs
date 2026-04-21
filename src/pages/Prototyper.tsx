@@ -220,8 +220,12 @@ function CreatePrototypeDialog({
   createMut: ReturnType<typeof useCreatePrototype>;
 }) {
   const { toast } = useToast();
+  const { data: garageCars = [] } = useGarageCars(userId);
   const [title, setTitle] = useState("");
   const [carContext, setCarContext] = useState("");
+  const [garageCarId, setGarageCarId] = useState<string>("none");
+  const [notes, setNotes] = useState("");
+  const [replicateExact, setReplicateExact] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -229,10 +233,22 @@ function CreatePrototypeDialog({
     if (!open) {
       setTitle("");
       setCarContext("");
+      setGarageCarId("none");
+      setNotes("");
+      setReplicateExact(false);
       setFiles([]);
       setSubmitting(false);
     }
   }, [open]);
+
+  // When user picks a Garage car, auto-fill the free-text car context for the AI.
+  useEffect(() => {
+    if (garageCarId === "none") return;
+    const car = garageCars.find((c) => c.id === garageCarId);
+    if (!car) return;
+    const label = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
+    if (label) setCarContext(label);
+  }, [garageCarId, garageCars]);
 
   const onPick = (incoming: FileList | null) => {
     if (!incoming) return;
@@ -262,6 +278,9 @@ function CreatePrototypeDialog({
         user_id: userId,
         title: title.trim() || "Untitled prototype",
         car_context: carContext.trim() || null,
+        notes: notes.trim() || null,
+        replicate_exact: replicateExact,
+        garage_car_id: garageCarId === "none" ? null : garageCarId,
         source_image_urls: uploadedUrls,
       });
       toast({ title: "Prototype created" });
@@ -275,7 +294,7 @@ function CreatePrototypeDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New prototype</DialogTitle>
           <DialogDescription>
@@ -286,13 +305,65 @@ function CreatePrototypeDialog({
         <div className="space-y-3">
           <div>
             <Label htmlFor="proto-title">Name</Label>
-            <Input id="proto-title" placeholder="e.g. Boxster 986 side skirt" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Input id="proto-title" placeholder="e.g. Boxster 986 side skirt" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
           </div>
+
           <div>
-            <Label htmlFor="proto-car">Car (optional)</Label>
-            <Input id="proto-car" placeholder="e.g. Porsche Boxster 986" value={carContext} onChange={(e) => setCarContext(e.target.value)} />
+            <Label htmlFor="proto-garage">Car from your Garage (optional)</Label>
+            <Select value={garageCarId} onValueChange={setGarageCarId}>
+              <SelectTrigger id="proto-garage">
+                <SelectValue placeholder="Pick a car…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— None —</SelectItem>
+                {garageCars.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Car className="h-3 w-3" />
+                      {[c.year, c.make, c.model, c.trim].filter(Boolean).join(" ")}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="proto-car">Or describe the car (optional)</Label>
+            <Input id="proto-car" placeholder="e.g. Porsche Boxster 986" value={carContext} onChange={(e) => setCarContext(e.target.value)} maxLength={200} />
             <p className="text-[11px] text-muted-foreground mt-1">Used purely as context to help the AI get proportions right.</p>
           </div>
+
+          <div>
+            <Label htmlFor="proto-notes">Notes for the AI (optional)</Label>
+            <Textarea
+              id="proto-notes"
+              placeholder='e.g. "no logo on the surface", "remove the badge", "ignore the scratch in photo 2", "smooth the top edge"'
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              maxLength={1000}
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Tell the model what to ignore, omit, or treat differently.
+            </p>
+          </div>
+
+          <label className="flex items-start gap-2 rounded-md border border-border bg-surface-0/40 p-3 cursor-pointer">
+            <Checkbox
+              id="proto-replicate"
+              checked={replicateExact}
+              onCheckedChange={(v) => setReplicateExact(v === true)}
+              className="mt-0.5"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-medium">Replicate exactly</div>
+              <p className="text-[11px] text-muted-foreground">
+                Tick this if you want a faithful replica of the part in the photos. Leave unticked for a cleaner, idealised version.
+              </p>
+            </div>
+          </label>
+
           <div>
             <Label>Reference photos</Label>
             <div className="mt-1 rounded-lg border border-dashed border-border bg-surface-0/40 p-3">
