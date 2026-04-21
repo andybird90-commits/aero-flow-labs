@@ -285,39 +285,41 @@ export function PartLasso({ imageUrl, mode, points, lasso, onChange, className }
   };
 
   return (
-    <div ref={wrapRef} className={cn("relative w-full h-full flex items-center justify-center", className)}>
-      <img
-        src={imageUrl}
-        alt="part render"
-        className="select-none pointer-events-none"
-        style={{
-          width: scale.w,
-          height: scale.h,
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          transformOrigin: "center center",
-        }}
-        draggable={false}
-      />
-      <canvas
-        ref={canvasRef}
-        className={cn(
-          "absolute",
-          panRef.current || spaceDown ? "cursor-grab"
-            : mode === "click" ? "cursor-crosshair"
-            : "cursor-cell",
-        )}
-        style={{ width: scale.w, height: scale.h }}
-        onWheel={zoomFromWheel}
-        onClick={onCanvasClick}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onContextMenu={(e) => e.preventDefault()}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      />
+    <div ref={wrapRef} className={cn("relative w-full h-full flex items-center justify-center overflow-hidden", className)}>
+      <div className="relative shrink-0" style={{ width: scale.w, height: scale.h }}>
+        <img
+          src={imageUrl}
+          alt="part render"
+          className="absolute left-0 top-0 select-none pointer-events-none"
+          style={{
+            width: scale.w,
+            height: scale.h,
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "center center",
+          }}
+          draggable={false}
+        />
+        <canvas
+          ref={canvasRef}
+          className={cn(
+            "absolute left-0 top-0",
+            panRef.current || spaceDown ? "cursor-grab"
+              : mode === "click" ? "cursor-crosshair"
+              : "cursor-cell",
+          )}
+          style={{ width: scale.w, height: scale.h, touchAction: "none" }}
+          onWheel={zoomFromWheel}
+          onClick={onCanvasClick}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onContextMenu={(e) => e.preventDefault()}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+        />
+      </div>
     </div>
   );
 }
