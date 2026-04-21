@@ -92,8 +92,22 @@ Deno.serve(async (req) => {
     }
 
     const carContext = (proto.car_context ?? "").trim();
+    const userNotes = ((proto as any).notes ?? "").toString().trim();
+    const replicateExact = !!(proto as any).replicate_exact;
     const renders: Array<{ angle: string; url: string }> = [];
     let heroDataUrl: string | null = null;
+
+    const FIDELITY_HERO = replicateExact
+      ? `FIDELITY: REPLICA MODE — copy the part in the photos as faithfully as possible. Preserve every vent, return, crease, fillet, transition and proportion exactly. Do NOT idealise, smooth out, or "improve" the design. If something is asymmetric in the photos, keep it asymmetric.`
+      : `FIDELITY: Re-draw a clean, idealised version of the part — the SHAPE and proportions must match, but you may smooth out manufacturing flaws, scratches, dirt, and odd reflections.`;
+
+    const FIDELITY_BACK = replicateExact
+      ? `FIDELITY: REPLICA MODE — match the hero render exactly, no creative reinterpretation.`
+      : `FIDELITY: Match the hero render exactly.`;
+
+    const NOTES_BLOCK = userNotes
+      ? `\nUSER NOTES (HIGH PRIORITY — follow these literally):\n${userNotes}\n`
+      : ``;
 
     for (const angle of ANGLES) {
       const isHero = angle.key === "hero";
@@ -109,6 +123,8 @@ Deno.serve(async (req) => {
             `Match the reference proportions exactly. Preserve real section thickness and the reverse / inner face wherever visible from this angle.`,
             `IMPORTANT: this part will be BONDED OR BOLTED ON AFTER PRINTING. Do NOT add bolt holes, fasteners, mounting tabs, flanges, brackets or hardware.`,
             ``,
+            FIDELITY_HERO,
+            NOTES_BLOCK,
             `SURFACE: ${SURFACE}`,
             `SHELL: ${SHELL}`,
             ``,
@@ -135,6 +151,8 @@ Deno.serve(async (req) => {
             `Reveal the reverse / inner side and edge thickness so the object reads as a manufacturable thin-shell part.`,
             `Do NOT invent fasteners, bolt holes, flanges or brackets — fixing happens after printing.`,
             ``,
+            FIDELITY_BACK,
+            NOTES_BLOCK,
             `SURFACE: ${SURFACE}`,
             `SHELL: ${SHELL}`,
             ``,
