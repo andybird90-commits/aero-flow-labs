@@ -80,6 +80,10 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [referencePaths, setReferencePaths] = useState<string[]>([]);
   const [refUrls, setRefUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
+  const [discipline, setDiscipline] = useState<string>("auto");
+  const [aggression, setAggression] = useState<string>("auto");
+  const [mustInclude, setMustInclude] = useState<string[]>([]);
+  const [mustAvoid, setMustAvoid] = useState<string[]>([]);
 
   const MAX_REFS = 5;
   const activePreset = presets.find((p) => p.id === stylePresetId) ?? null;
@@ -93,6 +97,10 @@ function BriefInner({ projectId }: { projectId: string }) {
       setRights(brief.rights_confirmed ?? false);
       setStylePresetId((brief as any).style_preset_id ?? null);
       setReferencePaths(brief.reference_image_paths ?? []);
+      setDiscipline(((brief as any).discipline as string) || "auto");
+      setAggression(((brief as any).aggression as string) || "auto");
+      setMustInclude(((brief as any).must_include as string[]) ?? []);
+      setMustAvoid(((brief as any).must_avoid as string[]) ?? []);
     }
   }, [brief]);
 
