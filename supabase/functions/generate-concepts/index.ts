@@ -236,7 +236,7 @@ Deno.serve(async (req) => {
       }
 
       // @ts-ignore EdgeRuntime is provided by Deno.
-      EdgeRuntime.waitUntil(queueAllVariations({ authHeader, body, variationCount: ctx.variations.length, conceptSetId: ctx.conceptSetId }).catch(async (e) => {
+      EdgeRuntime.waitUntil(queueAllVariations({ authHeader, body, variations: ctx.variations, conceptSetId: ctx.conceptSetId }).catch(async (e) => {
         console.error("generate-concepts queue failed:", e);
         if (ctx.conceptSetId) {
           await admin.from("concept_sets").update({ status: "failed" }).eq("id", ctx.conceptSetId);
@@ -783,19 +783,19 @@ async function renderAngle({
 async function queueAllVariations({
   authHeader,
   body,
-  variationCount,
+  variations,
   conceptSetId,
 }: {
   authHeader: string;
   body: Body;
-  variationCount: number;
+  variations: Variation[];
   conceptSetId: string | null;
 }) {
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   let successCount = 0;
   const failures: string[] = [];
 
-  for (let variationIndex = 0; variationIndex < variationCount; variationIndex += 1) {
+  for (let variationIndex = 0; variationIndex < variations.length; variationIndex += 1) {
     const resp = await fetch(FUNCTION_URL, {
       method: "POST",
       headers: {
@@ -808,7 +808,8 @@ async function queueAllVariations({
         brief_id: body.brief_id,
         snapshot_data_url: body.snapshot_data_url ?? null,
         snapshots: body.snapshots ?? {},
-        variation_index: variationIndex,
+        variation_index: 0,
+        variation_seed: variations[variationIndex],
       }),
     });
 
