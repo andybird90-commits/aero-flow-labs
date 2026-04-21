@@ -483,6 +483,15 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
   const fitUrl = (prototype as any)?.fit_preview_url ?? null;
   const fitStatus = (prototype as any)?.fit_preview_status ?? "idle";
   const garageCarId = (prototype as any)?.garage_car_id ?? null;
+  const genMode: PrototypeGenerationMode = (prototype as any)?.generation_mode ?? "exact_photo";
+  const isolatedRefs = useMemo(
+    () => (((prototype as any)?.isolated_ref_urls as string[]) ?? []),
+    [prototype],
+  );
+  const referenceStatus: string = (prototype as any)?.reference_status ?? "idle";
+  const referenceError: string | null = (prototype as any)?.reference_error ?? null;
+  const placement: string | null = (prototype as any)?.placement_hint ?? null;
+  const showIsolatedPanel = genMode === "exact_photo" && sources.length > 0;
 
   // Three.js viewer
   useEffect(() => {
@@ -551,9 +560,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
     try {
       // For exact_photo with photos, isolate the part first so the downstream
       // renders work from a clean reference instead of a busy raw photo.
-      const genMode = (prototype as any).generation_mode ?? "exact_photo";
-      const isolated = ((prototype as any).isolated_ref_urls as string[]) ?? [];
-      if (genMode === "exact_photo" && sources.length > 0 && isolated.length === 0) {
+      if (genMode === "exact_photo" && sources.length > 0 && isolatedRefs.length === 0) {
         const iso = await supabase.functions.invoke("isolate-prototype-part", {
           body: { prototype_id: prototype.id },
         });
@@ -587,6 +594,25 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
       toast({ title: "Renders ready" });
     } catch (e: any) {
       toast({ title: "Render failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const reisolate = async () => {
+    setBusy("render");
+    try {
+      const iso = await supabase.functions.invoke("isolate-prototype-part", {
+        body: { prototype_id: prototype.id },
+      });
+      if (iso.error) throw iso.error;
+      if ((iso.data as any)?.error) throw new Error((iso.data as any).error);
+      const { data: fresh } = await (supabase as any)
+        .from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
+      if (fresh) Object.assign(prototype, fresh);
+      toast({ title: "Reference re-isolated" });
+    } catch (e: any) {
+      toast({ title: "Isolation failed", description: String(e.message ?? e), variant: "destructive" });
     } finally {
       setBusy(null);
     }
