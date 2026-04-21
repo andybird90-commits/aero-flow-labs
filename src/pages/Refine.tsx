@@ -1,17 +1,17 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
 import { CarViewer3D } from "@/components/CarViewer3D";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import {
   useGeometry, useActiveConceptSet, useFittedParts, useUpsertFittedPart,
   type FittedPart,
 } from "@/lib/repo";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowRight, Sliders, Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, Sliders, Eye, EyeOff, Download, Box } from "lucide-react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { downloadStl, partToStlString } from "@/lib/part-stl";
 
 interface RefineSpec {
   kind: string;
@@ -52,6 +52,20 @@ const REFINE_SPECS: RefineSpec[] = [
     controls: [{ key: "flare", label: "Flare", min: 20, max: 120, step: 5, unit: "mm" }],
   },
   {
+    kind: "front_arch", label: "Front arch",
+    controls: [
+      { key: "flare", label: "Flare", min: 20, max: 120, step: 5, unit: "mm" },
+      { key: "arch_radius", label: "Arch radius", min: 260, max: 560, step: 10, unit: "mm" },
+    ],
+  },
+  {
+    kind: "rear_arch", label: "Rear arch",
+    controls: [
+      { key: "flare", label: "Flare", min: 20, max: 140, step: 5, unit: "mm" },
+      { key: "arch_radius", label: "Arch radius", min: 260, max: 580, step: 10, unit: "mm" },
+    ],
+  },
+  {
     kind: "diffuser", label: "Rear diffuser",
     controls: [{ key: "angle", label: "Angle", min: 0, max: 25, step: 1, unit: "°" }],
   },
@@ -69,6 +83,8 @@ const REFINE_SPECS: RefineSpec[] = [
   },
 ];
 
+const labelFor = (kind: string) => REFINE_SPECS.find((s) => s.kind === kind)?.label ?? kind.replace(/_/g, " ");
+
 export default function Refine() {
   return (
     <WorkspaceShell>
@@ -79,6 +95,8 @@ export default function Refine() {
 
 function RefineInner({ projectId, project }: { projectId: string; project: any }) {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const focusedKind = searchParams.get("part");
   const { data: geometry } = useGeometry(projectId);
   const { data: conceptSet } = useActiveConceptSet(projectId);
   const { data: parts = [] } = useFittedParts(conceptSet?.id);
@@ -86,7 +104,12 @@ function RefineInner({ projectId, project }: { projectId: string; project: any }
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
 
   const enabled = parts.filter((p) => p.enabled);
-  const visibility = Object.fromEntries(enabled.map((p) => [p.kind, !hidden[p.kind]]));
+  const focusedPart = focusedKind ? enabled.find((p) => p.kind === focusedKind) : undefined;
+  const displayedParts = focusedPart ? [focusedPart] : enabled;
+  const visibility = useMemo(() => {
+    if (focusedPart) return Object.fromEntries(enabled.map((p) => [p.kind, p.id === focusedPart.id]));
+    return Object.fromEntries(enabled.map((p) => [p.kind, !hidden[p.kind]]));
+  }, [enabled, focusedPart, hidden]);
 
   const update = (part: FittedPart, key: string, value: number) => {
     if (!user || !conceptSet) return;
@@ -123,10 +146,12 @@ function RefineInner({ projectId, project }: { projectId: string; project: any }
 
       <div className="space-y-4">
         <div>
-          <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Step 5 · Refine</div>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">Tune the fitted parts</h1>
+          <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Step 5 · Render / Refine</div>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">
+            {focusedPart ? `Rendering ${labelFor(focusedPart.kind)}` : "Tune the fitted parts"}
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Live preview · adjustments save automatically.
+            {focusedPart ? "Only this saved part is shown. Adjust it live or download its STL." : "Live preview · adjustments save automatically."}
           </p>
         </div>
 
@@ -139,21 +164,35 @@ function RefineInner({ projectId, project }: { projectId: string; project: any }
           </div>
         )}
 
-        {enabled.map((part) => {
+        {displayedParts.map((part) => {
           const spec = REFINE_SPECS.find((s) => s.kind === part.kind);
           if (!spec) return null;
           const isHidden = !!hidden[part.kind];
           return (
             <div key={part.id} className={cn("glass rounded-xl", isHidden && "opacity-60")}>
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <h3 className="text-sm font-semibold tracking-tight">{spec.label}</h3>
-                <button
-                  onClick={() => setHidden((h) => ({ ...h, [part.kind]: !h[part.kind] }))}
-                  className="text-muted-foreground hover:text-foreground"
-                  title={isHidden ? "Show in viewer" : "Hide from viewer"}
-                >
-                  {isHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                <div className="inline-flex items-center gap-2">
+                  <Box className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold tracking-tight">{spec.label}</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => downloadStl(`${part.kind}.stl`, partToStlString(part.kind, part.params as Record<string, number>))}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-mono text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
+                    title="Download this part as STL"
+                  >
+                    <Download className="h-3 w-3" /> STL
+                  </button>
+                  {!focusedPart && (
+                    <button
+                      onClick={() => setHidden((h) => ({ ...h, [part.kind]: !h[part.kind] }))}
+                      className="text-muted-foreground hover:text-foreground"
+                      title={isHidden ? "Show in viewer" : "Hide from viewer"}
+                    >
+                      {isHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="p-4 space-y-4">
                 {spec.controls.map((c) => {
