@@ -325,6 +325,7 @@ function ConceptCard({
   onDelete: () => void;
   onBuildKit: () => void;
 }) {
+  const { toast } = useToast();
   const initialAeroStatus = ((concept as any).aero_kit_status ?? "idle") as AeroKitStatus;
   const initialAeroError = (concept as any).aero_kit_error as string | null | undefined;
   const initialAeroWarning = (concept as any).aero_kit_warning as string | null | undefined;
@@ -373,7 +374,8 @@ function ConceptCard({
 
   // Combined carbon-kit mesh (single GLB for the whole kit, user splits in CAD).
   const initialKitStatus = (c.carbon_kit_status as string | undefined) ?? "idle";
-  const kitPolling = initialKitStatus === "generating" || initialKitStatus === "queued";
+  const [kitStartPending, setKitStartPending] = useState(false);
+  const kitPolling = kitStartPending || initialKitStatus === "generating" || initialKitStatus === "queued";
   const polledKit = useCarbonKitStatus(concept.id, kitPolling);
   const kitStatus = (polledKit.data?.carbon_kit_status ?? initialKitStatus) as
     "idle" | "queued" | "generating" | "ready" | "failed";
@@ -381,7 +383,7 @@ function ConceptCard({
   const kitStlUrl = polledKit.data?.carbon_kit_stl_url ?? (c.carbon_kit_stl_url as string | null | undefined);
   const kitScaleM = polledKit.data?.carbon_kit_scale_m ?? (c.carbon_kit_scale_m as number | null | undefined);
   const kitError = polledKit.data?.carbon_kit_error ?? (c.carbon_kit_error as string | null | undefined);
-  const kitBusy = kitStatus === "generating" || kitStatus === "queued";
+  const kitBusy = kitStartPending || kitStatus === "generating" || kitStatus === "queued";
   const meshifyKit = useMeshifyCarbonKit();
 
   // If the polled response carries fresh carbon URLs, prefer those.
@@ -417,6 +419,23 @@ function ConceptCard({
     // First time — kick off generation and flip on optimistically.
     setCarbonMode(true);
     try { await isolateCarbon.mutateAsync(concept.id); } catch { /* surface via status */ }
+  };
+
+  const handleMeshifyKit = async () => {
+    if (kitBusy || meshifyKit.isPending) return;
+    setKitStartPending(true);
+    toast({
+      title: "Carbon kit meshing started",
+      description: "Preparing matte-white kit renders, then sending side + rear views to Rodin.",
+    });
+    try {
+      await meshifyKit.mutateAsync(concept.id);
+      toast({ title: "Rodin reconstruction queued", description: "The card will update while the mesh is generated." });
+    } catch (e: any) {
+      toast({ title: "Couldn’t start mesh", description: String(e?.message ?? e), variant: "destructive" });
+    } finally {
+      setKitStartPending(false);
+    }
   };
 
   const goPrev = () => setAngleIdx((i) => (i - 1 + visibleAngles.length) % visibleAngles.length);
@@ -649,19 +668,13 @@ function ConceptCard({
               variant="hero"
               size="sm"
               className="w-full"
-              disabled={kitBusy || (!carbonReady && !carbonAngles.some((a) => !!a.url))}
-              onClick={async () => {
-                try {
-                  await meshifyKit.mutateAsync(concept.id);
-                } catch (e: any) {
-                  // surfaced via kitError via polling
-                  console.error(e);
-                }
-              }}
+              disabled={kitBusy || meshifyKit.isPending || (!carbonReady && !carbonAngles.some((a) => !!a.url))}
+              onClick={handleMeshifyKit}
               title="Reconstruct the entire carbon body kit as one mesh — split it in Fusion / Blender afterwards"
             >
-              {kitBusy ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Boxes className="mr-1.5 h-3.5 w-3.5" />}
-              {kitBusy ? "Reconstructing combined kit… ~60s"
+              {kitBusy || meshifyKit.isPending ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Boxes className="mr-1.5 h-3.5 w-3.5" />}
+              {kitStartPending || meshifyKit.isPending ? "Starting carbon kit mesh…"
+                : kitBusy ? "Reconstructing combined kit… ~60s"
                 : kitStatus === "ready" ? "Re-mesh full kit"
                 : "Mesh full carbon kit"}
             </Button>
