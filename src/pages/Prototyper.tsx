@@ -618,7 +618,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
         {/* Scrollable body so the hero never gets squashed by the secondary grid below. */}
         <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2">
         {/* HERO PANEL — On-car carbon composite (or clay hero fallback if no car). */}
-        <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden" style={{ aspectRatio: "3 / 2" }}>
+        <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden" style={{ aspectRatio: "16 / 9" }}>
           <span className="absolute top-1.5 left-1.5 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
             {garageCarId ? "On car (carbon)" : "Hero render"}
           </span>
