@@ -41,22 +41,16 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RODIN_MODEL = "hyper3d/rodin";
 
 const KIT_PROMPT =
-  `A loose collection of FLOATING DISCONNECTED aftermarket carbon-fibre ` +
-  `aero parts (front splitter, canards, side skirts, flared wheel arches, ` +
-  `rear diffuser, rear wing, hood vents, rear quarter panels) photographed ` +
-  `on a plain grey studio backdrop. THESE PARTS ARE NOT ATTACHED TO A CAR — ` +
-  `there is NO car body, NO chassis, NO wheels, NO glass, NO headlights, ` +
-  `NO doors, NO roof. Reconstruct ONLY the visible carbon parts as separate ` +
-  `floating shells in the SAME relative positions shown in the reference ` +
-  `views. The reference shows TWO views of the same kit: a SIDE view ` +
-  `(showing full kit silhouette and length) and a REAR view (showing wing ` +
-  `width, diffuser depth and quarter panels). Use them together to solve ` +
-  `depth — do NOT invent a car body to bridge the gap between parts. ` +
-  `Clean smooth surfaces, sharp panel edges, flat aero faces, no surface ` +
-  `noise, thin-walled composite shell construction (~2 mm wall thickness), ` +
-  `open-backed where appropriate, visible edge thickness. No bolt holes, ` +
-  `no fasteners, no mounting tabs. Each part stays visually distinct so ` +
-  `the user can split it in CAD afterwards. Output: floating parts only.`;
+  `Floating disconnected aftermarket carbon-fibre aero parts (splitter, ` +
+  `canards, side skirts, flared arches, diffuser, rear wing, vents, ` +
+  `quarter panels) on a plain grey backdrop. NO car body, NO chassis, ` +
+  `NO wheels, NO glass, NO doors, NO roof — parts are NOT attached to ` +
+  `a vehicle. Two reference views: SIDE (full silhouette + length) and ` +
+  `REAR (wing width + diffuser depth). Reconstruct only the visible ` +
+  `carbon shells in their shown positions. Do NOT invent a car body to ` +
+  `bridge gaps. Clean smooth surfaces, sharp edges, flat aero faces, ` +
+  `thin-walled composite (~2mm), open-backed where appropriate. No ` +
+  `bolts, fasteners or tabs. Parts stay visually distinct for CAD split.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
