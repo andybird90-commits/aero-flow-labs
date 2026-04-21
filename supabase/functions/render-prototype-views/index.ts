@@ -48,8 +48,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { prototype_id } = (await req.json()) as { prototype_id?: string };
+    const { prototype_id, revision_note } = (await req.json()) as { prototype_id?: string; revision_note?: string };
     if (!prototype_id) return json({ error: "prototype_id required" }, 400);
+    const revisionNote = (revision_note ?? "").toString().trim().slice(0, 1000);
 
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
@@ -108,8 +109,9 @@ Deno.serve(async (req) => {
       ? `FIDELITY: REPLICA MODE — match the hero render exactly, no creative reinterpretation.`
       : `FIDELITY: Match the hero render exactly.`;
 
-    const NOTES_BLOCK = userNotes
-      ? `\nUSER NOTES (HIGH PRIORITY — follow these literally):\n${userNotes}\n`
+    const combinedNotes = [userNotes, revisionNote].filter(Boolean).join("\n\nREVISION REQUEST (apply on top of any earlier notes):\n");
+    const NOTES_BLOCK = combinedNotes
+      ? `\nUSER NOTES (HIGHEST PRIORITY — follow these literally, override any conflicting default behaviour):\n${combinedNotes}\n`
       : ``;
 
     for (const angle of ANGLES) {

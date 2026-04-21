@@ -418,6 +418,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
   const { toast } = useToast();
   const [meshProgress, setMeshProgress] = useState(0);
   const [busy, setBusy] = useState<"render" | "mesh" | null>(null);
+  const [revisionNote, setRevisionNote] = useState("");
   const mountRef = useRef<HTMLDivElement>(null);
 
   const sources = useMemo(() => ((prototype?.source_image_urls as string[]) ?? []), [prototype]);
@@ -490,17 +491,16 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
     setBusy("render");
     try {
       const { data, error } = await supabase.functions.invoke("render-prototype-views", {
-        body: { prototype_id: prototype.id },
+        body: { prototype_id: prototype.id, revision_note: revisionNote.trim() || undefined },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       // Force-refresh in case realtime is slow/down so the workspace shows the new renders.
       const { data: fresh } = await (supabase as any).from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
       if (fresh) {
-        // mutate the active row in the parent via a custom event-like callback would be cleaner,
-        // but the simplest fix is to surface the new render_urls immediately by reloading the dialog.
         Object.assign(prototype, fresh);
       }
+      setRevisionNote("");
       toast({ title: "Renders ready" });
     } catch (e: any) {
       toast({ title: "Render failed", description: String(e.message ?? e), variant: "destructive" });
@@ -657,10 +657,27 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
           </div>
         )}
 
+        {renders.length > 0 && (
+          <div className="rounded-md border border-border bg-surface-0/40 p-2 space-y-1">
+            <Label htmlFor="proto-revision" className="text-[10px] uppercase tracking-widest font-mono text-muted-foreground">
+              Revision note for next render
+            </Label>
+            <Textarea
+              id="proto-revision"
+              placeholder='e.g. "make the back more hollow", "remove the GT4 text", "sharpen the front edge", "make the opening bigger"'
+              value={revisionNote}
+              onChange={(e) => setRevisionNote(e.target.value)}
+              rows={2}
+              maxLength={1000}
+              disabled={isRendering || isMeshing}
+            />
+          </div>
+        )}
+
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onClose}><X className="h-4 w-4 mr-1" /> Close</Button>
           <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || sources.length === 0}>
-            {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length ? "Re-render views" : "Render views"}</>}
+            {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length ? (revisionNote.trim() ? "Re-render with note" : "Re-render views") : "Render views"}</>}
           </Button>
           <Button onClick={startMesh} disabled={isMeshing || isRendering || renders.length === 0}>
             {isMeshing ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Meshing…</> : <><Box className="h-4 w-4 mr-1" /> {glbUrl ? "Re-mesh" : "Make 3D model"}</>}
