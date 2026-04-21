@@ -225,6 +225,58 @@ async function buildSilhouetteAndBbox(
   };
 }
 
+async function chooseMaskForClick(
+  maskUrls: string[],
+  sourceSize: { w: number; h: number },
+  clickPx: { x: number; y: number },
+): Promise<Uint8Array> {
+  const { Image } = await import("https://deno.land/x/imagescript@1.2.17/mod.ts");
+  let best: { bytes: Uint8Array; score: number } | null = null;
+  for (const url of maskUrls.slice(0, 80)) {
+    const bytes = await fetchAsBuffer(url);
+    let img = await Image.decode(bytes);
+    if (img.width !== sourceSize.w || img.height !== sourceSize.h) {
+      img = img.resize(sourceSize.w, sourceSize.h);
+    }
+    const score = scoreMaskForClick(img, clickPx, sourceSize);
+    if (!best || score < best.score) best = { bytes, score };
+    if (score === 0) break;
+  }
+  if (!best || !Number.isFinite(best.score)) {
+    throw new Error("SAM did not return a mask near the click. Try clicking nearer the center of the part.");
+  }
+  return best.bytes;
+}
+
+function scoreMaskForClick(
+  mask: any,
+  clickPx: { x: number; y: number },
+  size: { w: number; h: number },
+): number {
+  const cx = Math.max(0, Math.min(size.w - 1, clickPx.x));
+  const cy = Math.max(0, Math.min(size.h - 1, clickPx.y));
+  const at = (x: number, y: number) => {
+    const m = mask.getRGBAAt(x + 1, y + 1);
+    return ((m >> 24) & 0xff) > 127;
+  };
+  if (at(cx, cy)) return 0;
+
+  const maxRadius = Math.ceil(Math.max(size.w, size.h) * 0.16);
+  for (let r = 3; r <= maxRadius; r += 3) {
+    for (let dy = -r; dy <= r; dy += 3) {
+      for (let dx = -r; dx <= r; dx += 3) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const x = cx + dx;
+        const y = cy + dy;
+        if (x >= 0 && y >= 0 && x < size.w && y < size.h && at(x, y)) {
+          return Math.hypot(dx, dy);
+        }
+      }
+    }
+  }
+  return Infinity;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
