@@ -372,7 +372,8 @@ export function ExtractedPartPreview({
         // Bake transforms so exported triangles are in world coordinates.
         scene.updateMatrixWorld(true);
         const stlData = new STLExporter().parse(scene, { binary: true }) as DataView;
-        blob = new Blob([stlData.buffer], { type: "model/stl" });
+        const stlBytes = new Uint8Array(stlData.buffer as ArrayBuffer, stlData.byteOffset, stlData.byteLength);
+        blob = new Blob([stlBytes], { type: "model/stl" });
       } else {
         // Already STL — pass through unchanged.
         blob = new Blob([buf], { type: "model/stl" });
