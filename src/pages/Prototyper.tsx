@@ -39,7 +39,8 @@ import { ModeSwitcher, type PrototyperMode } from "@/components/prototyper/ModeS
 import { PrototyperLeftPanel } from "@/components/prototyper/PrototyperLeftPanel";
 import { PrototyperCanvas } from "@/components/prototyper/PrototyperCanvas";
 import { PrototyperRightPanel } from "@/components/prototyper/PrototyperRightPanel";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, AlertTriangle } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const VIEW_FIELD_MAP: Record<ViewAngle, keyof GarageCar> = {
   front: "ref_front_url",
@@ -360,6 +361,7 @@ export default function Prototyper() {
             </Button>
           }
         />
+        <PausedBanner />
         <Card className="p-8 text-center">
           <div className="text-sm text-muted-foreground max-w-md mx-auto">
             No prototypes yet. Create one, pick a garage car view, generate a concept,
@@ -385,6 +387,7 @@ export default function Prototyper() {
         description={activePrototype.title}
         actions={<ModeSwitcher mode={mode} onChange={setMode} placeEnabled={frozenParts.length > 0} />}
       />
+      <PausedBanner />
 
       <div className="grid grid-cols-12 gap-4 h-[calc(100vh-220px)] min-h-[600px]">
         <div className="col-span-3 overflow-hidden">
@@ -459,6 +462,20 @@ export default function Prototyper() {
         busy={createProto.isPending}
       />
     </AppLayout>
+  );
+}
+
+function PausedBanner() {
+  return (
+    <div className="rounded-md border border-warning/40 bg-warning/10 text-warning px-3 py-2 text-xs flex items-start gap-2 mb-3">
+      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+      <div className="flex-1">
+        <span className="font-semibold">Prototyper is paused.</span>{" "}
+        Mounted-part picking on renders proved unreliable. Use{" "}
+        <Link to="/concepts" className="underline hover:text-foreground">Concepts → isolated parts</Link>{" "}
+        for new work. Existing prototypes remain available here.
+      </div>
+    </div>
   );
 }
 

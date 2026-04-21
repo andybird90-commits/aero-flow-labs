@@ -26,7 +26,9 @@ import { useToast } from "@/hooks/use-toast";
 import { PartLasso, type LassoMode, type LassoClick, type LassoPoint } from "@/components/PartLasso";
 import { scoreFidelity, type FidelityResult } from "@/lib/part-fidelity";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ShieldCheck, ShieldAlert, ShieldX, Eye, EyeOff } from "lucide-react";
+import { ShieldCheck, ShieldAlert, ShieldX, Eye, EyeOff, Send } from "lucide-react";
+import { isBodyConforming, FIT_CLASS_DESCRIPTION } from "@/lib/part-classification";
+import { SendToGeometryWorker } from "@/components/SendToGeometryWorker";
 
 interface Props {
   open: boolean;
@@ -86,6 +88,39 @@ export function ExtractedPartPreview({
   const [trimLasso, setTrimLasso] = useState<LassoPoint[]>([]);
   const [maskedUrl, setMaskedUrl] = useState<string | null>(null);
   const [snapping, setSnapping] = useState(false);
+  const [geometryDialogOpen, setGeometryDialogOpen] = useState(false);
+  const [baseMeshUrl, setBaseMeshUrl] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const bodyConforming = isBodyConforming(kind);
+
+  // Look up base car STL + project for the geometry worker dispatcher.
+  useEffect(() => {
+    if (!open || !bodyConforming) return;
+    let cancelled = false;
+    (async () => {
+      const { data: cp } = await supabase
+        .from("concept_parts")
+        .select("project_id")
+        .eq("concept_id", conceptId)
+        .eq("kind", kind)
+        .maybeSingle();
+      if (cancelled || !cp?.project_id) return;
+      setProjectId(cp.project_id);
+      const { data: geo } = await supabase
+        .from("geometries")
+        .select("stl_path")
+        .eq("project_id", cp.project_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled || !geo?.stl_path) return;
+      const { data: signed } = await supabase.storage
+        .from("geometries")
+        .createSignedUrl(geo.stl_path, 60 * 60);
+      if (!cancelled && signed?.signedUrl) setBaseMeshUrl(signed.signedUrl);
+    })();
+    return () => { cancelled = true; };
+  }, [open, bodyConforming, conceptId, kind]);
 
   // Reset trim state whenever the dialog opens or the underlying render changes.
   useEffect(() => {
@@ -973,9 +1008,12 @@ export function ExtractedPartPreview({
                   <Undo2 className="h-4 w-4 mr-1" /> Use original
                 </Button>
               )}
-              {/* Gate the mesh step on fidelity. Mismatch (<50) requires
-                  the user to either re-draw or explicitly override. */}
-              {fidelity?.status === "mismatch" && !overrideFidelity ? (
+              {/* Body-conforming kinds bypass image-to-3D entirely. */}
+              {bodyConforming ? (
+                <Button onClick={() => setGeometryDialogOpen(true)}>
+                  <Send className="h-4 w-4 mr-1" /> Send to geometry worker
+                </Button>
+              ) : fidelity?.status === "mismatch" && !overrideFidelity ? (
                 <Button
                   variant="outline"
                   onClick={() => setOverrideFidelity(true)}
