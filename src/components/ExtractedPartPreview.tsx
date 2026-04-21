@@ -922,9 +922,23 @@ export function ExtractedPartPreview({
                   <Undo2 className="h-4 w-4 mr-1" /> Use original
                 </Button>
               )}
-              <Button onClick={onMakeMesh}>
-                <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
-              </Button>
+              {/* Gate the mesh step on fidelity. Mismatch (<50) requires
+                  the user to either re-draw or explicitly override. */}
+              {fidelity?.status === "mismatch" && !overrideFidelity ? (
+                <Button
+                  variant="outline"
+                  onClick={() => setOverrideFidelity(true)}
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                  title={`Score ${fidelity.score}/100 — render doesn't match the source. Re-draw recommended.`}
+                >
+                  <ShieldX className="h-4 w-4 mr-1" /> Mesh anyway
+                </Button>
+              ) : (
+                <Button onClick={onMakeMesh}>
+                  <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
+                </Button>
+              )}
+
             </>
           )}
 
