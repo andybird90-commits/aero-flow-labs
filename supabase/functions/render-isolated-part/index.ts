@@ -104,9 +104,10 @@ const SURFACE_TREATMENT =
 // itself (the shell) is thin, like a fibreglass/carbon moulding.
 // Earlier wording made Gemini collapse the whole part into a flat 2mm ribbon.
 const SHELL_TREATMENT =
-  "MATERIAL CONSTRUCTION: render this as a moulded composite/fibreglass aero part — the SHELL/WALL itself is thin (~2mm) like a real bolt-on bodykit panel, but the part still has its FULL real-world three-dimensional shape, height, depth, curvature and flare. " +
+  "MATERIAL CONSTRUCTION: render this as a moulded composite/fibreglass aero part — the SHELL/WALL itself is thin (~2mm) like a real bonded-on bodykit panel, but the part still has its FULL real-world three-dimensional shape, height, depth, curvature and flare. " +
   "Do NOT flatten the part into a thin ribbon or strip. Keep its proper proportions: a side skirt is still ~150-250mm tall with a curved outward flare, a diffuser still has 400-600mm of depth with tall vertical strakes, an arch flare still bulges out 30-50mm from where it would mount, etc. " +
-  "Only the visible EDGES (the open-backed mounting side / cut edge) should read as thin sheet material — like looking at the rim of a fibreglass moulding. The exterior surface is full-form. Think 'hollow GRP body panel,' NOT 'flat sheet metal cut-out.'";
+  "Only the visible EDGES (the open-backed inner side / cut edge) should read as thin sheet material — like looking at the rim of a fibreglass moulding. The exterior surface is full-form. Think 'hollow GRP body panel,' NOT 'flat sheet metal cut-out.' " +
+  "FIXING METHOD IS NOT YOUR PROBLEM: do NOT add bolt holes, screw holes, fastener heads, threaded inserts, rivets, mounting tabs, mounting flanges, brackets, clips, or any visible attachment hardware. The part will be bonded or bolted on AFTER printing — render only the clean aerodynamic shell, with smooth continuous edges where it would meet the car.";
 
 // Multi-view renders give the 3D stage enough information to preserve thin
 // shell construction, reverse faces, mounting flanges, and end thickness.
