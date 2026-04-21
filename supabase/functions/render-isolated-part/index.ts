@@ -216,11 +216,16 @@ Deno.serve(async (req) => {
     for (const angle of ANGLES) {
       const isHero = angle.key === "front34";
 
+      const partLabel = label || intentKind.replace(/[_-]+/g, " ");
       const promptLines = isHero ? [
         `You are looking at ${refDataUrls.length} photos of ONE SPECIFIC custom car build.`,
         `Concept context: ${styleHint}.`,
         ``,
-        `STEP 1 — STUDY the reference images. Find the ${spec.what} on this specific car.`,
+        `IMPORTANT — THE REFERENCE IMAGE MAY CONTAIN MULTIPLE AERO PARTS (vents, lip, canards, skirts, arches, wing, etc.).`,
+        `Render ONLY the ${partLabel} — the part centred at roughly (${cxPct}%, ${cyPct}%) of the reference frame.`,
+        `Ignore every other shape, every other vent, every other panel, every other fin in the frame. They do not exist for this task.`,
+        ``,
+        `STEP 1 — STUDY the reference. Find the ${spec.what} on this car (the part centred near (${cxPct}%, ${cyPct}%)).`,
         `Note its exact silhouette, thickness, flare/curve aggression, vent/louvre/cutout sizes, mounting tab locations, and overall proportions.`,
         `IGNORE the material, colour, finish, paint, carbon weave, decals, dirt, reflections — those do NOT matter. Only the SHAPE matters.`,
         ``,
@@ -238,6 +243,9 @@ Deno.serve(async (req) => {
         `- NO ghost / faded / blurred car silhouette behind it. NO partial car visible at the edges of the frame. NO reflection of a car on the floor.`,
         `- If you would normally draw the part attached to a fender for context — DO NOT. Show ONLY the bolt-on piece itself with its mounting tabs/holes visible.`,
         `${spec.not}`,
+        `- AND NO other aftermarket aero parts (no bonnet vents, no fender vents, no lip, no canards, no skirts, no other arches, no wing, no diffuser, no ducktail, no splitter) — ONLY the ${partLabel} itself.`,
+        ``,
+        `OUTPUT MUST CONTAIN EXACTLY ONE PART. One single ${partLabel}. Nothing else. If you are about to draw a second object in the frame — STOP and remove it.`,
         ``,
         `Output requirements:`,
         `- Pure white seamless studio background, edge to edge. Background occupies AT LEAST 70% of the frame.`,
