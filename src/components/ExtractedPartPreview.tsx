@@ -803,9 +803,21 @@ export function ExtractedPartPreview({
 
           {stage === "review" && (
             <>
-              <Button variant="outline" onClick={() => runRender(undefined, true)}>
+              <Button variant="outline" onClick={() => runRender(undefined, true, isolatedUrl ?? undefined)}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Regenerate
               </Button>
+              {isolatedUrl && sourceImageUrl && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setIsolatedUrl(null);
+                    setStage("pretrim");
+                  }}
+                  title="Drop into the manual lasso to re-isolate the part"
+                >
+                  <Lasso className="h-4 w-4 mr-1" /> Manual trim
+                </Button>
+              )}
               {!trimOpen ? (
                 <Button variant="outline" onClick={() => setTrimOpen(true)}>
                   <Scissors className="h-4 w-4 mr-1" /> {maskedUrl ? "Re-trim" : "Trim"}
