@@ -24,16 +24,17 @@ import {
   Car,
   Library as LibraryIcon,
   Store,
-  Beaker,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/lib/repo";
 
+// NOTE: Prototyper was removed from primary nav as part of the strategic
+// pivot to geometry-first fitting for body-conforming parts. The /prototyper
+// route still works for legacy prototypes opened from /library.
 const projectsNav = [
   { title: "Projects", url: "/projects", icon: LayoutGrid },
   { title: "Garage", url: "/garage", icon: Car },
   { title: "Styles", url: "/styles", icon: Palette },
-  { title: "Prototyper", url: "/prototyper", icon: Beaker },
   { title: "My Library", url: "/library", icon: LibraryIcon },
   { title: "Marketplace", url: "/marketplace", icon: Store },
 ];
