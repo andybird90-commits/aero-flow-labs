@@ -1117,6 +1117,13 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
           )}
         </DialogFooter>
       </DialogContent>
+      <PrototypeMaskEditor
+        open={!!maskingSource}
+        imageUrl={maskingSource}
+        onClose={() => setMaskingSource(null)}
+        onSave={saveMask}
+        saving={busy === "mask"}
+      />
     </Dialog>
   );
 }
