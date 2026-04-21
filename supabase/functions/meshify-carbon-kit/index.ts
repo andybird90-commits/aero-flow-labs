@@ -41,15 +41,15 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RODIN_MODEL = "hyper3d/rodin";
 
 const KIT_PROMPT =
-  `Floating disconnected aftermarket carbon-fibre aero parts (splitter, ` +
-  `canards, side skirts, flared arches, diffuser, rear wing, vents, ` +
-  `quarter panels) on a plain grey backdrop. NO car body, NO chassis, ` +
-  `NO wheels, NO glass, NO doors, NO roof — parts are NOT attached to ` +
-  `a vehicle. Two reference views: SIDE (full silhouette + length) and ` +
-  `REAR (wing width + diffuser depth). Reconstruct only the visible ` +
-  `carbon shells in their shown positions. Do NOT invent a car body to ` +
-  `bridge gaps. Clean smooth surfaces, sharp edges, flat aero faces, ` +
-  `thin-walled composite (~2mm), open-backed where appropriate. No ` +
+  `Floating disconnected aftermarket aero parts (splitter, canards, side ` +
+  `skirts, flared arches, diffuser, rear wing, vents, quarter panels) ` +
+  `rendered in matte white clay on a plain grey backdrop. NO car body, ` +
+  `NO chassis, NO wheels, NO glass, NO doors, NO roof — parts are NOT ` +
+  `attached to a vehicle. Two reference views: SIDE (full silhouette + ` +
+  `length) and REAR (wing width + diffuser depth). Reconstruct only the ` +
+  `visible white shells in their shown positions. Do NOT invent a car ` +
+  `body to bridge gaps. Clean smooth surfaces, sharp edges, flat aero ` +
+  `faces, thin-walled shell (~2mm), open-backed where appropriate. No ` +
   `bolts, fasteners or tabs. Parts stay visually distinct for CAD split.`;
 
 Deno.serve(async (req) => {
