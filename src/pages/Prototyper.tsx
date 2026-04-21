@@ -491,17 +491,16 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
     setBusy("render");
     try {
       const { data, error } = await supabase.functions.invoke("render-prototype-views", {
-        body: { prototype_id: prototype.id },
+        body: { prototype_id: prototype.id, revision_note: revisionNote.trim() || undefined },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       // Force-refresh in case realtime is slow/down so the workspace shows the new renders.
       const { data: fresh } = await (supabase as any).from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
       if (fresh) {
-        // mutate the active row in the parent via a custom event-like callback would be cleaner,
-        // but the simplest fix is to surface the new render_urls immediately by reloading the dialog.
         Object.assign(prototype, fresh);
       }
+      setRevisionNote("");
       toast({ title: "Renders ready" });
     } catch (e: any) {
       toast({ title: "Render failed", description: String(e.message ?? e), variant: "destructive" });
