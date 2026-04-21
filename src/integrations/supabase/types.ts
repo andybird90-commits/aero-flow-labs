@@ -298,6 +298,7 @@ export type Database = {
           preview_mesh_status: string
           preview_mesh_url: string | null
           project_id: string
+          prompt_used: string | null
           render_front_carbon_url: string | null
           render_front_direct_url: string | null
           render_front_url: string | null
@@ -312,6 +313,8 @@ export type Database = {
           title: string
           updated_at: string
           user_id: string
+          variation_label: string | null
+          variation_seed: Json
         }
         Insert: {
           aero_kit_error?: string | null
@@ -331,6 +334,7 @@ export type Database = {
           preview_mesh_status?: string
           preview_mesh_url?: string | null
           project_id: string
+          prompt_used?: string | null
           render_front_carbon_url?: string | null
           render_front_direct_url?: string | null
           render_front_url?: string | null
@@ -345,6 +349,8 @@ export type Database = {
           title?: string
           updated_at?: string
           user_id: string
+          variation_label?: string | null
+          variation_seed?: Json
         }
         Update: {
           aero_kit_error?: string | null
@@ -364,6 +370,7 @@ export type Database = {
           preview_mesh_status?: string
           preview_mesh_url?: string | null
           project_id?: string
+          prompt_used?: string | null
           render_front_carbon_url?: string | null
           render_front_direct_url?: string | null
           render_front_url?: string | null
@@ -378,6 +385,8 @@ export type Database = {
           title?: string
           updated_at?: string
           user_id?: string
+          variation_label?: string | null
+          variation_seed?: Json
         }
         Relationships: [
           {
@@ -398,10 +407,14 @@ export type Database = {
       }
       design_briefs: {
         Row: {
+          aggression: string | null
           build_type: string | null
           constraints: string[]
           created_at: string
+          discipline: string | null
           id: string
+          must_avoid: string[]
+          must_include: string[]
           project_id: string
           prompt: string
           reference_image_paths: string[]
@@ -412,10 +425,14 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          aggression?: string | null
           build_type?: string | null
           constraints?: string[]
           created_at?: string
+          discipline?: string | null
           id?: string
+          must_avoid?: string[]
+          must_include?: string[]
           project_id: string
           prompt?: string
           reference_image_paths?: string[]
@@ -426,10 +443,14 @@ export type Database = {
           user_id: string
         }
         Update: {
+          aggression?: string | null
           build_type?: string | null
           constraints?: string[]
           created_at?: string
+          discipline?: string | null
           id?: string
+          must_avoid?: string[]
+          must_include?: string[]
           project_id?: string
           prompt?: string
           reference_image_paths?: string[]
