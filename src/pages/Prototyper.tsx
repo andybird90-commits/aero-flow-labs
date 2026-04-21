@@ -602,6 +602,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
   const isRendering = busy === "render" || prototype.render_status === "rendering";
   const isMeshing = busy === "mesh" || prototype.mesh_status === "meshing";
   const isFitting = busy === "fit" || fitStatus === "rendering";
+  const hasRenderInput = sources.length > 0 || !!prototype.notes?.trim() || !!prototype.title?.trim();
 
   return (
     <Dialog open={!!prototype} onOpenChange={(o) => !o && onClose()}>
@@ -767,7 +768,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onClose}><X className="h-4 w-4 mr-1" /> Close</Button>
-          <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || isFitting || sources.length === 0}>
+          <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || isFitting || !hasRenderInput}>
             {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length || fitUrl ? (revisionNote.trim() ? "Re-render with note" : "Re-render preview") : "Render preview"}</>}
           </Button>
           {garageCarId && (fitUrl || renders.length > 0) && (
