@@ -101,7 +101,12 @@ async function runRender(
     if (protoErr || !proto) throw new Error("Prototype not found");
 
     const sourceUrls = (proto.source_image_urls as string[] | null) ?? [];
-    if (!sourceUrls.length) throw new Error("No source images uploaded");
+    const userNotesRaw = ((proto as any).notes ?? "").toString().trim();
+    const titleRaw = ((proto as any).title ?? "").toString().trim();
+    if (!sourceUrls.length && !userNotesRaw && !titleRaw) {
+      throw new Error("Add a description or upload reference photos");
+    }
+    const textOnly = sourceUrls.length === 0;
 
     // Optional: load garage car ref so we can do on-car shot first.
     let carRefDataUrl: string | null = null;
@@ -153,10 +158,11 @@ async function runRender(
         console.warn("source fetch failed:", url, e);
       }
     }
-    if (!refDataUrls.length) {
+    if (sourceUrls.length && !refDataUrls.length) {
       await admin.from("prototypes").update({ render_status: "failed", render_error: "Could not load source images" }).eq("id", prototype_id);
-      return json({ error: "Could not load source images" }, 500);
+      throw new Error("Could not load source images");
     }
+    const partDescription = [titleRaw, userNotesRaw].filter(Boolean).join(" — ") || "an aftermarket aero part";
 
     const carContext = (proto.car_context ?? "").trim();
     const userNotes = ((proto as any).notes ?? "").toString().trim();
@@ -169,26 +175,44 @@ async function runRender(
     /* ─── STEP 1: On-car carbon composite (if car linked) ─── */
     let fitUrlPublic: string | null = null;
     if (carRefDataUrl) {
-      const onCarPrompt = [
-        `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. The remaining ${refDataUrls.length} image(s) are reference photos of the EXACT PART to add — they show its true silhouette, opening, vents, slats, depth, curvature, edge treatment and proportions.`,
-        ``,
-        `THE CAR (first image): ${carLabel}${carColor ? ` (${carColor})` : ""}.`,
-        `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
-        `- Do NOT crop the car. The whole car visible in the first image must remain visible with comfortable margin.`,
-        `- The ONLY change to the car is the addition of the part below.`,
-        ``,
-        `THE PART (remaining ${refDataUrls.length} reference image(s)) — THIS IS NON-NEGOTIABLE:`,
-        `- You MUST replicate the part shown in those reference photos. Trace its outline. Copy its opening shape, every vent, every slat, every fin, every return, every crease. Match proportions exactly.`,
-        `- DO NOT invent a generic part. DO NOT substitute a similar-looking aftermarket part. DO NOT idealise or "improve" the design. If you are unsure what the part looks like, look at the reference photos again.`,
-        `- Place the part in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, vented bonnet on the bonnet, etc).`,
-        `- Render the part in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
-        `- Match scale and perspective to the car so it looks like it actually fits.`,
-        `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners — assume it's bonded on.`,
-        `- STRIP all logos, badges, embossed text, brand marks, model names and decals from the part, even if visible in the reference photos.`,
-        ``,
-        `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, no annotations, no split-screen, no text, no watermarks, no inset thumbnails of the reference part.`,
-        NOTES_BLOCK,
-      ].filter(Boolean).join("\n");
+      const onCarPrompt = textOnly
+        ? [
+            `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. No reference photos of the part are provided — you must design it from the description.`,
+            ``,
+            `THE CAR (first image): ${carLabel}${carColor ? ` (${carColor})` : ""}.`,
+            `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
+            `- Do NOT crop the car. The whole car visible in the first image must remain visible with comfortable margin.`,
+            `- The ONLY change to the car is the addition of the part below.`,
+            ``,
+            `THE PART (designed from description): ${partDescription}.`,
+            `- Place it in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, vented bonnet on the bonnet, etc).`,
+            `- Render it in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
+            `- Match scale and perspective so it looks like it actually fits this car.`,
+            `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners. No logos, badges, embossed text or decals.`,
+            ``,
+            `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, annotations, split-screen, text or watermarks.`,
+            NOTES_BLOCK,
+          ].filter(Boolean).join("\n")
+        : [
+            `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. The remaining ${refDataUrls.length} image(s) are reference photos of the EXACT PART to add — they show its true silhouette, opening, vents, slats, depth, curvature, edge treatment and proportions.`,
+            ``,
+            `THE CAR (first image): ${carLabel}${carColor ? ` (${carColor})` : ""}.`,
+            `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
+            `- Do NOT crop the car. The whole car visible in the first image must remain visible with comfortable margin.`,
+            `- The ONLY change to the car is the addition of the part below.`,
+            ``,
+            `THE PART (remaining ${refDataUrls.length} reference image(s)) — THIS IS NON-NEGOTIABLE:`,
+            `- You MUST replicate the part shown in those reference photos. Trace its outline. Copy its opening shape, every vent, every slat, every fin, every return, every crease. Match proportions exactly.`,
+            `- DO NOT invent a generic part. DO NOT substitute a similar-looking aftermarket part. DO NOT idealise or "improve" the design. If you are unsure what the part looks like, look at the reference photos again.`,
+            `- Place the part in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, vented bonnet on the bonnet, etc).`,
+            `- Render the part in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
+            `- Match scale and perspective to the car so it looks like it actually fits.`,
+            `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners — assume it's bonded on.`,
+            `- STRIP all logos, badges, embossed text, brand marks, model names and decals from the part, even if visible in the reference photos.`,
+            ``,
+            `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, no annotations, no split-screen, no text, no watermarks, no inset thumbnails of the reference part.`,
+            NOTES_BLOCK,
+          ].filter(Boolean).join("\n");
 
       // Car FIRST (it is the canvas being edited by /images/edits), part refs after.
       const onCarRefs = [carRefDataUrl, ...refDataUrls];
@@ -212,7 +236,9 @@ async function runRender(
     }
 
     /* ─── STEP 2 + 3: Clay hero + clay back ─── */
-    const FIDELITY_HERO = replicateExact
+    const FIDELITY_HERO = textOnly
+      ? `FIDELITY: Design the part cleanly from the description. Aim for a believable, well-resolved aftermarket aero piece — proportions, returns and depth should look like a real part you could mould and bond on.`
+      : replicateExact
       ? `FIDELITY: REPLICA MODE — copy the part in the photos as faithfully as possible. Preserve every vent, return, crease, fillet, transition and proportion exactly. Do NOT idealise, smooth out, or "improve" the design. If something is asymmetric in the photos, keep it asymmetric.`
       : `FIDELITY: Re-draw a clean, idealised version of the part — the SHAPE and proportions must match, but you may smooth out manufacturing flaws, scratches, dirt, and odd reflections.`;
     const FIDELITY_BACK = replicateExact
@@ -225,34 +251,60 @@ async function runRender(
     for (const angle of ANGLES) {
       const isHero = angle.key === "hero";
       const promptLines = isHero
-        ? [
-            `You are looking at ${refDataUrls.length} photo(s) of a physical aftermarket car part.`,
-            carContext ? `Car context (for proportions only): ${carContext}.` : ``,
-            ``,
-            `STEP 1 — STUDY the reference photos. Identify the part and learn its exact silhouette, depth, curvature, vents, returns, and proportions.`,
-            `IGNORE the surrounding car (if visible), material, colour, finish, paint, decals, dirt, reflections — only the SHAPE matters.`,
-            ``,
-            `STEP 2 — RE-DRAW that exact part as a STANDALONE AFTERMARKET COMPONENT, completely detached, photographed alone for a parts catalogue.`,
-            `Match the reference proportions exactly. Preserve real section thickness and the reverse / inner face wherever visible from this angle.`,
-            `IMPORTANT: this part will be BONDED OR BOLTED ON AFTER PRINTING. Do NOT add bolt holes, fasteners, mounting tabs, flanges, brackets or hardware.`,
-            ``,
-            FIDELITY_HERO,
-            NOTES_BLOCK,
-            `SURFACE: ${SURFACE}`,
-            `SHELL: ${SHELL}`,
-            ``,
-            `STRICT ISOLATION:`,
-            `- The part is FULLY DETACHED. White seamless cyclorama background.`,
-            `- ABSOLUTELY NO car body in the frame. No fender, door, bumper, panel, wheel, glass, trim or reflection.`,
-            `- ONLY ONE PART in the output.`,
-            ``,
-            `Output requirements:`,
-            `- Pure white seamless background, edge to edge.`,
-            `- Soft even studio lighting, gentle ground contact shadow.`,
-            `- Part centred, fills 40-55% of frame.`,
-            `- Camera angle: ${angle.label}.`,
-            `- Clean clay render. No text, no watermarks, no logos.`,
-          ]
+        ? (textOnly
+          ? [
+              `Design and render an aftermarket car part from this description: ${partDescription}.`,
+              carContext ? `Car context (for proportions only): ${carContext}.` : ``,
+              ``,
+              `Render it as a STANDALONE AFTERMARKET COMPONENT, completely detached, photographed alone for a parts catalogue.`,
+              `Give it real section thickness and a believable inner / reverse face wherever visible from this angle.`,
+              `IMPORTANT: this part will be BONDED OR BOLTED ON AFTER PRINTING. Do NOT add bolt holes, fasteners, mounting tabs, flanges, brackets or hardware.`,
+              ``,
+              FIDELITY_HERO,
+              NOTES_BLOCK,
+              `SURFACE: ${SURFACE}`,
+              `SHELL: ${SHELL}`,
+              ``,
+              `STRICT ISOLATION:`,
+              `- The part is FULLY DETACHED. White seamless cyclorama background.`,
+              `- ABSOLUTELY NO car body in the frame.`,
+              `- ONLY ONE PART in the output.`,
+              ``,
+              `Output requirements:`,
+              `- Pure white seamless background, edge to edge.`,
+              `- Soft even studio lighting, gentle ground contact shadow.`,
+              `- Part centred, fills 40-55% of frame.`,
+              `- Camera angle: ${angle.label}.`,
+              `- Clean clay render. No text, no watermarks, no logos.`,
+            ]
+          : [
+              `You are looking at ${refDataUrls.length} photo(s) of a physical aftermarket car part.`,
+              carContext ? `Car context (for proportions only): ${carContext}.` : ``,
+              ``,
+              `STEP 1 — STUDY the reference photos. Identify the part and learn its exact silhouette, depth, curvature, vents, returns, and proportions.`,
+              `IGNORE the surrounding car (if visible), material, colour, finish, paint, decals, dirt, reflections — only the SHAPE matters.`,
+              ``,
+              `STEP 2 — RE-DRAW that exact part as a STANDALONE AFTERMARKET COMPONENT, completely detached, photographed alone for a parts catalogue.`,
+              `Match the reference proportions exactly. Preserve real section thickness and the reverse / inner face wherever visible from this angle.`,
+              `IMPORTANT: this part will be BONDED OR BOLTED ON AFTER PRINTING. Do NOT add bolt holes, fasteners, mounting tabs, flanges, brackets or hardware.`,
+              ``,
+              FIDELITY_HERO,
+              NOTES_BLOCK,
+              `SURFACE: ${SURFACE}`,
+              `SHELL: ${SHELL}`,
+              ``,
+              `STRICT ISOLATION:`,
+              `- The part is FULLY DETACHED. White seamless cyclorama background.`,
+              `- ABSOLUTELY NO car body in the frame. No fender, door, bumper, panel, wheel, glass, trim or reflection.`,
+              `- ONLY ONE PART in the output.`,
+              ``,
+              `Output requirements:`,
+              `- Pure white seamless background, edge to edge.`,
+              `- Soft even studio lighting, gentle ground contact shadow.`,
+              `- Part centred, fills 40-55% of frame.`,
+              `- Camera angle: ${angle.label}.`,
+              `- Clean clay render. No text, no watermarks, no logos.`,
+            ])
         : [
             `The FIRST attached image is the hero clay render of a part we already approved.`,
             `Subsequent images are the original photos for context only.`,
