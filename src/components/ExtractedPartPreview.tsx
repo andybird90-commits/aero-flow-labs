@@ -98,6 +98,10 @@ export function ExtractedPartPreview({
     setPrePoints([]);
     setPreLasso([]);
     setPreMaskedUrl(null);
+    setFidelity(null);
+    setScoring(false);
+    setCompareOverlay(false);
+    setOverrideFidelity(false);
   }, [open, conceptId, kind, sourceImageUrl, bbox]);
 
   const purgeCachedMesh = async () => {
