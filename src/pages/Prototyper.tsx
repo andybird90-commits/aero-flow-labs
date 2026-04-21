@@ -927,10 +927,22 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
                 ) : (
                   <div className="absolute inset-0 grid place-items-center text-muted-foreground p-3 text-center">
                     <div className="flex flex-col items-center gap-1.5">
-                      <Sparkles className="h-5 w-5 opacity-40" />
-                      <span className="text-[9px] font-mono uppercase tracking-widest">Auto-isolates on render</span>
-                      <Button size="sm" variant="outline" className="mt-1 h-6 text-[10px]" onClick={reisolate} disabled={busy !== null}>
-                        Isolate now
+                      <MousePointer2 className="h-5 w-5 opacity-50 text-fuchsia-400" />
+                      <span className="text-[10px] leading-tight max-w-[180px]">
+                        For best results, click <span className="text-foreground font-medium">Mark the part</span> on a source photo to lasso the exact shape.
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-1 h-6 text-[10px]"
+                        onClick={() => sources[0] && setMaskingSource(sources[0])}
+                        disabled={busy !== null || !sources.length}
+                      >
+                        <MousePointer2 className="h-3 w-3 mr-1" /> Mark the part
+                      </Button>
+                      <span className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/70">or</span>
+                      <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={reisolate} disabled={busy !== null}>
+                        Auto-isolate (less accurate)
                       </Button>
                     </div>
                   </div>
