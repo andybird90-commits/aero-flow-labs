@@ -578,17 +578,29 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
   if (!prototype) return null;
 
+  const isolateNow = async (forceCleanup?: boolean) => {
+    if (hasMaskForPrimary) {
+      const res = await supabase.functions.invoke("build-prototype-reference-from-mask", {
+        body: { prototype_id: prototype.id, cleanup: forceCleanup !== false },
+      });
+      if (res.error) throw res.error;
+      if ((res.data as any)?.error) throw new Error((res.data as any).error);
+      return;
+    }
+    const iso = await supabase.functions.invoke("isolate-prototype-part", {
+      body: { prototype_id: prototype.id },
+    });
+    if (iso.error) throw iso.error;
+    if ((iso.data as any)?.error) throw new Error((iso.data as any).error);
+  };
+
   const startRender = async () => {
     setBusy("render");
     try {
       // For exact_photo with photos, isolate the part first so the downstream
       // renders work from a clean reference instead of a busy raw photo.
       if (genMode === "exact_photo" && sources.length > 0 && isolatedRefs.length === 0) {
-        const iso = await supabase.functions.invoke("isolate-prototype-part", {
-          body: { prototype_id: prototype.id },
-        });
-        if (iso.error) throw iso.error;
-        if ((iso.data as any)?.error) throw new Error((iso.data as any).error);
+        await isolateNow();
       }
 
       const { data, error } = await supabase.functions.invoke("render-prototype-views", {
@@ -625,17 +637,39 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
   const reisolate = async () => {
     setBusy("render");
     try {
-      const iso = await supabase.functions.invoke("isolate-prototype-part", {
-        body: { prototype_id: prototype.id },
-      });
-      if (iso.error) throw iso.error;
-      if ((iso.data as any)?.error) throw new Error((iso.data as any).error);
+      await isolateNow();
       const { data: fresh } = await (supabase as any)
         .from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
       if (fresh) Object.assign(prototype, fresh);
-      toast({ title: "Reference re-isolated" });
+      toast({ title: hasMaskForPrimary ? "Reference rebuilt from your mask" : "Reference re-isolated" });
     } catch (e: any) {
       toast({ title: "Isolation failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveMask = async (maskDataUrl: string, sourceUrl: string) => {
+    setBusy("mask");
+    try {
+      const save = await supabase.functions.invoke("save-prototype-mask", {
+        body: { prototype_id: prototype.id, source_url: sourceUrl, mask_data_url: maskDataUrl },
+      });
+      if (save.error) throw save.error;
+      if ((save.data as any)?.error) throw new Error((save.data as any).error);
+      // Build the reference from the new mask immediately.
+      const build = await supabase.functions.invoke("build-prototype-reference-from-mask", {
+        body: { prototype_id: prototype.id, cleanup: true },
+      });
+      if (build.error) throw build.error;
+      if ((build.data as any)?.error) throw new Error((build.data as any).error);
+      const { data: fresh } = await (supabase as any)
+        .from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
+      if (fresh) Object.assign(prototype, fresh);
+      setMaskingSource(null);
+      toast({ title: "Reference built from your mask" });
+    } catch (e: any) {
+      toast({ title: "Mask save failed", description: String(e.message ?? e), variant: "destructive" });
     } finally {
       setBusy(null);
     }
