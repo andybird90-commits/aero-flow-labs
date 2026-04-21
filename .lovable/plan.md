@@ -1,59 +1,52 @@
 
 
-## Tidy workflow: Brief → Concepts only
+## Carbon-only view toggle
 
-Strip the studio down to the two steps you actually use (**Brief** and **Concepts**), and surface both export paths directly inside Concepts so there's no need for separate Parts / Refine / Library / Exports pages.
+Add a per-concept toggle that strips the base car and shows just the carbon bodywork (splitter, skirts, arches, diffuser, wing) floating on a clean studio background. Useful for product photography of the kit alone and as a sanity-check on what's actually being added.
 
-### What changes
+### How it will work for the user
 
-**1. Sidebar + step nav (`AppSidebar.tsx`, `WorkspaceShell.tsx`)**
+- On every concept card and in the zoom dialog, a small **"Carbon only"** toggle (next to the angle pills) swaps every visible angle from the full car render to the carbon-only render.
+- First time the toggle is flipped on a concept, it kicks off generation in the background (~20s for 4 angles in parallel). A subtle loading state shows on the affected images. Subsequent toggles are instant — results are cached.
+- The carbon-only renders are saved alongside the originals, so they appear in the user's Library and can be made public/sold on the Marketplace just like the full-car concepts.
 
-Studio steps reduce from 6 down to 2:
+### Technical changes
 
-```text
-Workspace
-└─ Projects
+**Database migration** — add 4 nullable columns to `public.concepts`:
+- `render_front_carbon_url`, `render_side_carbon_url`, `render_rear34_carbon_url`, `render_rear_carbon_url`
+- `carbon_status` enum-ish text: `idle | generating | ready | failed`
+- `carbon_error text`
+- Extend the existing library auto-index trigger (`20260420215723_…sql`) to also insert these as `concept_render_carbon` library items when populated.
 
-Studio
-├─ 1. Brief
-└─ 2. Concepts
-```
+**New edge function** — `supabase/functions/isolate-carbon-bodywork/index.ts`:
+- Input: `{ concept_id: string }`
+- Auth: validate JWT, confirm concept ownership.
+- For each of the 4 angle URLs that exist on the concept, send the existing render to the Lovable AI image model (`google/gemini-3.1-flash-image-preview`) with an isolation prompt:
+  > "Keep ONLY the aftermarket carbon-fibre bodywork (front splitter, canards, side skirts, flared arches, rear diffuser, rear wing, hood vents). Remove the base car body, wheels, glass, lights, ground and background entirely. Place the isolated carbon parts on a clean medium-grey studio backdrop with soft lighting and a subtle ground shadow. Preserve the exact shape, proportion, weave direction and reflections of each carbon part. Output a single clean studio product render."
+- Run the 4 angles in parallel via `Promise.all` (same pattern that fixed `WORKER_RESOURCE_LIMIT` in `generate-concepts`).
+- Upload each result to the existing `concept-renders` bucket under `{user_id}/{concept_id}/carbon_{angle}.png`.
+- Update the concept row with the 4 URLs + `carbon_status: ready`. On any failure, set `failed` + `carbon_error`.
 
-Remove from the visible nav: **Fitted Parts**, **Refine**, **Library**, **Exports**.
+**Repo hook** — `src/lib/repo.ts`:
+- `useIsolateCarbon(conceptId)` mutation that invokes the function and invalidates the concept query.
+- Type extension on `Concept` for the new columns.
 
-**2. Concepts page becomes the export hub (`Concepts.tsx`)**
+**ConceptCard UI** — `src/pages/Concepts.tsx`:
+- Local state `carbonMode: boolean` per card (defaults off).
+- Build a parallel `carbonAngles` array mirroring `angles` but reading `render_*_carbon_url`.
+- When `carbonMode` is on, render from `carbonAngles` instead of `angles`. Same swipe / arrows / zoom behaviour.
+- Toggle button (small pill, `Layers` icon, label "Carbon only") next to the existing angle pills:
+  - If `carbon_status === 'idle'` and no carbon URLs exist → first click triggers `useIsolateCarbon` and flips mode on optimistically.
+  - If `generating` → toggle shows spinner, disabled.
+  - If `ready` → instant toggle.
+  - If `failed` → toggle shows a small "Retry" affordance with the error in a tooltip.
+- In zoom dialog, the toggle is also visible in the top bar so it works on both card and zoom.
 
-Each concept card already has the two export paths — keep them, but make them clearer:
+**Library / Marketplace** — no UI work needed. Because the migration extends the existing trigger, isolated-carbon renders auto-appear in the user's Library tagged as `concept_render_carbon` and can be flipped public/priced through the existing flow.
 
-- **Pick parts** button (existing) → click any part on the render → "extracted" mesh STL download. This is the "usual method of grabbing".
-- **Build aero kit from real STL** button (existing) → boolean subtract path. When ready, replace the current "View kit in Library →" link with an inline **Download combined kit STL** button right on the concept card.
+### Out of scope
 
-Remove the post-approval banner that says "Generate parts → /parts" — no longer relevant.
-
-**3. Routes (`App.tsx`)**
-
-Redirect the removed pages to `/concepts` so old bookmarks don't 404:
-
-```text
-/parts    → /concepts
-/refine   → /concepts
-/library  → /concepts
-/exports  → /concepts
-```
-
-Keep the page files in the repo (don't delete) so we can revive them later if needed — they just become unreachable from the UI.
-
-**4. Misc cleanup**
-
-- Remove `<Link to="/library">` / `/parts` / `/refine` references inside Concepts and any other surviving pages.
-- `WorkspaceShell` `steps` array trimmed to Brief + Concepts.
-
-### What stays untouched
-
-- Brief page, full concept generation pipeline, Hyper3D Rodin meshify, hero-STL admin, boolean aero-kit edge functions, and the `concept_parts` / `concepts.aero_kit_url` data model — all unchanged.
-- Old page files (`Parts.tsx`, `Refine.tsx`, `Library.tsx`, `Exports.tsx`) stay on disk but are unlinked from navigation.
-
-### Result
-
-A two-step flow: write the brief, generate concepts, then on each concept either pick individual parts (downloads STL) or hit "Build aero kit" (downloads a boolean-subtracted combined kit STL). No detours.
+- No re-prompting, no edits to the OEM concept image — this is purely a derivative isolation pass.
+- Not adding a "carbon only" option to the aero-kit STL builder; this is image-only.
+- Not changing default privacy or pricing logic.
 
