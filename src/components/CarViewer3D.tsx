@@ -348,6 +348,8 @@ function FittedParts({
   const skirts = isVisible("side_skirt") ? findPart(parts, "side_skirt") : undefined;
   const canards = isVisible("canard") ? findPart(parts, "canard") : undefined;
   const ducktail = isVisible("ducktail") ? findPart(parts, "ducktail") : undefined;
+  const frontArch = isVisible("front_arch") ? findPart(parts, "front_arch") : undefined;
+  const rearArch = isVisible("rear_arch") ? findPart(parts, "rear_arch") : undefined;
   const wideArch = isVisible("wide_arch") ? findPart(parts, "wide_arch") : undefined;
   const lip = isVisible("lip") ? findPart(parts, "lip") : undefined;
 
