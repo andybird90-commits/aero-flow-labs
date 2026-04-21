@@ -84,19 +84,35 @@ Deno.serve(async (req) => {
 
     // ─────────── START ───────────
     if (action === "start") {
-      // Only send side + rear. Front-3/4 and rear-3/4 each show only PART of the
-      // kit (front parts vs rear parts) which confuses Rodin's correspondence
-      // solver and made it hallucinate a whole car body to bridge them.
-      // Side gives full silhouette + length; rear gives wing width + diffuser depth.
-      const carbonUrls = [
-        concept.render_side_carbon_url,
-        concept.render_rear_carbon_url,
-      ].filter((u): u is string => typeof u === "string" && u.length > 0);
+      // Generate fresh MATTE WHITE renders of the kit (side + rear) just for
+      // meshing input. Carbon weave + clearcoat reflections confuse Rodin's
+      // shape-from-shading; flat white clay gives clean silhouettes.
+      const whiteResp = await fetch(`${SUPABASE_URL}/functions/v1/isolate-white-bodywork`, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ concept_id: concept.id }),
+      });
+      if (!whiteResp.ok) {
+        const t = await whiteResp.text();
+        await admin.from("concepts").update({
+          carbon_kit_status: "failed",
+          carbon_kit_error: `White-render step failed: ${t.slice(0, 300)}`,
+        }).eq("id", concept.id);
+        return json({ error: `White-render step failed: ${t.slice(0, 300)}` }, 500);
+      }
+      const whiteJson = await whiteResp.json() as { side_url?: string | null; rear_url?: string | null };
+      const carbonUrls = [whiteJson.side_url, whiteJson.rear_url]
+        .filter((u): u is string => typeof u === "string" && u.length > 0);
 
       if (carbonUrls.length === 0) {
-        return json({
-          error: "Side and/or rear carbon renders missing. Toggle 'Carbon only' on this concept first and wait for them to finish.",
-        }, 400);
+        await admin.from("concepts").update({
+          carbon_kit_status: "failed",
+          carbon_kit_error: "White renders came back empty.",
+        }).eq("id", concept.id);
+        return json({ error: "White renders came back empty." }, 500);
       }
 
       await admin.from("concepts").update({
