@@ -390,11 +390,13 @@ Deno.serve(async (req) => {
       !!u && (u.startsWith("data:image/") || u.startsWith("https://") || u.startsWith("http://"));
 
     try {
-      // Run all 3 style variations in parallel. Each one still does its own
-      // front-3/4 → 5-other-angles fan-out internally, but doing the variations
-      // sequentially was tripling our wall-clock time and tripping the
-      // worker's CPU/wall budget (WORKER_RESOURCE_LIMIT).
-      const variationResults = await Promise.all(variations.map(async (v) => {
+      // Run variations SEQUENTIALLY. Running all 3 in parallel meant
+      // 3 × 6 = 18 concurrent Gemini calls each returning a multi-MB base64
+      // image — the worker hit WORKER_RESOURCE_LIMIT (CPU/memory) before
+      // most responses were even received. One variation at a time keeps
+      // peak concurrency at 5 (the inner fan-out), well under the budget.
+      const variationResults: Array<{ v: typeof variations[number]; byKey: Partial<Record<AngleKey, string>> } | null> = [];
+      for (const v of variations) {
         const heroAngle = ANGLES.find((a) => a.key === "front_three_quarter")!;
         const otherAngles = ANGLES.filter((a) => a.key !== "front_three_quarter");
 
@@ -404,13 +406,18 @@ Deno.serve(async (req) => {
         const frontResult = await renderAngle(v, heroAngle, frontRefs, "from_user_car");
         if (!frontResult) {
           console.warn("Front 3/4 render failed for variation:", v.title);
-          return null;
+          variationResults.push(null);
+          continue;
         }
 
         // 2) Other 5 angles in parallel, anchored to the front-3/4 concept.
+        // IMPORTANT: pass the PUBLIC URL of the just-uploaded front render,
+        // not its data URL. Carrying multi-MB base64 strings through 5
+        // parallel sub-calls was a major contributor to the worker hitting
+        // its memory ceiling. The AI gateway accepts https URLs just fine.
         const otherResults = await Promise.all(otherAngles.map(async (a) => {
           const userAngleRef = snaps[a.key];
-          const refs: string[] = [frontResult.dataUrl];
+          const refs: string[] = [frontResult.publicUrl];
           if (isImageRef(userAngleRef)) refs.push(userAngleRef);
           const r = await renderAngle(v, a, refs, "from_concept_front");
           return { key: a.key, result: r };
@@ -424,10 +431,12 @@ Deno.serve(async (req) => {
         }
         if (Object.keys(byKey).length === 0) {
           console.warn("All angles failed for variation:", v.title);
-          return null;
+          variationResults.push(null);
+          continue;
         }
-        return { v, byKey };
-      }));
+        variationResults.push({ v, byKey });
+      }
+
 
       for (const vr of variationResults) {
         if (!vr) continue;
