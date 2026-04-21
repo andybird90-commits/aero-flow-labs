@@ -978,3 +978,62 @@ export function ExtractedPartPreview({
     </Dialog>
   );
 }
+
+/* ---------- Fidelity badge ---------- */
+
+function FidelityBadge({
+  fidelity,
+  scoring,
+}: {
+  fidelity: FidelityResult | null;
+  scoring: boolean;
+}) {
+  if (scoring) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded bg-surface-0/80 backdrop-blur border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-widest font-mono text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" /> Checking…
+      </span>
+    );
+  }
+  if (!fidelity) return null;
+
+  const styles =
+    fidelity.status === "match"
+      ? { Icon: ShieldCheck, cls: "border-success/40 text-success bg-success/10" }
+      : fidelity.status === "drift"
+      ? { Icon: ShieldAlert, cls: "border-warning/40 text-warning bg-warning/10" }
+      : { Icon: ShieldX, cls: "border-destructive/40 text-destructive bg-destructive/10" };
+
+  const labelMap = { match: "Match", drift: "Drift", mismatch: "Mismatch" } as const;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-widest font-mono cursor-help ${styles.cls}`}
+          >
+            <styles.Icon className="h-3 w-3" />
+            {labelMap[fidelity.status]} {fidelity.score}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-xs">
+          <div className="space-y-1 text-xs">
+            <div className="font-semibold">Fidelity {fidelity.score}/100</div>
+            <ul className="text-muted-foreground space-y-0.5">
+              <li>Silhouette: {Math.round(fidelity.breakdown.silhouette * 100)}%</li>
+              <li>Outline: {Math.round(fidelity.breakdown.edges * 100)}%</li>
+              <li>Shape & size: {Math.round(fidelity.breakdown.aspect * 100)}%</li>
+            </ul>
+            {fidelity.breakdown.notes.length > 0 && (
+              <div className="pt-1 border-t border-border text-foreground">
+                {fidelity.breakdown.notes.join("; ")}
+              </div>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
