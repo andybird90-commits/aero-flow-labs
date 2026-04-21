@@ -328,7 +328,6 @@ export default function Prototyper() {
         replicate_exact: false,
         garage_car_id: newCarId,
         source_image_urls: [],
-        primary_source_index: 0,
         generation_mode: "text_design" as const,
         placement_hint: null,
       });
@@ -355,7 +354,6 @@ export default function Prototyper() {
           eyebrow="Workspace"
           title="Prototyper"
           description="Generate aero concepts, freeze them as reusable parts, and place them deterministically."
-          icon={Beaker}
           actions={
             <Button onClick={() => setShowNew(true)}>
               <Plus className="h-4 w-4 mr-2" /> New prototype
@@ -385,7 +383,6 @@ export default function Prototyper() {
         eyebrow="Workspace"
         title="Prototyper"
         description={activePrototype.title}
-        icon={Beaker}
         actions={<ModeSwitcher mode={mode} onChange={setMode} placeEnabled={frozenParts.length > 0} />}
       />
 
