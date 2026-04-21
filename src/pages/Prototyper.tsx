@@ -698,7 +698,19 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
             <Beaker className="h-4 w-4 text-fuchsia-400" /> {prototype.title}
           </DialogTitle>
           <DialogDescription>
-            {prototype.car_context ? `For ${prototype.car_context}.` : "No car context."} {sources.length} reference photo{sources.length === 1 ? "" : "s"}.
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-widest">
+                {MODE_OPTIONS.find((m) => m.value === genMode)?.label ?? genMode}
+              </Badge>
+              {placement && (
+                <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-widest">
+                  {placement}
+                </Badge>
+              )}
+              <span className="text-muted-foreground">
+                {prototype.car_context ? `For ${prototype.car_context}.` : "No car context."} {sources.length} reference photo{sources.length === 1 ? "" : "s"}.
+              </span>
+            </span>
           </DialogDescription>
         </DialogHeader>
 
