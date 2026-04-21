@@ -297,7 +297,12 @@ export function ExtractedPartPreview({
       // If the user trimmed the render with the lasso/click tool, send the
       // masked image to Meshy instead of the raw render — the mesher only
       // ever sees the cleaned silhouette.
-      const meshImages = maskedUrl ? [maskedUrl] : images.map((i) => i.url);
+      const meshImages = maskedUrl
+        ? [maskedUrl]
+        : images
+            .slice()
+            .sort((a, b) => (a.angle === "front34" ? -1 : b.angle === "front34" ? 1 : 0))
+            .map((i) => i.url);
       const startRes = await supabase.functions.invoke("meshify-part", {
         body: {
           action: "start",
