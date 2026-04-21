@@ -154,11 +154,11 @@ async function buildSilhouetteAndBbox(
 
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      const m = mask.getRGBAAt(x + 1, y + 1); // imagescript is 1-indexed
+      const m = rgbaToUint32(mask.getRGBAAt(x + 1, y + 1)); // imagescript is 1-indexed
       const r = (m >> 24) & 0xff;
       const inside = r > 127;
       if (inside) {
-        const px = src.getRGBAAt(x + 1, y + 1);
+        const px = rgbaToUint32(src.getRGBAAt(x + 1, y + 1));
         silhouette.setPixelAt(x + 1, y + 1, px);
         maskClean.setPixelAt(x + 1, y + 1, 0xffffffff);
         if (x < minX) minX = x;
