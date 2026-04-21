@@ -85,9 +85,46 @@ async function runSAM(
   }
   const prediction = await create.json();
   const finished = await pollReplicate(prediction.urls.get);
-  // Output is a URL (or array of URLs) to the mask PNG (white = part).
+  // SAM 2 output shape varies: can be a string URL, an array of URLs, or an
+  // object like { combined_mask: "url", individual_masks: ["url", ...] }.
+  // Walk the structure to find the first usable URL string.
   const out = finished.output;
-  return Array.isArray(out) ? out[0] : out;
+  const url = extractFirstUrl(out);
+  if (!url) {
+    throw new Error(
+      `SAM returned no usable mask URL. Raw output: ${JSON.stringify(out).slice(0, 500)}`,
+    );
+  }
+  return url;
+}
+
+function extractFirstUrl(val: unknown): string | null {
+  if (!val) return null;
+  if (typeof val === "string") {
+    return val.startsWith("http") ? val : null;
+  }
+  if (Array.isArray(val)) {
+    for (const item of val) {
+      const found = extractFirstUrl(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof val === "object") {
+    // Prefer common SAM 2 keys before generic walk.
+    const obj = val as Record<string, unknown>;
+    for (const key of ["combined_mask", "mask", "output", "url"]) {
+      if (key in obj) {
+        const found = extractFirstUrl(obj[key]);
+        if (found) return found;
+      }
+    }
+    for (const v of Object.values(obj)) {
+      const found = extractFirstUrl(v);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 async function buildSilhouetteAndBbox(
