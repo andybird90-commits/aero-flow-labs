@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           input: {
             images: image_urls,
-            prompt: `A standalone aftermarket automotive ${partLabel} part, clean smooth surfaces, matte clay render, flat panels, sharp edges, no surface noise, thin-walled composite shell construction, approximately 2mm wall thickness, preserve real part depth and section, preserve reverse side and mounting faces from the reference views, open-backed where appropriate, visible edge thickness, never a solid block, never a paper-thin ribbon`,
+            prompt: `A standalone aftermarket automotive ${partLabel} part, clean smooth surfaces, matte clay render, flat panels, sharp edges, no surface noise, thin-walled composite shell construction, approximately 2mm wall thickness, preserve real part depth and section, preserve reverse / inner side from the reference views, open-backed where appropriate, visible edge thickness, no bolt holes, no fasteners, no mounting tabs, no flanges, no brackets — bonded or bolted on after printing, never a solid block, never a paper-thin ribbon`,
           },
         }),
       });
