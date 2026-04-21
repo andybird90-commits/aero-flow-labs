@@ -19,6 +19,8 @@ import {
 import { useToast as useToastHook } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
+import { PartTraceOverlay } from "@/components/PartTraceOverlay";
+import { Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
@@ -399,7 +401,10 @@ function ConceptCard({
   const visibleAngles = angles.filter((a) => !!a.url) as Array<{ key: ViewKey; label: string; url: string }>;
 
   const [angleIdx, setAngleIdx] = useState(0);
-  const [pickMode, setPickMode] = useState(false);
+  /** Three-state mode: none, AI pick (legacy), or manual trace (new). */
+  const [partMode, setPartMode] = useState<"none" | "pick" | "trace">("none");
+  const pickMode = partMode === "pick";
+  const traceMode = partMode === "trace";
   const [zoomOpen, setZoomOpen] = useState(false);
   const current = visibleAngles[angleIdx];
   const hasMultiple = visibleAngles.length > 1;
@@ -455,12 +460,13 @@ function ConceptCard({
 
   // Touch swipe — horizontal flick > 40px switches angles.
   const touchStartX = useRef<number | null>(null);
+  const anyPartMode = pickMode || traceMode;
   const onTouchStart = (e: React.TouchEvent) => {
-    if (!hasMultiple || pickMode) return;
+    if (!hasMultiple || anyPartMode) return;
     touchStartX.current = e.touches[0]?.clientX ?? null;
   };
   const onTouchEnd = (e: React.TouchEvent) => {
-    if (!hasMultiple || pickMode || touchStartX.current == null) return;
+    if (!hasMultiple || anyPartMode || touchStartX.current == null) return;
     const dx = (e.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current;
     touchStartX.current = null;
     if (Math.abs(dx) < 40) return;
@@ -474,12 +480,12 @@ function ConceptCard({
           <button
             type="button"
             onClick={(e) => {
-              if (pickMode) return;
+              if (anyPartMode) return;
               e.stopPropagation();
               setZoomOpen(true);
             }}
             className="absolute inset-0 block group"
-            title={pickMode ? "Pick a part" : "Open large view"}
+            title={anyPartMode ? "Pick or trace a part" : "Open large view"}
           >
             <img
               key={current.url}
@@ -487,7 +493,7 @@ function ConceptCard({
               alt={`${concept.title} — ${current.label}`}
               className="absolute inset-0 h-full w-full object-cover animate-fade-in"
             />
-            {!pickMode && (
+            {!anyPartMode && (
               <span className="absolute bottom-2 right-2 rounded-md bg-surface-0/85 backdrop-blur px-2 py-1 border border-border text-mono text-[10px] uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Maximize2 className="h-3 w-3" />
                 Expand
@@ -508,8 +514,8 @@ function ConceptCard({
         </div>
       )}
 
-      {/* Click-to-extract hotspots overlay */}
-      {current && (
+      {/* Click-to-extract hotspots overlay (AI pick mode) */}
+      {current && pickMode && (
         <PartHotspotOverlay
           active={pickMode}
           view={current.key}
@@ -520,8 +526,17 @@ function ConceptCard({
         />
       )}
 
+      {/* Manual trace overlay — deterministic, no AI */}
+      {current && traceMode && (
+        <PartTraceOverlay
+          active={traceMode}
+          view={current.key}
+          projectId={projectId}
+        />
+      )}
+
       <div className={cn(
-        "absolute top-2 right-2 flex items-center gap-1.5",
+        "absolute top-2 right-2 flex items-center gap-1.5 z-30",
         // In the zoom dialog the built-in close (X) sits at top-right, so
         // shift this toolbar left to avoid the click target overlapping it.
         variant === "zoom" && "right-12",
@@ -547,21 +562,36 @@ function ConceptCard({
           {carbonBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Boxes className="h-3.5 w-3.5" />}
           {carbonStatus === "failed" ? "Retry carbon" : carbonMode ? "Carbon on" : "Carbon only"}
         </button>
+        {/* Manual trace — primary recommended path */}
         <button
-          onClick={(e) => { e.stopPropagation(); setPickMode((p) => !p); }}
+          onClick={(e) => { e.stopPropagation(); setPartMode((m) => m === "trace" ? "none" : "trace"); }}
+          className={cn(
+            "rounded-md px-3 py-1.5 inline-flex items-center gap-1.5 text-xs text-mono uppercase tracking-widest border backdrop-blur transition-colors",
+            traceMode
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
+          )}
+          title="Manually trace each kit piece — deterministic CAD geometry, valid STL every time"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          {traceMode ? "Tracing" : "Trace kit"}
+        </button>
+        {/* AI pick — secondary, kept for power users */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setPartMode((m) => m === "pick" ? "none" : "pick"); }}
           className={cn(
             "rounded-md px-3 py-1.5 inline-flex items-center gap-1.5 text-xs text-mono uppercase tracking-widest border backdrop-blur transition-colors",
             pickMode
               ? "bg-primary/90 text-primary-foreground border-primary"
               : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
           )}
-          title="Click any part on the render to extract it as STL"
+          title="AI-detected hotspots — experimental, may misidentify overlapping parts"
         >
           <MousePointer2 className="h-3.5 w-3.5" />
-          {pickMode ? "Picking" : "Pick parts"}
+          {pickMode ? "Picking" : "AI pick"}
         </button>
         {variant === "card" && <StatusChip tone={tone as any} size="sm">{concept.status}</StatusChip>}
-        {variant === "card" && current && !pickMode && (
+        {variant === "card" && current && !anyPartMode && (
           <button
             onClick={(e) => { e.stopPropagation(); setZoomOpen(true); }}
             className="rounded-md px-2 py-1.5 inline-flex items-center gap-1 text-xs text-mono uppercase tracking-widest border bg-surface-0/85 text-muted-foreground border-border hover:text-foreground backdrop-blur transition-colors"
@@ -590,7 +620,7 @@ function ConceptCard({
         </div>
       )}
 
-      {hasMultiple && !pickMode && (
+      {hasMultiple && !anyPartMode && (
         <>
           <button
             type="button"
@@ -658,25 +688,34 @@ function ConceptCard({
             Click any highlighted part → downloads as STL
           </div>
         )}
+        {traceMode && (
+          <div className="text-[10px] text-mono uppercase tracking-widest text-primary/80">
+            Pick a part type, drag a box → saved to your fitted kit
+          </div>
+        )}
 
         <ConceptRegenAndPrompt concept={concept} projectId={projectId} />
 
-        {/* Combined carbon-kit mesh — primary route once carbon-only renders exist. */}
+        {/* Combined carbon-kit mesh — EXPERIMENTAL.
+         *  Image-to-3D struggles with full kits; manual trace is the recommended path. */}
         {(carbonReady || carbonAngles.some((a) => !!a.url) || kitStatus !== "idle") && (
           <div className="pt-2 border-t border-border space-y-2">
+            <div className="text-[10px] text-mono uppercase tracking-widest text-muted-foreground">
+              Experimental — prefer “Trace kit” for reliable STLs
+            </div>
             <Button
-              variant="hero"
+              variant="glass"
               size="sm"
               className="w-full"
               disabled={kitBusy || meshifyKit.isPending || (!carbonReady && !carbonAngles.some((a) => !!a.url))}
               onClick={handleMeshifyKit}
-              title="Reconstruct the entire carbon body kit as one mesh — split it in Fusion / Blender afterwards"
+              title="Experimental: reconstruct the entire carbon body kit as one mesh. Often unreliable — use Trace kit instead."
             >
               {kitBusy || meshifyKit.isPending ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Boxes className="mr-1.5 h-3.5 w-3.5" />}
               {kitStartPending || meshifyKit.isPending ? "Starting carbon kit mesh…"
                 : kitBusy ? "Reconstructing combined kit… ~60s"
-                : kitStatus === "ready" ? "Re-mesh full kit"
-                : "Mesh full carbon kit"}
+                : kitStatus === "ready" ? "Re-mesh full kit (experimental)"
+                : "Mesh full carbon kit (experimental)"}
             </Button>
             {kitStatus === "failed" && kitError && (
               <div className="text-[10px] text-mono text-destructive">{kitError}</div>
