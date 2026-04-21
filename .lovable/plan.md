@@ -1,76 +1,142 @@
 
+## Stabilize Prototyper by splitting it into clear modes
 
-## Reframe Prototyper around "on-car first"
+The current flow asks one image-edit model to do too many things at once: understand the uploaded part, decide where it belongs, redraw it, and blend it onto the car. That is why even clean photos can come back as a generic approximation.
 
-Currently the workflow leads with two isolated clay renders (hero + back), then makes the on-car carbon composite a secondary "fit check". This plan inverts that so the on-car shot becomes the **primary** render whenever a garage car is linked, because that's the view that actually answers "does this part make sense on my car?".
+### What to build
 
-### New flow
+#### 1. Replace the single ambiguous workflow with 3 explicit modes
+Add a mode selector in the prototype dialog and workspace:
 
-```text
-Upload photos + (optional) pick garage car + describe the part
-       │
-       ▼
-PRIMARY render  ──►  Part shown ON the car, in carbon fibre
-                     (if no car linked → falls back to clay hero)
-       │
-       ▼
-SECONDARY clay views (hero + back)   ◄── generated automatically right after,
-                                          needed for meshing + back-of-part check
-       │
-       ▼
-3D mesh / STL
-```
+1. **Exact replica from photos**
+   - For users who already have a real part and want it copied as faithfully as possible.
+   - Requires uploaded photos.
+   - Prioritises shape match over creativity.
 
-### What changes
+2. **Design from description**
+   - For users who want the AI to invent the part.
+   - No photos required.
+   - Uses title + notes + garage car context.
 
-**1. Edge function: `render-prototype-views`**
-- When a `garage_car_id` is present, generate the on-car carbon composite *first* using the source photos + car reference photo directly (skip needing a pre-existing clay hero as input).
-- Then generate the clay hero + clay back views as before — these are still required as input to the mesher and to inspect the hollow back.
-- Write all three results to the prototype row in one pass: `fit_preview_url` + `render_urls[hero, back]`.
-- When no car is linked, behaviour is unchanged (clay hero + back only).
+3. **Inspired by photos**
+   - Uses uploaded photos as inspiration, not as ground truth.
+   - Good for “make me something like this, but cleaner / more aggressive”.
 
-**2. Edge function: `render-prototype-on-car`**
-- Keep it, but it's no longer the only path to the on-car shot. It stays as the dedicated "Re-fit on car" re-roll button so users can iterate the composite without re-rendering the clay views.
-- Update its input handling so it can work from the source photos directly if no clay hero exists yet (defensive — covers older prototypes).
+This removes the current confusion where “replicate exactly” and “AI generation” are mixed together.
 
-**3. UI: `Prototyper.tsx` workspace dialog**
-- Reorder panels so the **on-car carbon view is the hero panel at the top** (large), with the clay hero/back views shown smaller underneath as "reference views", followed by the 3D mesh panel.
-- When no garage car is linked, the on-car panel shows a soft prompt: "Link a garage car to see this part fitted in carbon" with a button that opens the car picker — clay views remain primary in that case.
-- Rename the primary action button from "Render views" to **"Render preview"** (it now produces the on-car shot + clay views together).
-- Keep "Re-fit on car" as a secondary action for re-rolling just the composite.
-- The revision-note textarea applies to whichever render the user triggers next (re-render preview *or* re-fit on car).
-
-**4. New prototype dialog**
-- No structural change, but make the garage car picker more prominent (move it directly under the title, before the photo uploads) and add a one-line hint: "Pick a car to see the part fitted on it as the main preview."
-
-### Layout sketch
+#### 2. Make the “exact replica” path multi-step instead of one-shot
+For **Exact replica from photos**, change the render pipeline to:
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│  ON CAR (carbon)                          [hero panel]      │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │            big composite render of car                │  │
-│  └───────────────────────────────────────────────────────┘  │
-├──────────────────┬──────────────────┬───────────────────────┤
-│ SOURCE PHOTOS    │ CLAY VIEWS       │ 3D MESH               │
-│ (small grid)     │ hero │ back      │ viewer / "Make 3D"    │
-└──────────────────┴──────────────────┴───────────────────────┘
-│ REVISION NOTE FOR NEXT RENDER  [textarea]                   │
-│ [Close] [Re-render preview] [Re-fit on car] [Make 3D model] │
-└─────────────────────────────────────────────────────────────┘
+Uploaded part photos
+   -> isolate the part from background / surrounding car
+   -> create a clean standalone reference render
+   -> generate on-car preview using that isolated part as the source of truth
+   -> generate clay hero + clay back views for meshing
 ```
+
+This gives the model a much cleaner target and stops it trying to infer the part from a busy photo.
+
+#### 3. Add a placement control so the model stops guessing
+Add a simple placement selector in the UI:
+
+- Front bumper
+- Bonnet / hood
+- Side intake / side skirt area
+- Rear bumper / diffuser area
+- Bootlid / rear wing area
+- Other
+
+Optional follow-up: let the user click a rough zone on the garage image later, but the first step is a placement dropdown. This will dramatically improve on-car results because the model currently has to guess where the part belongs.
+
+#### 4. Use Lovable AI image models for the image workflow
+Move the prototype image generation away from the current OpenAI-only helper and onto Lovable AI image models, using:
+
+- fast default: `google/gemini-3.1-flash-image-preview`
+- higher-fidelity retry/fallback: `google/gemini-3-pro-image-preview`
+
+These models are already used elsewhere in the project and fit the current image-editing pattern better.
+
+#### 5. Add a visible “reference processing” stage in the UI
+Show the user what the system extracted before the final render:
+
+- Source photos
+- Isolated part reference
+- On-car preview
+- Clay views
+
+If the isolated reference is wrong, the user immediately knows the issue happened upstream instead of wasting time re-rendering blindly.
+
+#### 6. Tighten the meaning of each button
+Update the workspace actions:
+
+- **Render exact fit** for exact-photo mode
+- **Generate concept preview** for description mode
+- **Re-fit on car** only re-runs the on-car composite
+- **Make 3D model** still depends on approved clay renders
+
+This makes the output intent obvious.
+
+### Recommended implementation order
+
+1. Add workflow mode + placement selector to the prototype data and UI.
+2. Add isolated-part preprocessing for photo-based prototypes.
+3. Switch prototype image generation helper to Lovable AI image models.
+4. Update `render-prototype-views` to branch by mode.
+5. Update `render-prototype-on-car` to use isolated refs + placement hints.
+6. Update workspace UI to show the extra “isolated reference” stage and clearer actions.
+
+### User-facing behaviour after the change
+
+#### Exact replica from photos
+- User uploads clean photos.
+- User chooses where the part belongs.
+- App first isolates the part.
+- App shows the isolated part.
+- App then fits that exact part onto the selected garage car.
+- Clay views are generated from the isolated part, not guessed from the full car photo.
+
+#### Design from description
+- User types the part idea.
+- App designs it from scratch and fits it to the car.
+- No expectation of photo matching.
+
+#### Inspired by photos
+- User uploads photos.
+- App uses them as style/shape inspiration, not strict ground truth.
 
 ### Technical details
 
-- `render-prototype-views` will branch on `garage_car_id`: if set, fetch the car ref image, build a 3-step prompt sequence (on-car carbon → clay hero → clay back) and update DB columns `fit_preview_url`, `fit_preview_status`, `render_urls`, `render_status` together. Status writes happen progressively so the UI can show "Rendering on-car…", "Rendering clay views…".
-- The on-car prompt re-uses the existing carbon-fibre prompt already in `render-prototype-on-car`, but takes source photos as the part reference instead of the clay hero (the clay hero is a redrawn approximation; using the originals gives the model truer geometry to work from).
-- Clay hero/back generation is unchanged — still needed as the input to `meshify-prototype`.
-- No schema changes required (`fit_preview_url/status/error` columns already exist).
-- Card thumbnails in the prototype list will prefer `fit_preview_url` when present, so the grid shows the on-car carbon shot rather than the floating clay part.
+- Add new prototype fields for:
+  - `generation_mode` (`exact_photo`, `text_design`, `inspired_photo`)
+  - `placement_hint`
+  - optional `isolated_ref_urls`
+  - optional `reference_status` / `reference_error`
+- Update `render-prototype-views` so the job becomes:
+  - preprocess references if photo-based
+  - on-car render with placement hint
+  - clay hero
+  - clay back
+- Update `render-prototype-on-car` so it prefers isolated part refs over raw uploaded photos.
+- Replace or extend `_shared/openai-image.ts` with a provider-agnostic helper for Lovable AI image models.
+- Keep background execution + polling pattern already added for long renders.
 
 ### Files touched
 
-- `supabase/functions/render-prototype-views/index.ts` — branch on garage car, produce on-car shot first
-- `supabase/functions/render-prototype-on-car/index.ts` — accept source photos as fallback input
-- `src/pages/Prototyper.tsx` — reorder workspace panels, rename buttons, prefer fit preview as card thumb, reorder new-prototype dialog fields
+- `src/pages/Prototyper.tsx`
+- `src/lib/repo.ts`
+- `supabase/functions/render-prototype-views/index.ts`
+- `supabase/functions/render-prototype-on-car/index.ts`
+- `supabase/functions/_shared/openai-image.ts` or a new shared image helper
+- `supabase/migrations/*` for new prototype columns
 
+### Best option to implement first
+
+Start with this combination:
+
+1. **Mode selector**
+2. **Placement selector**
+3. **Photo isolation stage**
+4. **Lovable AI image models for exact-photo mode**
+
+That is the highest-impact fix for “I gave it clean images and it still doesn’t copy them”.
