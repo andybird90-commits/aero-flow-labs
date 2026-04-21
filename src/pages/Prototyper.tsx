@@ -260,7 +260,10 @@ function CreatePrototypeDialog({
 
   const submit = async () => {
     if (!userId) return;
-    if (!files.length) { toast({ title: "Add at least one photo", variant: "destructive" }); return; }
+    if (!files.length && !notes.trim() && !title.trim()) {
+      toast({ title: "Add a name, a description, or at least one photo", variant: "destructive" });
+      return;
+    }
     setSubmitting(true);
     try {
       // Upload photos to prototype-uploads bucket
@@ -300,7 +303,7 @@ function CreatePrototypeDialog({
         <DialogHeader>
           <DialogTitle>New prototype</DialogTitle>
           <DialogDescription>
-            Upload 1–5 photos of the part. Clear product-style shots work best — but on-car photos are fine too.
+            Describe the part you want, or upload 1–5 reference photos — either works. Photos are optional.
           </DialogDescription>
         </DialogHeader>
 
@@ -340,17 +343,17 @@ function CreatePrototypeDialog({
           </div>
 
           <div>
-            <Label htmlFor="proto-notes">Notes for the AI (optional)</Label>
+            <Label htmlFor="proto-notes">Describe the part / notes for the AI</Label>
             <Textarea
               id="proto-notes"
-              placeholder='e.g. "no logo on the surface", "remove the badge", "ignore the scratch in photo 2", "smooth the top edge"'
+              placeholder='e.g. "vented carbon side scoop with a single horizontal slat, GT3-style", or "remove the badge from photo 2"'
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               maxLength={1000}
             />
             <p className="text-[11px] text-muted-foreground mt-1">
-              Tell the model what to ignore, omit, or treat differently.
+              Required if you don't upload reference photos. Otherwise, use this to guide the AI (what to ignore, omit, or treat differently).
             </p>
           </div>
 
@@ -370,7 +373,7 @@ function CreatePrototypeDialog({
           </label>
 
           <div>
-            <Label>Reference photos</Label>
+            <Label>Reference photos (optional)</Label>
             <div className="mt-1 rounded-lg border border-dashed border-border bg-surface-0/40 p-3">
               <label className="flex items-center justify-center gap-2 text-xs text-muted-foreground cursor-pointer hover:text-foreground">
                 <Upload className="h-3.5 w-3.5" />
@@ -406,7 +409,7 @@ function CreatePrototypeDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>Cancel</Button>
-          <Button variant="hero" onClick={submit} disabled={submitting || !files.length}>
+          <Button variant="hero" onClick={submit} disabled={submitting || (!files.length && !notes.trim())}>
             {submitting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Creating…</> : <>Create prototype</>}
           </Button>
         </DialogFooter>
