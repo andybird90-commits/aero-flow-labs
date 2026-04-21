@@ -1,199 +1,125 @@
+# Prototyper Page Pivot — Build Plan
 
-## Recommendation
+> **Hard rule:** Copy, mirror, isolate, snap-opposite, move, scale and rotate actions MUST NOT call any generative image model. They are handled by stored masks + deterministic 2D transforms.
 
-The next option is to stop trying to get an image-to-3D AI to infer the full kit or identify individual parts automatically.
+---
 
-For this use case, the reliable path is:
+## Phase 1 — Data model & infrastructure
 
-```text
-concept/carbon render
-→ user manually marks each part
-→ app converts marks into parametric CAD-style geometry
-→ export real STL/OBJ files
-```
+### 1.1 New `frozen_parts` table (migration)
+Columns:
+- `id`, `user_id`, `prototype_id` (FK), `garage_car_id` (FK, nullable)
+- `name` (text), `category` (text — side_scoop, splitter, canard, vent, etc.)
+- `mount_zone` (text: `front_bumper | front_quarter | bonnet | door_quarter | sill | rear_quarter | rear_bumper | wing_zone`)
+- `side` (text: `left | right | center`)
+- `symmetry_allowed` (bool, default true)
+- `silhouette_locked` (bool, default true)
+- `source_image_url`, `mask_url`, `silhouette_url` (text)
+- `bbox` (jsonb — `{x,y,w,h}` normalized 0–1)
+- `anchor_points` (jsonb — `{top, bottom, leading_edge, trailing_edge, attach_edge}`)
+- `view_angle` (text: `front | front34 | side | rear34 | rear`)
+- `created_at`, `updated_at`
+- RLS: owner-only CRUD
 
-The AI can still help with visual concepting and rough measurements, but the mesh itself should be generated deterministically by our app, not guessed by Rodin/Meshy from an image.
+### 1.2 New storage bucket `frozen-parts` (public)
+- Path: `{user_id}/{prototype_id}/{frozen_part_id}/{mask|silhouette|preview}.png`
+- Owner write, public read
 
-## Why this is the right pivot
+### 1.3 Edge function `segment-frozen-part` (NEW)
+- Inputs: `source_image_url`, `click_point: {x,y}` (normalized), optional `bbox_hint`
+- Calls Replicate Segment Anything (SAM)
+- Returns: mask PNG (full frame), silhouette PNG (transparent cutout), bbox, suggested anchor points
+- Uploads PNGs to `frozen-parts` bucket
+- Does NOT write to `frozen_parts` table (Save step does that)
 
-The current failures are expected limitations of image-to-3D:
+### 1.4 Edge function `place-frozen-part` (NEW — deterministic, NO AI)
+- Inputs: `frozen_part_id`, `target_image_url`, `transform: {x, y, scale, rotation, mirror, perspective_skew?}`
+- Loads frozen part's silhouette PNG
+- Mirror = horizontal flip via imagescript
+- Perspective skew = 4-point transform for opposite-side snapping on 3/4 views
+- Composites transformed silhouette over target image
+- Returns composited PNG URL
+- **No call to ai.gateway.lovable.dev anywhere in this function**
 
-- Full kit meshing: the model keeps reconstructing the car/body instead of only the floating kit.
-- Part picking: the AI struggles to label ambiguous pieces like arch vs skirt vs canard when parts overlap.
-- STL reliability: AI mesh outputs can be inconsistent, non-manufacturable, or need conversion/repair.
-- The screenshot shows the useful data is already there visually: the user can identify the front arch and side skirt better than the model can.
+### 1.5 Hide legacy prototypes
+- New page query filters out rows lacking any `frozen_parts`
+- Old prototypes still in DB & accessible via Library/Exports
 
-So the better product flow is: let the user draw/confirm the part, then generate clean geometry from known automotive part templates.
+---
 
-## Build plan
+## Phase 2 — New `src/pages/Prototyper.tsx` (FULL REBUILD)
 
-### 1. Add a “Manual kit trace” mode
+### Layout (3-column shell)
 
-On the concept card / enlarged concept view, add a new mode next to “Pick parts”:
+**Left panel** — Garage car selector (REQUIRED), active car view picker, frozen-part library grid
 
-```text
-Pick parts        Manual trace kit
-```
+**Centre canvas** — active car view, mode-aware overlays (concept render / mask preview / drag handles)
 
-Manual trace mode will not call AI hotspot detection.
+**Right panel** — mode-specific controls:
 
-Instead, the user chooses the part type first:
+| Mode | Controls |
+|---|---|
+| Generate | style preset, prompt, target zone, aggression slider, generate button |
+| Freeze | mask preview, brush/erase, category, mount zone, side, symmetry, lock-silhouette, save |
+| Place | clone, mirror, snap-opposite, x/y/rotation/scale, lock |
 
-```text
-Front arch
-Rear arch
-Side skirt
-Splitter
-Canard
-Diffuser
-Wing
-Ducktail
-Vent
-```
+### Mode switcher
+Three tab buttons: **Generate · Freeze Part · Place**. Place disabled until ≥1 frozen part exists.
 
-Then they draw a box or rough outline directly on the render.
+---
 
-This avoids the current problem where the AI has to decide what the part is.
+## Phase 3 — Mode wiring
 
-### 2. Add part-specific tracing tools
+- **Generate** → reuses existing `generate-concepts` (the ONLY AI call path)
+- **Freeze** → click → `segment-frozen-part` → user refines → save row in `frozen_parts`
+- **Place** → drag/clone/mirror → `place-frozen-part` (pixel ops only, no AI)
 
-For each common part type, use a simple deterministic input:
+---
 
-- Wide arch: user draws the outer arch curve / bounding box.
-- Side skirt: user draws a long rectangle or two endpoints.
-- Splitter/lip: user marks width and depth.
-- Canards: user marks one fin and count.
-- Diffuser: user marks width, depth, strake count.
-- Wing: user marks span, chord, stand height.
-- Vents: user marks panel size and louvre count.
+## Phase 4 — Approve & export
 
-The UI should show a live preview overlay while the user adjusts the trace.
+- "Approve Overlay" composites all placed instances into one PNG (`prototypes.fit_preview_url`) and writes a placement manifest JSON
+- Manifest is the handoff artifact for the future CAD/STL stage
 
-### 3. Convert traces into fitted parametric parts
+---
 
-Use the existing fitted-parts system as the base:
+## Files
 
-- `fitted_parts`
-- `CarViewer3D`
-- `part-geometry.ts`
-- `Exports.tsx`
+**Backend (new):**
+- `supabase/migrations/<ts>_frozen_parts.sql`
+- `supabase/functions/segment-frozen-part/index.ts`
+- `supabase/functions/place-frozen-part/index.ts`
 
-Instead of asking AI to create a mesh, the trace will create/update a fitted part with measured params.
-
-Example:
-
-```text
-front arch trace
-→ kind: wide_arch
-→ params: { flare, arch_width, arch_height, position_hint }
-→ generated by our geometry builder
-→ exports as valid STL/OBJ
-```
-
-### 4. Improve the geometry builders
-
-The existing parametric geometry is currently quite basic, especially for arches.
-
-Update `src/lib/part-geometry.ts` and the matching viewer geometry so parts look more like actual body-kit pieces:
-
-- Wide arches become curved horseshoe/overfender shells, not simple boxes.
-- Side skirts get tapered blade sections.
-- Splitters get rounded front edges and optional fences.
-- Diffusers get real fin spacing and angled undertray.
-- Wings get cleaner aerofoil-like profiles.
-- Vents get proper louvres.
-
-These meshes will be generated with Three.js geometry/extrusions, so downloads are actual STL/OBJ files from the start.
-
-### 5. Add “Trace from this crop” in the extracted part modal
-
-For cases like the screenshot, where the user has already isolated a part visually, add a safer fallback inside the modal:
-
-```text
-AI render part
-Manual trace instead
-```
-
-If the AI-drawn part is wrong, the user can trace the visible part and generate a CAD-style STL without sending it to Rodin/Meshy.
-
-### 6. Keep AI only as an assistant, not the mesher
-
-AI can still be used for:
-
-- suggesting initial dimensions from the concept
-- naming the part
-- estimating strake/louvre counts
-- generating concept/carbon/white reference renders
-
-But final mesh generation should be local/parametric.
-
-This avoids rate limits, broken STL conversions, wrong full-kit reconstruction, and mislabeled parts.
-
-### 7. Update the user flow
-
-The new practical workflow becomes:
-
-```text
-Generate concept
-→ Carbon-only render if useful
-→ Manual trace each kit piece
-→ Review fitted 3D kit on the car
-→ Refine sliders
-→ Export STL/OBJ pack
-```
-
-The existing “Mesh full carbon kit” button should be de-emphasized or marked experimental, because it is not reliable enough for production use.
-
-## Files likely to change
-
-### Frontend
-
-- `src/pages/Concepts.tsx`
-  - Add Manual trace kit mode.
-  - Add part type selector.
-  - Add trace overlay entry point.
-
-- `src/components/PartHotspotOverlay.tsx`
-  - Keep AI hotspots, but add/replace with manual trace support.
-  - Allow “user defines part type first” flow.
-
-- New component, likely:
-  - `src/components/PartTraceOverlay.tsx`
-
-- `src/components/ExtractedPartPreview.tsx`
-  - Add “Manual trace instead” fallback.
-  - Avoid relying on AI mesh generation for failed picks.
-
-- `src/pages/Parts.tsx`
-  - Surface traced parts as generated fitted parts.
-
-- `src/pages/Refine.tsx`
-  - Add extra sliders for improved traced geometry.
-
-### Geometry/export
-
-- `src/lib/part-geometry.ts`
-  - Improve deterministic geometry for arches, skirts, splitters, diffusers, wings, vents.
-
-- `src/components/CarViewer3D.tsx`
-  - Mirror the improved geometry in the live viewer.
-
-- `src/pages/Exports.tsx`
-  - Continue exporting generated geometry as STL/OBJ.
-
-### Backend
-
-Minimal or no backend changes needed at first.
-
-If we want trace persistence beyond `fitted_parts.params`, then add a small database field/table later for trace metadata. But the first version can store trace-derived dimensions directly in existing fitted part params.
-
-## Result
-
-This gives you a more dependable CAD-like workflow:
-
-- no full-kit AI meshing dependency
-- no AI part-label guessing
-- fewer rate limits
-- valid STL/OBJ every time
-- parts are editable after generation
-- the visual concept still drives the design, but the app creates the mesh safely
+**Frontend (new):**
+- `src/pages/Prototyper.tsx` (full rewrite)
+- `src/components/prototyper/PrototyperShell.tsx`
+- `src/components/prototyper/PrototyperLeftPanel.tsx`
+- `src/components/prototyper/PrototyperCanvas.tsx`
+- `src/components/prototyper/PrototyperRightPanel.tsx`
+- `src/components/prototyper/ModeSwitcher.tsx`
+- `src/components/prototyper/FrozenPartCard.tsx`
+- `src/components/prototyper/MaskRefineTool.tsx`
+- `src/components/prototyper/PlacementOverlay.tsx`
+- `src/lib/prototyper/transforms.ts`
+- `src/lib/prototyper/mount-zones.ts`
+
+---
+
+## Acceptance criteria
+
+1. **Mirror** on a frozen part produces a pixel-perfect horizontal flip — verifiable by hashing the silhouette PNG.
+2. **Snap Opposite** repositions to the mirrored mount zone with no shape change.
+3. Grep: only Generate-mode code in the new Prototyper calls `ai.gateway.lovable.dev`.
+4. `frozen_parts` rows persist all metadata.
+5. Approve Overlay produces composited PNG + JSON manifest.
+6. Old prototypes are not visible in the new page list but still in DB.
+
+---
+
+## Out of scope (explicit)
+
+- STL / watertight meshing
+- Mount tab design
+- Aero/physics calc
+- Marketplace export of frozen parts
+- Cross-prototype frozen-part sharing
