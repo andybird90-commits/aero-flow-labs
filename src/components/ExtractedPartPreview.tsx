@@ -547,6 +547,7 @@ export function ExtractedPartPreview({
         <DialogHeader>
           {titleLine}
           <DialogDescription>
+            {stage === "isolating" && "Isolating the picked part — erasing the rest of the car so the AI only sees what you chose…"}
             {stage === "pretrim"   && "Optional: lasso the part on the original image so the AI only sees that crop. Or skip and render the full view."}
             {stage === "rendering" && "Drawing the part on a clean white background…"}
             {stage === "review"    && "Review the render. Regenerate if it looks generic, or turn it into a 3D model."}
@@ -555,6 +556,39 @@ export function ExtractedPartPreview({
             {stage === "error"     && "Something went wrong. See details below."}
           </DialogDescription>
         </DialogHeader>
+
+        {/* ISOLATING: AI is stripping the surrounding car away. Show a clay
+            placeholder over the original so the user has visual context. */}
+        {stage === "isolating" && sourceImageUrl && (
+          <div className="flex-1 min-h-0 flex items-center justify-center">
+            <div className="relative w-full h-full rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
+              <img
+                src={sourceImageUrl}
+                alt="Source concept"
+                className="w-full h-full object-contain opacity-30"
+              />
+              {bbox && (
+                <div
+                  className="absolute border-2 border-dashed border-primary rounded-md bg-primary/10"
+                  style={{
+                    left: `${bbox.x * 100}%`,
+                    top: `${bbox.y * 100}%`,
+                    width: `${bbox.w * 100}%`,
+                    height: `${bbox.h * 100}%`,
+                  }}
+                />
+              )}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <div className="rounded-md bg-surface-0/90 backdrop-blur px-3 py-2 border border-border inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                    Isolating {label}…
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* PRETRIM: lasso on the original concept image, before AI render */}
         {stage === "pretrim" && sourceImageUrl && (
