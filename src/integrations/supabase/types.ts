@@ -175,6 +175,8 @@ export type Database = {
         Row: {
           concept_id: string
           created_at: string
+          fidelity_breakdown: Json | null
+          fidelity_score: number | null
           glb_url: string | null
           id: string
           isolated_source_url: string | null
@@ -189,6 +191,8 @@ export type Database = {
         Insert: {
           concept_id: string
           created_at?: string
+          fidelity_breakdown?: Json | null
+          fidelity_score?: number | null
           glb_url?: string | null
           id?: string
           isolated_source_url?: string | null
@@ -203,6 +207,8 @@ export type Database = {
         Update: {
           concept_id?: string
           created_at?: string
+          fidelity_breakdown?: Json | null
+          fidelity_score?: number | null
           glb_url?: string | null
           id?: string
           isolated_source_url?: string | null

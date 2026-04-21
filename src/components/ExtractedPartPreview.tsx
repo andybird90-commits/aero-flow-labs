@@ -23,6 +23,9 @@ import { Loader2, Wand2, Box, Download, X, RotateCcw, Scissors, MousePointerClic
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { PartLasso, type LassoMode, type LassoClick, type LassoPoint } from "@/components/PartLasso";
+import { scoreFidelity, type FidelityResult } from "@/lib/part-fidelity";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ShieldCheck, ShieldAlert, ShieldX, Eye, EyeOff } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -60,6 +63,12 @@ export function ExtractedPartPreview({
   /** AI-isolated crop of just the picked part. Replaces `sourceImageUrl` in
    *  the "On car" pane and is sent as the sole reference to render-isolated-part. */
   const [isolatedUrl, setIsolatedUrl] = useState<string | null>(null);
+  /** Pixel-fidelity comparison between isolated source crop and AI render. */
+  const [fidelity, setFidelity] = useState<FidelityResult | null>(null);
+  const [scoring, setScoring] = useState(false);
+  const [compareOverlay, setCompareOverlay] = useState(false);
+  /** User opt-out: allow meshing even when fidelity is "mismatch". */
+  const [overrideFidelity, setOverrideFidelity] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
 
   // Pre-render trim state (lasso on the original concept image)
@@ -89,6 +98,10 @@ export function ExtractedPartPreview({
     setPrePoints([]);
     setPreLasso([]);
     setPreMaskedUrl(null);
+    setFidelity(null);
+    setScoring(false);
+    setCompareOverlay(false);
+    setOverrideFidelity(false);
   }, [open, conceptId, kind, sourceImageUrl, bbox]);
 
   const purgeCachedMesh = async () => {
@@ -106,7 +119,7 @@ export function ExtractedPartPreview({
   const loadFromCache = async (signal?: { cancelled: boolean }) => {
     const { data, error } = await supabase
       .from("concept_parts")
-      .select("render_urls, glb_url")
+      .select("render_urls, glb_url, isolated_source_url, fidelity_score, fidelity_breakdown")
       .eq("concept_id", conceptId)
       .eq("kind", kind)
       .maybeSingle();
@@ -115,6 +128,15 @@ export function ExtractedPartPreview({
     const renders = ((data.render_urls as unknown) as RenderImage[] | null) ?? [];
     if (!renders.length) return false;
     setImages(renders);
+    if (data.isolated_source_url) setIsolatedUrl(data.isolated_source_url);
+    if (typeof data.fidelity_score === "number" && data.fidelity_breakdown) {
+      const score = data.fidelity_score;
+      setFidelity({
+        score,
+        status: score >= 75 ? "match" : score >= 50 ? "drift" : "mismatch",
+        breakdown: data.fidelity_breakdown as any,
+      });
+    }
     if (data.glb_url) {
       setGlbUrl(data.glb_url);
       setStage("ready");
@@ -124,7 +146,31 @@ export function ExtractedPartPreview({
     return true;
   };
 
-  // Run the AI render. Pass `force` to bypass cache and always regenerate.
+  // Compare the source crop and the AI render pixel-for-pixel to catch
+  // cases where the model dropped detail (missing arch fairing, narrowed
+  // skirt etc.). Persists the result so re-opening the modal is instant.
+  const runFidelityCheck = async (sourceUrl: string, renderUrl: string) => {
+    setScoring(true);
+    try {
+      const result = await scoreFidelity(sourceUrl, renderUrl);
+      setFidelity(result);
+      // Best-effort persistence — don't block the UI on it.
+      void supabase
+        .from("concept_parts")
+        .update({
+          fidelity_score: result.score,
+          fidelity_breakdown: result.breakdown as any,
+        })
+        .eq("concept_id", conceptId)
+        .eq("kind", kind);
+    } catch (e) {
+      console.error("Fidelity check failed", e);
+      setFidelity(null);
+    } finally {
+      setScoring(false);
+    }
+  };
+
   // Pass `overrideSourceUrl` (typically a pre-trimmed crop) to push only that
   // image to Gemini as the sole reference.
   const runRender = async (
@@ -158,6 +204,15 @@ export function ExtractedPartPreview({
       if (!renders?.length) throw new Error("No renders returned");
       setImages(renders);
       setStage("review");
+      setFidelity(null);
+      setOverrideFidelity(false);
+      // Kick off the pixel-fidelity check in the background so the user
+      // sees the render immediately and the badge fades in once ready.
+      const compareSource = overrideSourceUrl ?? isolatedUrl ?? sourceImageUrl;
+      const heroRender = renders[0]?.url;
+      if (compareSource && heroRender) {
+        void runFidelityCheck(compareSource, heroRender);
+      }
     } catch (e: any) {
       if (signal?.cancelled) return;
       const msg = String(e.message ?? e);
@@ -702,6 +757,16 @@ export function ExtractedPartPreview({
                       alt={`${label} ${images[0]?.angle ?? ""}`}
                       className="w-full h-full object-contain"
                     />
+                    {/* Compare overlay — source crop tinted red over the render
+                        so the user can see what (if anything) the AI dropped. */}
+                    {compareOverlay && (isolatedUrl || sourceImageUrl) && (
+                      <img
+                        src={isolatedUrl ?? sourceImageUrl!}
+                        alt="Source overlay"
+                        className="absolute inset-0 w-full h-full object-contain pointer-events-none mix-blend-multiply"
+                        style={{ filter: "hue-rotate(-50deg) saturate(2.5)", opacity: 0.5 }}
+                      />
+                    )}
                     <span className="absolute bottom-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1 py-0.5 rounded">
                       {maskedUrl ? "trimmed" : images[0]?.angle}
                     </span>
@@ -715,7 +780,25 @@ export function ExtractedPartPreview({
                 <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
                   Extracted
                 </span>
+                {/* Fidelity badge + compare toggle, shown once we have a render */}
+                {(stage === "review" || stage === "meshing" || stage === "ready") && images[0] && !trimOpen && (
+                  <div className="absolute top-1 right-1 flex items-center gap-1">
+                    <FidelityBadge fidelity={fidelity} scoring={scoring} />
+                    {(isolatedUrl || sourceImageUrl) && (
+                      <button
+                        type="button"
+                        onClick={() => setCompareOverlay((v) => !v)}
+                        className="inline-flex items-center gap-1 rounded bg-surface-0/80 backdrop-blur border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-widest font-mono text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+                        title={compareOverlay ? "Hide source overlay" : "Show source overlay"}
+                      >
+                        {compareOverlay ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        Compare
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
+
 
               {/* Pane 3 — 3D mesh (or placeholder while not ready) */}
               <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
@@ -839,9 +922,23 @@ export function ExtractedPartPreview({
                   <Undo2 className="h-4 w-4 mr-1" /> Use original
                 </Button>
               )}
-              <Button onClick={onMakeMesh}>
-                <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
-              </Button>
+              {/* Gate the mesh step on fidelity. Mismatch (<50) requires
+                  the user to either re-draw or explicitly override. */}
+              {fidelity?.status === "mismatch" && !overrideFidelity ? (
+                <Button
+                  variant="outline"
+                  onClick={() => setOverrideFidelity(true)}
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                  title={`Score ${fidelity.score}/100 — render doesn't match the source. Re-draw recommended.`}
+                >
+                  <ShieldX className="h-4 w-4 mr-1" /> Mesh anyway
+                </Button>
+              ) : (
+                <Button onClick={onMakeMesh}>
+                  <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
+                </Button>
+              )}
+
             </>
           )}
 
@@ -881,3 +978,62 @@ export function ExtractedPartPreview({
     </Dialog>
   );
 }
+
+/* ---------- Fidelity badge ---------- */
+
+function FidelityBadge({
+  fidelity,
+  scoring,
+}: {
+  fidelity: FidelityResult | null;
+  scoring: boolean;
+}) {
+  if (scoring) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded bg-surface-0/80 backdrop-blur border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-widest font-mono text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" /> Checking…
+      </span>
+    );
+  }
+  if (!fidelity) return null;
+
+  const styles =
+    fidelity.status === "match"
+      ? { Icon: ShieldCheck, cls: "border-success/40 text-success bg-success/10" }
+      : fidelity.status === "drift"
+      ? { Icon: ShieldAlert, cls: "border-warning/40 text-warning bg-warning/10" }
+      : { Icon: ShieldX, cls: "border-destructive/40 text-destructive bg-destructive/10" };
+
+  const labelMap = { match: "Match", drift: "Drift", mismatch: "Mismatch" } as const;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-widest font-mono cursor-help ${styles.cls}`}
+          >
+            <styles.Icon className="h-3 w-3" />
+            {labelMap[fidelity.status]} {fidelity.score}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-xs">
+          <div className="space-y-1 text-xs">
+            <div className="font-semibold">Fidelity {fidelity.score}/100</div>
+            <ul className="text-muted-foreground space-y-0.5">
+              <li>Silhouette: {Math.round(fidelity.breakdown.silhouette * 100)}%</li>
+              <li>Outline: {Math.round(fidelity.breakdown.edges * 100)}%</li>
+              <li>Shape & size: {Math.round(fidelity.breakdown.aspect * 100)}%</li>
+            </ul>
+            {fidelity.breakdown.notes.length > 0 && (
+              <div className="pt-1 border-t border-border text-foreground">
+                {fidelity.breakdown.notes.join("; ")}
+              </div>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
