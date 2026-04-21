@@ -799,6 +799,60 @@ export type Database = {
           },
         ]
       }
+      geometry_jobs: {
+        Row: {
+          concept_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          inputs: Json
+          job_type: string
+          mount_zone: string
+          outputs: Json
+          part_kind: string
+          project_id: string | null
+          side: string
+          status: string
+          updated_at: string
+          user_id: string
+          worker_task_id: string | null
+        }
+        Insert: {
+          concept_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          inputs?: Json
+          job_type: string
+          mount_zone: string
+          outputs?: Json
+          part_kind: string
+          project_id?: string | null
+          side?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+          worker_task_id?: string | null
+        }
+        Update: {
+          concept_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          inputs?: Json
+          job_type?: string
+          mount_zone?: string
+          outputs?: Json
+          part_kind?: string
+          project_id?: string | null
+          side?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          worker_task_id?: string | null
+        }
+        Relationships: []
+      }
       library_items: {
         Row: {
           asset_mime: string | null
@@ -1264,6 +1318,7 @@ export type Database = {
         | "aero_kit_mesh"
         | "concept_part_mesh"
         | "prototype_part_mesh"
+        | "geometry_part_mesh"
       library_visibility: "private" | "public"
       marketplace_listing_status: "draft" | "active" | "paused"
       parts_job_state:
@@ -1439,6 +1494,7 @@ export const Constants = {
         "aero_kit_mesh",
         "concept_part_mesh",
         "prototype_part_mesh",
+        "geometry_part_mesh",
       ],
       library_visibility: ["private", "public"],
       marketplace_listing_status: ["draft", "active", "paused"],
