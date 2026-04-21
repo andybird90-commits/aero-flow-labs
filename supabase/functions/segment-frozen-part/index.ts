@@ -318,11 +318,13 @@ Deno.serve(async (req) => {
       y: Math.round(body.click_point.y * h),
     };
 
-    // 2. Run SAM via Replicate.
-    const maskUrl = await runSAM(body.source_image_url, clickPx);
+    // 2. Run SAM via Replicate, then choose the generated mask under/nearest
+    //    the click. This keeps SAM as segmentation-only while making clicks
+    //    deterministic and precise.
+    const maskUrls = await runSAM(body.source_image_url);
+    const maskBytes = await chooseMaskForClick(maskUrls, { w, h }, clickPx);
 
     // 3. Build clean mask, silhouette PNG, bbox, anchor points.
-    const maskBytes = await fetchAsBuffer(maskUrl);
     const { silhouette, maskClean, bbox, anchors } =
       await buildSilhouetteAndBbox(sourceBytes, maskBytes);
 
