@@ -563,7 +563,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
   return (
     <Dialog open={!!prototype} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-[min(1600px,95vw)] max-h-[92vh] flex flex-col">
+      <DialogContent className="max-w-[min(1600px,95vw)] w-[95vw] h-[92vh] max-h-[92vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Beaker className="h-4 w-4 text-fuchsia-400" /> {prototype.title}
