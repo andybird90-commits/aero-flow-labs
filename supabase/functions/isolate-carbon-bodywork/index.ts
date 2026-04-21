@@ -12,6 +12,15 @@
  * the UI polls `concepts.carbon_status`.
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { decode as decodeImg, Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
+
+/**
+ * Target canvas size for every isolated carbon view. All four views are
+ * padded onto an identical NxN canvas so the inter-view scale ratio is
+ * preserved when fed into the multi-view mesh reconstructor (Rodin Gen-2).
+ */
+const CARBON_CANVAS_PX = 1024;
+const CARBON_BG_GREY = 0xb4b4b4ff; // medium grey, matches isolation prompt
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
