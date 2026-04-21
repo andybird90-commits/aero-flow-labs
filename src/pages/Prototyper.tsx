@@ -851,9 +851,32 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
               Source
             </span>
             <div className="absolute inset-0 grid grid-cols-2 gap-1 p-1 overflow-auto">
-              {sources.map((u, i) => (
-                <img key={u + i} src={u} alt="" className="rounded object-cover w-full h-full" />
-              ))}
+              {sources.map((u, i) => {
+                const masked = sourceMasks.some((m) => m?.source_index === i);
+                const isPrimary = i === primarySourceIdx;
+                return (
+                  <div key={u + i} className="relative group/thumb rounded overflow-hidden bg-surface-0">
+                    <img src={u} alt="" className="w-full h-full object-cover" />
+                    {masked && (
+                      <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-emerald-500/90 text-emerald-950 px-1 py-0.5 rounded">
+                        {isPrimary ? "Mask ✓" : "Masked"}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setMaskingSource(u)}
+                      disabled={busy !== null}
+                      title={masked ? "Edit the mask" : "Mark the part on this photo"}
+                      className="absolute inset-0 grid place-items-center bg-background/0 hover:bg-background/60 backdrop-blur-0 hover:backdrop-blur transition-all opacity-0 hover:opacity-100 focus:opacity-100 disabled:cursor-not-allowed"
+                    >
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground border border-border">
+                        <MousePointer2 className="h-3 w-3" />
+                        {masked ? "Edit mask" : "Mark the part"}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
               {sources.length === 0 && (
                 <div className="col-span-2 grid place-items-center text-muted-foreground">
                   <ImageIcon className="h-6 w-6 opacity-40" />
