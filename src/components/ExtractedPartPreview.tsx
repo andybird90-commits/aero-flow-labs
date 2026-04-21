@@ -35,14 +35,18 @@ interface Props {
    *  optional pre-render trim step so we can isolate the part BEFORE Gemini
    *  draws it. */
   sourceImageUrl?: string;
+  /** Hotspot bounding box in normalised coordinates. When supplied alongside
+   *  `sourceImageUrl`, we run an automatic isolation pass first so downstream
+   *  AI only ever sees the chosen part. */
+  bbox?: { x: number; y: number; w: number; h: number };
 }
 
-type Stage = "pretrim" | "rendering" | "review" | "meshing" | "ready" | "error";
+type Stage = "isolating" | "pretrim" | "rendering" | "review" | "meshing" | "ready" | "error";
 
 interface RenderImage { angle: string; url: string }
 
 export function ExtractedPartPreview({
-  open, onClose, conceptId, kind, label, filenameBase, sourceImageUrl,
+  open, onClose, conceptId, kind, label, filenameBase, sourceImageUrl, bbox,
 }: Props) {
   const { toast } = useToast();
   const [stage, setStage] = useState<Stage>(sourceImageUrl ? "pretrim" : "rendering");
