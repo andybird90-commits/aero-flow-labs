@@ -600,6 +600,52 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
           </DialogDescription>
         </DialogHeader>
 
+        {/* HERO PANEL — On-car carbon composite (or clay hero fallback if no car). */}
+        <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex-shrink-0" style={{ height: "min(48vh, 520px)" }}>
+          <span className="absolute top-1.5 left-1.5 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+            {garageCarId ? "On car (carbon)" : "Hero render"}
+          </span>
+          {garageCarId ? (
+            isFitting || (isRendering && !fitUrl) ? (
+              <div className="absolute inset-0 grid place-items-center text-primary">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="text-[10px] font-mono uppercase tracking-widest">Fitting on car…</span>
+                </div>
+              </div>
+            ) : fitUrl ? (
+              <img src={fitUrl} alt="Part fitted on car" className="absolute inset-0 w-full h-full object-contain" />
+            ) : (
+              <div className="absolute inset-0 grid place-items-center text-muted-foreground">
+                <div className="flex flex-col items-center gap-1">
+                  <Car className="h-7 w-7 opacity-40" />
+                  <span className="text-[10px] font-mono uppercase tracking-widest">Click "Render preview"</span>
+                </div>
+              </div>
+            )
+          ) : isRendering && !renders.length ? (
+            <div className="absolute inset-0 grid place-items-center text-primary">
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                <span className="text-[10px] font-mono uppercase tracking-widest">Drawing…</span>
+              </div>
+            </div>
+          ) : renders[0]?.url ? (
+            <img src={renders[0].url} alt="Hero clay render" className="absolute inset-0 w-full h-full object-contain" />
+          ) : (
+            <div className="absolute inset-0 grid place-items-center text-muted-foreground">
+              <div className="flex flex-col items-center gap-2 text-center px-6">
+                <Wand2 className="h-7 w-7 opacity-40" />
+                <span className="text-[10px] font-mono uppercase tracking-widest">Click "Render preview"</span>
+                <span className="text-[11px] text-muted-foreground/80 max-w-xs">
+                  Tip: link a Garage car (from the prototype settings) to see this part fitted on the car in carbon as the main preview.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* SECONDARY GRID — sources / clay views / 3D */}
         <div className="flex-1 min-h-0 grid gap-2 grid-rows-3 md:grid-rows-1 md:grid-cols-3">
           {/* Pane 1 — Source photos */}
           <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden">
@@ -618,10 +664,10 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
             </div>
           </div>
 
-          {/* Pane 2 — AI renders */}
+          {/* Pane 2 — Clay views (hero + back) */}
           <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden">
             <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
-              Rendered
+              Clay views
             </span>
             {isRendering ? (
               <div className="absolute inset-0 grid place-items-center text-primary">
@@ -645,7 +691,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
               <div className="absolute inset-0 grid place-items-center text-muted-foreground">
                 <div className="flex flex-col items-center gap-1">
                   <Wand2 className="h-6 w-6 opacity-40" />
-                  <span className="text-[9px] font-mono uppercase tracking-widest">Click "Render views"</span>
+                  <span className="text-[9px] font-mono uppercase tracking-widest">No clay views yet</span>
                 </div>
               </div>
             )}
@@ -681,24 +727,6 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
         {(prototype.render_error || prototype.mesh_error) && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 text-destructive text-xs p-3 font-mono whitespace-pre-wrap">
             {prototype.mesh_error || prototype.render_error}
-          </div>
-        )}
-
-        {garageCarId && (fitUrl || isFitting) && (
-          <div className="rounded-md border border-border bg-surface-0 overflow-hidden relative" style={{ height: 220 }}>
-            <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
-              Fit on car (carbon)
-            </span>
-            {isFitting ? (
-              <div className="absolute inset-0 grid place-items-center text-primary">
-                <div className="flex flex-col items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="text-[9px] font-mono uppercase tracking-widest">Fitting…</span>
-                </div>
-              </div>
-            ) : fitUrl ? (
-              <img src={fitUrl} alt="Part fitted on car" className="absolute inset-0 w-full h-full object-contain" />
-            ) : null}
           </div>
         )}
 
