@@ -1,54 +1,76 @@
 
 
-## Fix: isolate just one part, even when neighbours are nearby
+## Reframe Prototyper around "on-car first"
 
-### What's actually wrong
+Currently the workflow leads with two isolated clay renders (hero + back), then makes the on-car carbon composite a secondary "fit check". This plan inverts that so the on-car shot becomes the **primary** render whenever a garage car is linked, because that's the view that actually answers "does this part make sense on my car?".
 
-The user clicked the **front arch** hotspot. The render pane then shows the arch *plus* two bonnet vents, a lip, a canard and a skirt extension — and the fidelity check sees a perfect render of all of that and (rightly) says "MISMATCH" because the source crop and the redraw both contain six parts instead of one.
+### New flow
 
-Two upstream bugs collude:
+```text
+Upload photos + (optional) pick garage car + describe the part
+       │
+       ▼
+PRIMARY render  ──►  Part shown ON the car, in carbon fibre
+                     (if no car linked → falls back to clay hero)
+       │
+       ▼
+SECONDARY clay views (hero + back)   ◄── generated automatically right after,
+                                          needed for meshing + back-of-part check
+       │
+       ▼
+3D mesh / STL
+```
 
-1. **`isolate-picked-part` over-pads.** It crops the AI bbox with **+30% padding on each side** "to keep mounting tabs". On a tightly-packed concept that's enough to swallow neighbouring parts whole.
-2. **`render-isolated-part` has no intent signal.** It gets the (now multi-part) crop and a prompt that says "draw an arch", but Gemini sees five other parts in the reference and faithfully redraws all of them. The per-kind `not:` lists ban *car body* but not *other bolt-on parts*.
+### What changes
 
-### Fix in three layers
+**1. Edge function: `render-prototype-views`**
+- When a `garage_car_id` is present, generate the on-car carbon composite *first* using the source photos + car reference photo directly (skip needing a pre-existing clay hero as input).
+- Then generate the clay hero + clay back views as before — these are still required as input to the mesher and to inspect the hollow back.
+- Write all three results to the prototype row in one pass: `fit_preview_url` + `render_urls[hero, back]`.
+- When no car is linked, behaviour is unchanged (clay hero + back only).
 
-**A. Tighten the crop, keep it focused on the picked part.**  
-`isolate-picked-part` switches to **adaptive padding**: 8% by default (just enough to keep mounting tabs and the immediate fairing), and a hard ceiling that the cropped box can't grow past **1.4× the original bbox area**. This alone removes ~80% of the bleed.
+**2. Edge function: `render-prototype-on-car`**
+- Keep it, but it's no longer the only path to the on-car shot. It stays as the dedicated "Re-fit on car" re-roll button so users can iterate the composite without re-rendering the clay views.
+- Update its input handling so it can work from the source photos directly if no clay hero exists yet (defensive — covers older prototypes).
 
-**B. Tell the renderer exactly what was picked.**  
-Pass the `bbox` through `isolate-picked-part` → write a tiny sidecar `{ part_kind, bbox }` to `concept_parts.isolated_meta` jsonb when we upload the crop. `render-isolated-part` reads that and adds two new prompt directives:
+**3. UI: `Prototyper.tsx` workspace dialog**
+- Reorder panels so the **on-car carbon view is the hero panel at the top** (large), with the clay hero/back views shown smaller underneath as "reference views", followed by the 3D mesh panel.
+- When no garage car is linked, the on-car panel shows a soft prompt: "Link a garage car to see this part fitted in carbon" with a button that opens the car picker — clay views remain primary in that case.
+- Rename the primary action button from "Render views" to **"Render preview"** (it now produces the on-car shot + clay views together).
+- Keep "Re-fit on car" as a secondary action for re-rolling just the composite.
+- The revision-note textarea applies to whichever render the user triggers next (re-render preview *or* re-fit on car).
 
-- *"The reference image may contain other aero parts. Render ONLY the {label} — the part centred at roughly (cx, cy) of the reference. Ignore every other shape in the frame."*
-- *"OUTPUT MUST CONTAIN EXACTLY ONE PART. No vents, no lip, no canards, no skirts, no other arches — only the {label}."*
+**4. New prototype dialog**
+- No structural change, but make the garage car picker more prominent (move it directly under the title, before the photo uploads) and add a one-line hint: "Pick a car to see the part fitted on it as the main preview."
 
-We also extend each `PART_SPEC.not` line with *"and NO other aftermarket aero parts (vents, lip, canards, skirt, other arches, wing) — only the {kind} itself."*
+### Layout sketch
 
-**C. Make the fidelity check honest about the new behaviour.**  
-The source crop will still sometimes contain neighbours (we can't predict the layout perfectly). To avoid false MISMATCH flags when the *render* is correctly single-part but the *source* is multi-part, the fidelity check picks the **largest connected component** of each Otsu mask before computing IoU — so it compares "biggest blob in source" vs "biggest blob in render". Same for edge coverage (restrict to that component's bbox).
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  ON CAR (carbon)                          [hero panel]      │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │            big composite render of car                │  │
+│  └───────────────────────────────────────────────────────┘  │
+├──────────────────┬──────────────────┬───────────────────────┤
+│ SOURCE PHOTOS    │ CLAY VIEWS       │ 3D MESH               │
+│ (small grid)     │ hero │ back      │ viewer / "Make 3D"    │
+└──────────────────┴──────────────────┴───────────────────────┘
+│ REVISION NOTE FOR NEXT RENDER  [textarea]                   │
+│ [Close] [Re-render preview] [Re-fit on car] [Make 3D model] │
+└─────────────────────────────────────────────────────────────┘
+```
 
-This is a 30-line addition to `part-fidelity.ts` (`largestComponent(mask)`), no new dependencies.
+### Technical details
 
-### Files
+- `render-prototype-views` will branch on `garage_car_id`: if set, fetch the car ref image, build a 3-step prompt sequence (on-car carbon → clay hero → clay back) and update DB columns `fit_preview_url`, `fit_preview_status`, `render_urls`, `render_status` together. Status writes happen progressively so the UI can show "Rendering on-car…", "Rendering clay views…".
+- The on-car prompt re-uses the existing carbon-fibre prompt already in `render-prototype-on-car`, but takes source photos as the part reference instead of the clay hero (the clay hero is a redrawn approximation; using the originals gives the model truer geometry to work from).
+- Clay hero/back generation is unchanged — still needed as the input to `meshify-prototype`.
+- No schema changes required (`fit_preview_url/status/error` columns already exist).
+- Card thumbnails in the prototype list will prefer `fit_preview_url` when present, so the grid shows the on-car carbon shot rather than the floating clay part.
 
-**Modified:**
-- `supabase/functions/isolate-picked-part/index.ts` — drop pad from 30% → 8%, add area-ratio cap, persist `isolated_meta` jsonb on `concept_parts`.
-- `supabase/functions/render-isolated-part/index.ts` — accept optional `bbox` + `picked_kind` in the body (also auto-loads from `isolated_meta` if absent), inject the two new "exactly one part" directives, extend per-kind negatives.
-- `src/components/ExtractedPartPreview.tsx` — when invoking `render-isolated-part` after auto-isolation, also forward `bbox` and `picked_kind`.
-- `src/lib/part-fidelity.ts` — add `largestComponent()` + use it in `scoreFidelity` before IoU/edges.
+### Files touched
 
-**Migration:**
-- Add `concept_parts.isolated_meta jsonb null` column. Backfill not needed.
-
-### What you'll see after
-
-Click the arch hotspot → crop is a tight box hugging the arch (no bonnet vents) → render is a single grey arch on white → fidelity badge reads **MATCH** because both source and render are now genuinely one part.
-
-If a hotspot ever does encroach on neighbours (e.g. the bbox itself was wide), the render still produces a single isolated arch because the prompt explicitly forbids the rest.
-
-### Out of scope
-
-- No re-running of past detections — existing cached hotspot bboxes are reused as-is; the tighter crop math just runs against them.
-- No change to the post-render lasso trim — still available as a manual escape hatch if a render ever does show extras.
-- Per-angle scoring is still single-angle (one hero render).
+- `supabase/functions/render-prototype-views/index.ts` — branch on garage car, produce on-car shot first
+- `supabase/functions/render-prototype-on-car/index.ts` — accept source photos as fallback input
+- `src/pages/Prototyper.tsx` — reorder workspace panels, rename buttons, prefer fit preview as card thumb, reorder new-prototype dialog fields
 
