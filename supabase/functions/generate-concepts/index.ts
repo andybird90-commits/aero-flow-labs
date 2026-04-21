@@ -260,6 +260,19 @@ Deno.serve(async (req) => {
     ): Promise<{ publicUrl: string; dataUrl: string } | null> {
       const hasRef = referenceImages.length > 0;
 
+      // Carbon-fibre finish for ALL added bodywork — gives instant visual
+      // contrast against the OEM painted panels so the user can clearly see
+      // exactly which parts have been added vs the factory body.
+      const carbonFinish =
+        `MATERIAL FINISH (critical): every added/modified aero or styling part — splitter, ` +
+        `lip, canards, side skirts, arch flares, diffuser, ducktail, wing, hood/wing vents — ` +
+        `MUST be finished in glossy 2x2 twill carbon fibre with a clearly visible black weave ` +
+        `pattern and crisp clearcoat reflections. The carbon weave must be obvious at this ` +
+        `viewing distance. The OEM body panels (doors, roof, fenders, bumpers above the splitter) ` +
+        `MUST stay in their original factory paint colour — do NOT paint the whole car carbon, ` +
+        `do NOT paint the whole car black. The carbon parts should visually pop against the ` +
+        `painted body so it is unmistakable which parts are bolt-ons.`;
+
       const fromUserPrompt =
         `Re-render THE EXACT CAR shown in the reference image with an added ${v.modifier} body kit, ` +
         `framed as a ${angle.framing}. ` +
@@ -271,6 +284,7 @@ Deno.serve(async (req) => {
         `diffuser, wing, canards) consistent with the styling brief. ` +
         `\n\nDESIGN DIRECTION (this variation): ${v.direction} ` +
         `\nKEY EMPHASIS: ${v.emphasis} ` +
+        `\n\n${carbonFinish}` +
         `\n\nUSER BRIEF (highest priority — must be reflected in the result): ${stylePrompt} ` +
         `\n\nStudio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
         `no text, no watermark, no UI overlays.`;
@@ -282,7 +296,9 @@ Deno.serve(async (req) => {
         `diffuser, canards) — but viewed from a different camera angle: ${angle.framing}. ` +
         `CRITICAL: This must look like the same physical car as the reference, just photographed ` +
         `from another side. Do NOT change the colour, do NOT change the wheels, do NOT change the ` +
-        `aero kit shapes. Match the reference's lighting style, backdrop, and overall mood. ` +
+        `aero kit shapes. The carbon-fibre aero parts in the reference MUST stay carbon-fibre ` +
+        `(glossy 2x2 twill weave) and the OEM painted panels MUST stay their original colour. ` +
+        `Match the reference's lighting style, backdrop, and overall mood. ` +
         `Studio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
         `no text, no watermark, no UI overlays.`;
 
@@ -291,6 +307,7 @@ Deno.serve(async (req) => {
         `${v.modifier}. ` +
         `\n\nDESIGN DIRECTION: ${v.direction} ` +
         `\nKEY EMPHASIS: ${v.emphasis} ` +
+        `\n\n${carbonFinish}` +
         `\n\nUSER BRIEF (highest priority — must be reflected in the result): ${stylePrompt} ` +
         `\n\nStudio lighting, dark dramatic backdrop, photorealistic, concept design quality, ` +
         `sharp focus, clean reflections, no text, no watermark.`;
