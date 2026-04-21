@@ -3,9 +3,10 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { WorkspaceShell } from "@/components/WorkspaceShell";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   useBrief, useConcepts, useUpdateConcept, useDeleteConcept,
-  useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, useStylePreset,
+  useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, useStylePreset, useActiveConceptSet,
   useIsolateCarbon, useCarbonStatus, type Concept,
 } from "@/lib/repo";
 import { AeroKitProgress, type AeroKitStatus } from "@/components/AeroKitProgress";
@@ -34,6 +35,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const { data: brief } = useBrief(projectId);
   const { data: activePreset } = useStylePreset((brief as any)?.style_preset_id ?? null);
   const { data: concepts = [], refetch } = useConcepts(projectId);
+  const { data: activeConceptSet } = useActiveConceptSet(projectId);
   const updateConcept = useUpdateConcept();
   const deleteConcept = useDeleteConcept();
   const buildKit = useBuildAeroKit();
@@ -42,6 +44,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
   const location = useLocation();
   const navigate = useNavigate();
   const autoTriggered = useRef(false);
+  const generatingInBackground = activeConceptSet?.status === "generating";
 
   // Manifold is no longer required — non-manifold meshes build with a warning.
   const heroReady = !!heroStl?.repaired_stl_path;
@@ -77,6 +80,11 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
+      if ((data as any)?.queued) {
+        toast({ title: "Generation started", description: "Concepts are rendering in the background now." });
+        await refetch();
+        return;
+      }
       toast({ title: "Concepts generated", description: `${(data as any)?.count ?? "Several"} concept variations created.` });
       await refetch();
     } catch (e: any) {
@@ -114,8 +122,8 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
             <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-primary/80">Step 2 · Concepts</div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">Generated styling concepts</h1>
           </div>
-          <Button variant="hero" size="lg" onClick={generate} disabled={!hasBrief || generating}>
-            {generating ? (
+          <Button variant="hero" size="lg" onClick={generate} disabled={!hasBrief || generating || generatingInBackground}>
+            {generating || generatingInBackground ? (
               <>
                 <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Generating…
               </>
@@ -139,6 +147,15 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
               </p>
             </div>
           </div>
+        )}
+
+        {generatingInBackground && (
+          <Alert>
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <AlertDescription>
+              Concepts are still rendering in the background; this page will update automatically as each variation finishes.
+            </AlertDescription>
+          </Alert>
         )}
 
         {concepts.length === 0 ? (
