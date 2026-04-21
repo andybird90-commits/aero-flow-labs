@@ -76,10 +76,13 @@ Deno.serve(async (req) => {
 
     const label = body.part_label || body.part_kind.replace(/[_-]+/g, " ");
 
-    // ── Step 1: deterministic server-side crop with padding ───────────────
-    // We do NOT trust the AI to "keep only X" — it will redraw the whole kit.
-    // Instead we crop the source image to the bbox (with generous padding) so
-    // the model literally cannot see the rest of the car.
+    // ── Deterministic server-side crop, no AI restyling ─────────────────
+    // We deliberately do NOT run an AI cleanup pass — the model will
+    // "tidy up" the part (smooth edges, redraw arches as symmetric arcs,
+    // drop the skirt extension) and the on-car geometry no longer matches.
+    // The downstream `render-isolated-part` already redraws the part on a
+    // clean backdrop using this crop as reference, so a faithful pixel crop
+    // is what gives the best fidelity.
     const { Image } = await import("https://deno.land/x/imagescript@1.2.17/mod.ts");
     const srcResp = await fetch(body.source_image_url);
     if (!srcResp.ok) return json({ error: `source fetch ${srcResp.status}` }, 500);
@@ -88,10 +91,11 @@ Deno.serve(async (req) => {
     const W = srcImg.width;
     const H = srcImg.height;
 
-    // Pad by 18% of the bbox size on every side so we don't clip mounting
-    // tabs / vents. Clamp to image bounds.
-    const padX = Math.max(0.04, w * 0.18);
-    const padY = Math.max(0.04, h * 0.18);
+    // Pad generously (30%) so we keep mounting tabs, vents, skirt extensions
+    // and any fairing that blends the part into adjacent bodywork. The
+    // downstream renderer needs that context to draw the part correctly.
+    const padX = Math.max(0.06, w * 0.30);
+    const padY = Math.max(0.06, h * 0.30);
     const cx = Math.max(0, x - padX);
     const cy = Math.max(0, y - padY);
     const cw = Math.min(1 - cx, w + padX * 2);
@@ -102,71 +106,9 @@ Deno.serve(async (req) => {
     const pw = Math.max(8, Math.round(cw * W));
     const ph = Math.max(8, Math.round(ch * H));
     const cropped = srcImg.clone().crop(px, py, Math.min(pw, W - px), Math.min(ph, H - py));
-    const croppedPng = await cropped.encode();
-    let bin = "";
-    const CHUNK = 0x8000;
-    for (let i = 0; i < croppedPng.length; i += CHUNK) {
-      bin += String.fromCharCode.apply(null, Array.from(croppedPng.subarray(i, i + CHUNK)));
-    }
-    const croppedDataUrl = `data:image/png;base64,${btoa(bin)}`;
-
-    // ── Step 2: AI cleanup pass ───────────────────────────────────────────
-    // Now the input image already shows mostly the part; ask the model to
-    // erase any leftover surrounding car bits and place the part on a clean
-    // grey studio backdrop. It cannot invent a whole kit because the source
-    // pixels for the rest of the car are gone.
-    const prompt =
-      `This image is a tight crop showing the ${label} of a car, with some surrounding ` +
-      `bodywork and background still visible at the edges. ` +
-      `Your job is ONLY to clean up the background — DO NOT redraw, restyle, extend ` +
-      `or add anything. ` +
-      `Erase any leftover car body, wheels, tyres, glass, lights, ground and original ` +
-      `background, replacing them with a clean medium-grey studio backdrop with soft, ` +
-      `even product lighting and a subtle ground shadow under the part. ` +
-      `Preserve the EXACT silhouette, proportions, mounting tabs, vents, weave direction ` +
-      `and surface curvature of the ${label} — pixel-faithful to the input. ` +
-      `Output a single product-style render of just the ${label} on grey. ` +
-      `Absolutely no other car parts, no wheels, no fenders or skirts beyond the ${label} ` +
-      `itself, no text, no watermark.`;
-
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3.1-flash-image-preview",
-        modalities: ["image", "text"],
-        messages: [{
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: croppedDataUrl } },
-          ],
-        }],
-      }),
-    });
-
-    if (!aiResp.ok) {
-      const t = await aiResp.text();
-      const status = aiResp.status;
-      if (status === 429) return json({ error: "Rate limited — try again in a moment." }, 429);
-      if (status === 402) return json({ error: "AI credits exhausted — top up to continue." }, 402);
-      console.error("isolate-picked-part AI failed:", status, t.slice(0, 200));
-      return json({ error: `AI gateway ${status}` }, 500);
-    }
-    const aiJson = await aiResp.json().catch(() => null);
-    const imgUrl: string | undefined = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    if (!imgUrl?.startsWith("data:image/")) {
-      return json({ error: "Isolation produced no image" }, 500);
-    }
-    const m = imgUrl.match(/^data:(image\/[a-z+]+);base64,(.*)$/i);
-    if (!m) return json({ error: "Bad image data URL" }, 500);
-    const mime = m[1];
-    const b64 = m[2];
-    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-    const ext = mime.includes("jpeg") ? "jpg" : "png";
+    const bytes = await cropped.encode();
+    const mime = "image/png";
+    const ext = "png";
 
     const path = `${userId}/${body.concept_id}/picked/${body.part_kind}-${Date.now()}.${ext}`;
     const { error: upErr } = await admin.storage
