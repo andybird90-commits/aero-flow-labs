@@ -194,6 +194,9 @@ export function ExtractedPartPreview({
             part_label: label,
             source_image_url: sourceImageUrl,
             bbox,
+            // Always re-isolate: the cropping algorithm changes between
+            // versions and we don't want stale full-kit images served from cache.
+            force: true,
           },
         });
         if (signal.cancelled) return;
