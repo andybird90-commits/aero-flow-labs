@@ -52,6 +52,20 @@ const REFINE_SPECS: RefineSpec[] = [
     controls: [{ key: "flare", label: "Flare", min: 20, max: 120, step: 5, unit: "mm" }],
   },
   {
+    kind: "front_arch", label: "Front arch",
+    controls: [
+      { key: "flare", label: "Flare", min: 20, max: 120, step: 5, unit: "mm" },
+      { key: "arch_radius", label: "Arch radius", min: 260, max: 560, step: 10, unit: "mm" },
+    ],
+  },
+  {
+    kind: "rear_arch", label: "Rear arch",
+    controls: [
+      { key: "flare", label: "Flare", min: 20, max: 140, step: 5, unit: "mm" },
+      { key: "arch_radius", label: "Arch radius", min: 260, max: 580, step: 10, unit: "mm" },
+    ],
+  },
+  {
     kind: "diffuser", label: "Rear diffuser",
     controls: [{ key: "angle", label: "Angle", min: 0, max: 25, step: 1, unit: "°" }],
   },
