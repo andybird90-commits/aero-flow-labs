@@ -659,12 +659,12 @@ export function ExtractedPartPreview({
         {(stage === "rendering" || stage === "review" || stage === "meshing" || stage === "ready") && (
           <div className="relative flex-1 min-h-0 flex flex-col">
             <div className="flex-1 min-h-0 grid gap-2 grid-rows-3 md:grid-rows-1 md:grid-cols-3">
-              {/* Pane 1 — On car (original concept reference) */}
+              {/* Pane 1 — On car (isolated crop if available, else original) */}
               <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
-                {sourceImageUrl ? (
+                {(isolatedUrl || sourceImageUrl) ? (
                   <img
-                    src={sourceImageUrl}
-                    alt="Original part on car"
+                    src={isolatedUrl ?? sourceImageUrl!}
+                    alt={isolatedUrl ? "Isolated part" : "Original part on car"}
                     className="w-full h-full object-contain"
                   />
                 ) : (
@@ -673,7 +673,7 @@ export function ExtractedPartPreview({
                   </div>
                 )}
                 <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
-                  On car
+                  {isolatedUrl ? "Isolated" : "On car"}
                 </span>
               </div>
 
