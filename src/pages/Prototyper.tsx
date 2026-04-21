@@ -360,6 +360,7 @@ export default function Prototyper() {
             </Button>
           }
         />
+        <PausedBanner />
         <Card className="p-8 text-center">
           <div className="text-sm text-muted-foreground max-w-md mx-auto">
             No prototypes yet. Create one, pick a garage car view, generate a concept,
@@ -385,6 +386,7 @@ export default function Prototyper() {
         description={activePrototype.title}
         actions={<ModeSwitcher mode={mode} onChange={setMode} placeEnabled={frozenParts.length > 0} />}
       />
+      <PausedBanner />
 
       <div className="grid grid-cols-12 gap-4 h-[calc(100vh-220px)] min-h-[600px]">
         <div className="col-span-3 overflow-hidden">
