@@ -164,7 +164,7 @@ function RefineInner({ projectId, project }: { projectId: string; project: any }
           </div>
         )}
 
-        {enabled.map((part) => {
+        {displayedParts.map((part) => {
           const spec = REFINE_SPECS.find((s) => s.kind === part.kind);
           if (!spec) return null;
           const isHidden = !!hidden[part.kind];
