@@ -137,7 +137,9 @@ export default function PrototyperPage() {
 function PrototypeCard({ prototype, onOpen, onDelete }: { prototype: Prototype; onOpen: () => void; onDelete: () => void }) {
   const sources = (prototype.source_image_urls as string[]) ?? [];
   const renders = (prototype.render_urls as Array<{ angle: string; url: string }>) ?? [];
-  const thumb = renders[0]?.url ?? sources[0] ?? null;
+  const fitUrl = (prototype as any).fit_preview_url as string | null;
+  // Prefer the on-car carbon shot — it's the most useful "what does this look like" preview.
+  const thumb = fitUrl ?? renders[0]?.url ?? sources[0] ?? null;
 
   return (
     <div className="group glass rounded-xl overflow-hidden flex flex-col">
@@ -309,7 +311,7 @@ function CreatePrototypeDialog({
           </div>
 
           <div>
-            <Label htmlFor="proto-garage">Car from your Garage (optional)</Label>
+            <Label htmlFor="proto-garage">Car from your Garage</Label>
             <Select value={garageCarId} onValueChange={setGarageCarId}>
               <SelectTrigger id="proto-garage">
                 <SelectValue placeholder="Pick a car…" />
@@ -326,6 +328,9 @@ function CreatePrototypeDialog({
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Pick a car to see the part fitted on it as the main preview.
+            </p>
           </div>
 
           <div>
