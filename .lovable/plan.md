@@ -1,52 +1,61 @@
 
 
-## Carbon-only view toggle
+## Auto-isolate the picked part before the AI redraws it
 
-Add a per-concept toggle that strips the base car and shows just the carbon bodywork (splitter, skirts, arches, diffuser, wing) floating on a clean studio background. Useful for product photography of the kit alone and as a sanity-check on what's actually being added.
+### The problem
 
-### How it will work for the user
+When the user picks "rear arch" from a hotspot on a kitted concept, the source image still contains *both* arches, the splitter, the skirts, and reflections. Gemini and Meshy then get confused about which silhouette to draw/mesh — sometimes returning a different part entirely, or merging two arches into one ambiguous blob.
 
-- On every concept card and in the zoom dialog, a small **"Carbon only"** toggle (next to the angle pills) swaps every visible angle from the full car render to the carbon-only render.
-- First time the toggle is flipped on a concept, it kicks off generation in the background (~20s for 4 angles in parallel). A subtle loading state shows on the affected images. Subsequent toggles are instant — results are cached.
-- The carbon-only renders are saved alongside the originals, so they appear in the user's Library and can be made public/sold on the Marketplace just like the full-car concepts.
+### The fix
+
+Insert an **automatic isolation step** between "user clicks hotspot" and the existing render pipeline. The user never has to lasso anything for the common case — but the existing manual lasso stays available as a fallback.
+
+### What the user sees
+
+1. User clicks a hotspot (e.g. "Rear arch").
+2. Modal opens immediately on a new **"Isolating part…"** view (~5–10s) showing a clay-style placeholder while a small preview of the cleaned crop fades in.
+3. The "On car" pane shows the **isolated crop** (just the arch, on a soft grey backdrop) instead of the original busy concept image.
+4. Flow continues exactly as today: AI render → review → 3D mesh, but now every downstream model only ever sees the one part.
+5. If isolation fails or the user thinks the crop is wrong, a **"Re-trim manually"** button drops them into the existing lasso pretrim UI.
 
 ### Technical changes
 
-**Database migration** — add 4 nullable columns to `public.concepts`:
-- `render_front_carbon_url`, `render_side_carbon_url`, `render_rear34_carbon_url`, `render_rear_carbon_url`
-- `carbon_status` enum-ish text: `idle | generating | ready | failed`
-- `carbon_error text`
-- Extend the existing library auto-index trigger (`20260420215723_…sql`) to also insert these as `concept_render_carbon` library items when populated.
+**New edge function** — `supabase/functions/isolate-picked-part/index.ts`
+- Input: `{ concept_id, part_kind, source_image_url, bbox: {x,y,w,h} }` (bbox is the normalised hotspot already produced by `detect-concept-hotspots`).
+- Auth: validate JWT + concept ownership (same pattern as `isolate-carbon-bodywork`).
+- Calls `google/gemini-3.1-flash-image-preview` (Nano Banana 2 — fast, image-edit capable) with:
+  - The original concept image as input.
+  - Prompt: *"Keep ONLY the {part_label} located in the highlighted region (roughly {bbox.x*100}% from the left, {bbox.y*100}% from the top, {bbox.w*100}% wide, {bbox.h*100}% tall). Erase EVERYTHING else — the rest of the car, other carbon parts, wheels, ground, background — replacing them with a clean medium-grey studio backdrop. Preserve the exact silhouette, proportions, mounting tabs, vents and surface curvature of the kept part. Output a single product-style render."*
+- Uploads the result to `concept-renders` bucket at `{user_id}/{concept_id}/picked/{part_kind}-{timestamp}.png`.
+- Caches the URL on `concept_parts.isolated_source_url` (new nullable text column) so re-opening the same part is instant.
+- Returns `{ isolated_url }`.
 
-**New edge function** — `supabase/functions/isolate-carbon-bodywork/index.ts`:
-- Input: `{ concept_id: string }`
-- Auth: validate JWT, confirm concept ownership.
-- For each of the 4 angle URLs that exist on the concept, send the existing render to the Lovable AI image model (`google/gemini-3.1-flash-image-preview`) with an isolation prompt:
-  > "Keep ONLY the aftermarket carbon-fibre bodywork (front splitter, canards, side skirts, flared arches, rear diffuser, rear wing, hood vents). Remove the base car body, wheels, glass, lights, ground and background entirely. Place the isolated carbon parts on a clean medium-grey studio backdrop with soft lighting and a subtle ground shadow. Preserve the exact shape, proportion, weave direction and reflections of each carbon part. Output a single clean studio product render."
-- Run the 4 angles in parallel via `Promise.all` (same pattern that fixed `WORKER_RESOURCE_LIMIT` in `generate-concepts`).
-- Upload each result to the existing `concept-renders` bucket under `{user_id}/{concept_id}/carbon_{angle}.png`.
-- Update the concept row with the 4 URLs + `carbon_status: ready`. On any failure, set `failed` + `carbon_error`.
+**DB migration** — add `isolated_source_url text` to `concept_parts`.
 
-**Repo hook** — `src/lib/repo.ts`:
-- `useIsolateCarbon(conceptId)` mutation that invokes the function and invalidates the concept query.
-- Type extension on `Concept` for the new columns.
+**`PartHotspotOverlay.tsx`** — when the user clicks a box (or confirms a refined crop), pass the box's `{x,y,w,h}` along with the existing props to `ExtractedPartPreview` via a new optional `bbox` prop.
 
-**ConceptCard UI** — `src/pages/Concepts.tsx`:
-- Local state `carbonMode: boolean` per card (defaults off).
-- Build a parallel `carbonAngles` array mirroring `angles` but reading `render_*_carbon_url`.
-- When `carbonMode` is on, render from `carbonAngles` instead of `angles`. Same swipe / arrows / zoom behaviour.
-- Toggle button (small pill, `Layers` icon, label "Carbon only") next to the existing angle pills:
-  - If `carbon_status === 'idle'` and no carbon URLs exist → first click triggers `useIsolateCarbon` and flips mode on optimistically.
-  - If `generating` → toggle shows spinner, disabled.
-  - If `ready` → instant toggle.
-  - If `failed` → toggle shows a small "Retry" affordance with the error in a tooltip.
-- In zoom dialog, the toggle is also visible in the top bar so it works on both card and zoom.
+**`ExtractedPartPreview.tsx`**
+- New initial stage: `"isolating"` (replaces the current default of either `pretrim` or `rendering` when `sourceImageUrl + bbox` are both supplied).
+- On mount, if `bbox` is provided:
+  1. Check `concept_parts.isolated_source_url` for a cached crop → use it.
+  2. Otherwise call `isolate-picked-part` → on success, store URL → advance to `rendering`, passing the isolated URL to `runRender(..., true, isolatedUrl)`.
+  3. On failure, fall back to the existing `pretrim` stage with a toast: *"Auto-isolate failed — please outline the part manually."*
+- The "On car" pane in the 3-pane comparison now shows the isolated crop (with a small "ISOLATED" tag) instead of the raw concept render.
+- Keep a small **"Re-isolate / Manual trim"** button in the review footer so the user can override.
 
-**Library / Marketplace** — no UI work needed. Because the migration extends the existing trigger, isolated-carbon renders auto-appear in the user's Library tagged as `concept_render_carbon` and can be flipped public/priced through the existing flow.
+**`render-isolated-part`** — no changes needed. It already accepts `source_image_url` as the sole reference when supplied.
+
+**`meshify-part`** — no changes needed. It already accepts whatever images the client passes (it'll receive the cleaner AI-redrawn images from `render-isolated-part`).
 
 ### Out of scope
 
-- No re-prompting, no edits to the OEM concept image — this is purely a derivative isolation pass.
-- Not adding a "carbon only" option to the aero-kit STL builder; this is image-only.
-- Not changing default privacy or pricing logic.
+- Not adding isolation to the `Concepts` page top-level toggle (that's the existing "Carbon only" feature).
+- Not changing the hotspot detection model or the manual lasso UI.
+- No batch pre-warming — isolation runs lazily on first pick of each part.
+
+### Why this should work
+
+- The bbox gives Gemini a strong **spatial prior** — far more reliable than asking it to identify the part by name alone in a busy carbon kit shot.
+- Downstream `render-isolated-part` already supports a single override reference image, so the existing prompt that forbids drawing surrounding bodywork now has a much cleaner input to work from.
+- Caching against `concept_parts` means the cost is paid once per (concept, part).
 
