@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   useBrief, useConcepts, useUpdateConcept, useDeleteConcept,
   useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, useStylePreset, useActiveConceptSet,
-  useIsolateCarbon, useCarbonStatus, type Concept,
+  useIsolateCarbon, useCarbonStatus, useMeshifyCarbonKit, useCarbonKitStatus, type Concept,
 } from "@/lib/repo";
 import { AeroKitProgress, type AeroKitStatus } from "@/components/AeroKitProgress";
 import { useAuth } from "@/hooks/useAuth";
@@ -371,6 +371,19 @@ function ConceptCard({
   const carbonBusy = carbonStatus === "generating" || carbonStatus === "queued";
   const isolateCarbon = useIsolateCarbon();
 
+  // Combined carbon-kit mesh (single GLB for the whole kit, user splits in CAD).
+  const initialKitStatus = (c.carbon_kit_status as string | undefined) ?? "idle";
+  const kitPolling = initialKitStatus === "generating" || initialKitStatus === "queued";
+  const polledKit = useCarbonKitStatus(concept.id, kitPolling);
+  const kitStatus = (polledKit.data?.carbon_kit_status ?? initialKitStatus) as
+    "idle" | "queued" | "generating" | "ready" | "failed";
+  const kitGlbUrl = polledKit.data?.carbon_kit_glb_url ?? (c.carbon_kit_glb_url as string | null | undefined);
+  const kitStlUrl = polledKit.data?.carbon_kit_stl_url ?? (c.carbon_kit_stl_url as string | null | undefined);
+  const kitScaleM = polledKit.data?.carbon_kit_scale_m ?? (c.carbon_kit_scale_m as number | null | undefined);
+  const kitError = polledKit.data?.carbon_kit_error ?? (c.carbon_kit_error as string | null | undefined);
+  const kitBusy = kitStatus === "generating" || kitStatus === "queued";
+  const meshifyKit = useMeshifyCarbonKit();
+
   // If the polled response carries fresh carbon URLs, prefer those.
   const liveCarbonAngles = polledCarbon.data ? [
     { key: "front"  as ViewKey, label: "Front 3/4", url: polledCarbon.data.render_front_carbon_url },
@@ -628,6 +641,85 @@ function ConceptCard({
         )}
 
         <ConceptRegenAndPrompt concept={concept} projectId={projectId} />
+
+        {/* Combined carbon-kit mesh — primary route once carbon-only renders exist. */}
+        {(carbonReady || carbonAngles.some((a) => !!a.url) || kitStatus !== "idle") && (
+          <div className="pt-2 border-t border-border space-y-2">
+            <Button
+              variant="hero"
+              size="sm"
+              className="w-full"
+              disabled={kitBusy || (!carbonReady && !carbonAngles.some((a) => !!a.url))}
+              onClick={async () => {
+                try {
+                  await meshifyKit.mutateAsync(concept.id);
+                } catch (e: any) {
+                  // surfaced via kitError via polling
+                  console.error(e);
+                }
+              }}
+              title="Reconstruct the entire carbon body kit as one mesh — split it in Fusion / Blender afterwards"
+            >
+              {kitBusy ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Boxes className="mr-1.5 h-3.5 w-3.5" />}
+              {kitBusy ? "Reconstructing combined kit… ~60s"
+                : kitStatus === "ready" ? "Re-mesh full kit"
+                : "Mesh full carbon kit"}
+            </Button>
+            {kitStatus === "failed" && kitError && (
+              <div className="text-[10px] text-mono text-destructive">{kitError}</div>
+            )}
+            {kitStatus === "ready" && kitGlbUrl && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const resp = await fetch(kitGlbUrl);
+                        const blob = await resp.blob();
+                        const u = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = u;
+                        a.download = `${concept.title || "carbon-kit"}.glb`;
+                        document.body.appendChild(a); a.click(); a.remove();
+                        setTimeout(() => URL.revokeObjectURL(u), 1000);
+                      } catch {/* noop */}
+                    }}
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" /> GLB
+                  </Button>
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    disabled={!kitStlUrl}
+                    onClick={async () => {
+                      const url = kitStlUrl ?? kitGlbUrl;
+                      try {
+                        const resp = await fetch(url);
+                        const blob = await resp.blob();
+                        const u = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = u;
+                        a.download = `${concept.title || "carbon-kit"}.stl`;
+                        document.body.appendChild(a); a.click(); a.remove();
+                        setTimeout(() => URL.revokeObjectURL(u), 1000);
+                      } catch {/* noop */}
+                    }}
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" /> STL
+                  </Button>
+                </div>
+                <div className="text-[10px] text-mono text-muted-foreground leading-relaxed">
+                  Whole carbon kit as one mesh. Open in Fusion / Blender to split into individual parts.
+                  {typeof kitScaleM === "number" && (
+                    <> Scale anchor: <span className="text-foreground">{kitScaleM.toFixed(2)} m</span> (longest dimension).</>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Boolean aero-kit trigger — only when project has a manifold hero STL. */}
         {(concept.status === "approved" || concept.status === "favourited") && (

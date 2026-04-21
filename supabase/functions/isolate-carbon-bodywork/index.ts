@@ -12,6 +12,15 @@
  * the UI polls `concepts.carbon_status`.
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { decode as decodeImg, Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
+
+/**
+ * Target canvas size for every isolated carbon view. All four views are
+ * padded onto an identical NxN canvas so the inter-view scale ratio is
+ * preserved when fed into the multi-view mesh reconstructor (Rodin Gen-2).
+ */
+const CARBON_CANVAS_PX = 1024;
+const CARBON_BG_GREY = 0xb4b4b4ff; // medium grey, matches isolation prompt
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -186,7 +195,36 @@ async function isolateOne(sourceUrl: string): Promise<{ bytes: Uint8Array; mime:
   const b64 = m[2];
   const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const ext = mime.includes("jpeg") ? "jpg" : "png";
-  return { bytes, mime, ext };
+
+  // Pad/letterbox onto a uniform NxN grey canvas so all four carbon views
+  // share the exact same pixel scale before they hit Rodin. This is what
+  // keeps the kit's inter-view proportions truthful when reconstructed.
+  try {
+    const padded = await padToSquareCanvas(bytes, CARBON_CANVAS_PX);
+    return { bytes: padded, mime: "image/png", ext: "png" };
+  } catch (e) {
+    console.warn("carbon canvas padding failed, using raw output:", e);
+    return { bytes, mime, ext };
+  }
+}
+
+/** Letterbox a PNG/JPG onto a square `size` canvas with neutral grey backdrop. */
+async function padToSquareCanvas(bytes: Uint8Array, size: number): Promise<Uint8Array> {
+  const decoded = await decodeImg(bytes);
+  // imagescript returns Image | GIF — for our purposes we coerce to Image.
+  const src = decoded as unknown as Image;
+  const sw = src.width;
+  const sh = src.height;
+  const scale = Math.min(size / sw, size / sh);
+  const tw = Math.max(1, Math.round(sw * scale));
+  const th = Math.max(1, Math.round(sh * scale));
+  const resized = src.clone().resize(tw, th);
+  const canvas = new Image(size, size);
+  canvas.fill(CARBON_BG_GREY);
+  const dx = Math.floor((size - tw) / 2);
+  const dy = Math.floor((size - th) / 2);
+  canvas.composite(resized, dx, dy);
+  return await canvas.encode();
 }
 
 function json(body: unknown, status = 200) {

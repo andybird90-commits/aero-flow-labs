@@ -898,6 +898,58 @@ export function useCarbonStatus(conceptId: string | undefined, active: boolean) 
   });
 }
 
+/** Kick off / re-mesh the combined carbon-kit reconstruction for a concept. */
+export function useMeshifyCarbonKit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (conceptId: string) => {
+      const { data, error } = await supabase.functions.invoke("meshify-carbon-kit", {
+        body: { action: "start", concept_id: conceptId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data as { task_id?: string; status: string };
+    },
+    onSuccess: (_d, conceptId) => {
+      qc.invalidateQueries({ queryKey: ["concepts"] });
+      qc.invalidateQueries({ queryKey: ["concept_carbon_kit_status", conceptId] });
+    },
+  });
+}
+
+/** Poll a concept's carbon_kit_* fields (and tick Replicate forwards) while a build is in flight. */
+export function useCarbonKitStatus(conceptId: string | undefined, active: boolean) {
+  return useQuery({
+    queryKey: ["concept_carbon_kit_status", conceptId],
+    enabled: !!conceptId,
+    refetchInterval: active ? 4000 : false,
+    queryFn: async () => {
+      // Tick Replicate forwards; the edge function persists progress on success.
+      if (active) {
+        try {
+          await supabase.functions.invoke("meshify-carbon-kit", {
+            body: { action: "status", concept_id: conceptId! },
+          });
+        } catch { /* swallow — DB read below is the source of truth */ }
+      }
+      const { data, error } = await supabase
+        .from("concepts")
+        .select("carbon_kit_status, carbon_kit_error, carbon_kit_glb_url, carbon_kit_stl_url, carbon_kit_scale_m, updated_at")
+        .eq("id", conceptId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as {
+        carbon_kit_status: string;
+        carbon_kit_error: string | null;
+        carbon_kit_glb_url: string | null;
+        carbon_kit_stl_url: string | null;
+        carbon_kit_scale_m: number | null;
+        updated_at: string;
+      } | null;
+    },
+  });
+}
+
 /** Poll a concept's aero_kit_status while a build is in flight. */
 export function useAeroKitStatus(conceptId: string | undefined, active: boolean) {
   return useQuery({

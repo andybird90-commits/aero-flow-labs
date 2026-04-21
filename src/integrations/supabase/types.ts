@@ -287,6 +287,12 @@ export type Database = {
           aero_kit_warning: string | null
           ai_notes: string | null
           carbon_error: string | null
+          carbon_kit_error: string | null
+          carbon_kit_glb_url: string | null
+          carbon_kit_scale_m: number | null
+          carbon_kit_status: string
+          carbon_kit_stl_url: string | null
+          carbon_kit_task_id: string | null
           carbon_status: string
           concept_set_id: string | null
           created_at: string
@@ -323,6 +329,12 @@ export type Database = {
           aero_kit_warning?: string | null
           ai_notes?: string | null
           carbon_error?: string | null
+          carbon_kit_error?: string | null
+          carbon_kit_glb_url?: string | null
+          carbon_kit_scale_m?: number | null
+          carbon_kit_status?: string
+          carbon_kit_stl_url?: string | null
+          carbon_kit_task_id?: string | null
           carbon_status?: string
           concept_set_id?: string | null
           created_at?: string
@@ -359,6 +371,12 @@ export type Database = {
           aero_kit_warning?: string | null
           ai_notes?: string | null
           carbon_error?: string | null
+          carbon_kit_error?: string | null
+          carbon_kit_glb_url?: string | null
+          carbon_kit_scale_m?: number | null
+          carbon_kit_status?: string
+          carbon_kit_stl_url?: string | null
+          carbon_kit_task_id?: string | null
           carbon_status?: string
           concept_set_id?: string | null
           created_at?: string
