@@ -41,18 +41,22 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RODIN_MODEL = "hyper3d/rodin";
 
 const KIT_PROMPT =
-  `A complete aftermarket aerodynamic carbon-fibre body kit for a car ` +
-  `(front splitter with canards, side skirts, flared arches, rear diffuser, ` +
-  `rear wing, hood vents and any visible carbon panels) reconstructed AS ONE ` +
-  `COHERENT MULTI-PART MESH. Preserve the exact silhouette, proportions and ` +
-  `relative positions of every part as shown in the four reference views. ` +
-  `Clean smooth surfaces, sharp panel edges, flat aero faces, no surface noise, ` +
-  `thin-walled composite shell construction (~2 mm wall thickness), open-backed ` +
-  `where appropriate, visible edge thickness, no painted bodywork, no wheels, ` +
-  `no glass, no headlights, no background. Each part should remain visually ` +
-  `distinct so the user can split it in CAD afterwards. No bolt holes, no ` +
-  `fasteners, no mounting tabs — bonded or bolted on after printing. ` +
-  `Never a solid block, never a paper-thin ribbon.`;
+  `A loose collection of FLOATING DISCONNECTED aftermarket carbon-fibre ` +
+  `aero parts (front splitter, canards, side skirts, flared wheel arches, ` +
+  `rear diffuser, rear wing, hood vents, rear quarter panels) photographed ` +
+  `on a plain grey studio backdrop. THESE PARTS ARE NOT ATTACHED TO A CAR — ` +
+  `there is NO car body, NO chassis, NO wheels, NO glass, NO headlights, ` +
+  `NO doors, NO roof. Reconstruct ONLY the visible carbon parts as separate ` +
+  `floating shells in the SAME relative positions shown in the reference ` +
+  `views. The reference shows TWO views of the same kit: a SIDE view ` +
+  `(showing full kit silhouette and length) and a REAR view (showing wing ` +
+  `width, diffuser depth and quarter panels). Use them together to solve ` +
+  `depth — do NOT invent a car body to bridge the gap between parts. ` +
+  `Clean smooth surfaces, sharp panel edges, flat aero faces, no surface ` +
+  `noise, thin-walled composite shell construction (~2 mm wall thickness), ` +
+  `open-backed where appropriate, visible edge thickness. No bolt holes, ` +
+  `no fasteners, no mounting tabs. Each part stays visually distinct so ` +
+  `the user can split it in CAD afterwards. Output: floating parts only.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -86,16 +90,18 @@ Deno.serve(async (req) => {
 
     // ─────────── START ───────────
     if (action === "start") {
+      // Only send side + rear. Front-3/4 and rear-3/4 each show only PART of the
+      // kit (front parts vs rear parts) which confuses Rodin's correspondence
+      // solver and made it hallucinate a whole car body to bridge them.
+      // Side gives full silhouette + length; rear gives wing width + diffuser depth.
       const carbonUrls = [
-        concept.render_front_carbon_url,
         concept.render_side_carbon_url,
-        concept.render_rear34_carbon_url,
         concept.render_rear_carbon_url,
       ].filter((u): u is string => typeof u === "string" && u.length > 0);
 
       if (carbonUrls.length === 0) {
         return json({
-          error: "No carbon-only renders available. Toggle 'Carbon only' on this concept first.",
+          error: "Side and/or rear carbon renders missing. Toggle 'Carbon only' on this concept first and wait for them to finish.",
         }, 400);
       }
 
