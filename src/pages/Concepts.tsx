@@ -374,7 +374,8 @@ function ConceptCard({
 
   // Combined carbon-kit mesh (single GLB for the whole kit, user splits in CAD).
   const initialKitStatus = (c.carbon_kit_status as string | undefined) ?? "idle";
-  const kitPolling = initialKitStatus === "generating" || initialKitStatus === "queued";
+  const [kitStartPending, setKitStartPending] = useState(false);
+  const kitPolling = kitStartPending || initialKitStatus === "generating" || initialKitStatus === "queued";
   const polledKit = useCarbonKitStatus(concept.id, kitPolling);
   const kitStatus = (polledKit.data?.carbon_kit_status ?? initialKitStatus) as
     "idle" | "queued" | "generating" | "ready" | "failed";
@@ -382,7 +383,7 @@ function ConceptCard({
   const kitStlUrl = polledKit.data?.carbon_kit_stl_url ?? (c.carbon_kit_stl_url as string | null | undefined);
   const kitScaleM = polledKit.data?.carbon_kit_scale_m ?? (c.carbon_kit_scale_m as number | null | undefined);
   const kitError = polledKit.data?.carbon_kit_error ?? (c.carbon_kit_error as string | null | undefined);
-  const kitBusy = kitStatus === "generating" || kitStatus === "queued";
+  const kitBusy = kitStartPending || kitStatus === "generating" || kitStatus === "queued";
   const meshifyKit = useMeshifyCarbonKit();
 
   // If the polled response carries fresh carbon URLs, prefer those.
