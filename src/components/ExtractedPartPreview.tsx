@@ -23,6 +23,9 @@ import { Loader2, Wand2, Box, Download, X, RotateCcw, Scissors, MousePointerClic
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { PartLasso, type LassoMode, type LassoClick, type LassoPoint } from "@/components/PartLasso";
+import { scoreFidelity, type FidelityResult } from "@/lib/part-fidelity";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ShieldCheck, ShieldAlert, ShieldX, Eye, EyeOff } from "lucide-react";
 
 interface Props {
   open: boolean;
