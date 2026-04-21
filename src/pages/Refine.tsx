@@ -171,14 +171,28 @@ function RefineInner({ projectId, project }: { projectId: string; project: any }
           return (
             <div key={part.id} className={cn("glass rounded-xl", isHidden && "opacity-60")}>
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <h3 className="text-sm font-semibold tracking-tight">{spec.label}</h3>
-                <button
-                  onClick={() => setHidden((h) => ({ ...h, [part.kind]: !h[part.kind] }))}
-                  className="text-muted-foreground hover:text-foreground"
-                  title={isHidden ? "Show in viewer" : "Hide from viewer"}
-                >
-                  {isHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                <div className="inline-flex items-center gap-2">
+                  <Box className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold tracking-tight">{spec.label}</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => downloadStl(`${part.kind}.stl`, partToStlString(part.kind, part.params as Record<string, number>))}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-mono text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
+                    title="Download this part as STL"
+                  >
+                    <Download className="h-3 w-3" /> STL
+                  </button>
+                  {!focusedPart && (
+                    <button
+                      onClick={() => setHidden((h) => ({ ...h, [part.kind]: !h[part.kind] }))}
+                      className="text-muted-foreground hover:text-foreground"
+                      title={isHidden ? "Show in viewer" : "Hide from viewer"}
+                    >
+                      {isHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="p-4 space-y-4">
                 {spec.controls.map((c) => {
