@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
           input: {
             images: renders,
             prompt:
-              `A standalone aftermarket automotive part, clean smooth surfaces, matte clay render, flat panels, sharp edges, no surface noise, thin-walled composite shell construction, ~2mm wall thickness, preserve real part depth and section, preserve reverse / inner side from the reference views, open-backed where appropriate, visible edge thickness, no bolt holes, no fasteners, no mounting tabs, no flanges, no brackets — bonded or bolted on after printing, never a solid block, never a paper-thin ribbon`,
+              `A standalone aftermarket automotive part rendered as a HOLLOW THIN-SHELL composite panel — like a fibreglass scoop, vacuum-formed bodykit panel, or moulded plastic cover. ~2mm wall thickness. The back side is an OPEN CONCAVE CAVITY mirroring the outer surface inward, NOT a solid lump. Preserve the full real-world outer shape, depth, curvature, vents and flare from the references. Clean smooth surfaces, matte clay, sharp edges, no surface noise, no logos, no embossed text, no badges, no decals. No bolt holes, no fasteners, no mounting tabs, no flanges, no brackets — bonded or bolted on after printing. Never a solid block, never a paper-thin ribbon — a true hollow shell with visible wall thickness at the rim of the opening.`,
           },
         }),
       });
