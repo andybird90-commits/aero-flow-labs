@@ -103,8 +103,12 @@ Deno.serve(async (req) => {
     const ph = Math.max(8, Math.round(ch * H));
     const cropped = srcImg.clone().crop(px, py, Math.min(pw, W - px), Math.min(ph, H - py));
     const croppedPng = await cropped.encode();
-    const croppedB64 = btoa(String.fromCharCode(...croppedPng));
-    const croppedDataUrl = `data:image/png;base64,${croppedB64}`;
+    let bin = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < croppedPng.length; i += CHUNK) {
+      bin += String.fromCharCode.apply(null, Array.from(croppedPng.subarray(i, i + CHUNK)));
+    }
+    const croppedDataUrl = `data:image/png;base64,${btoa(bin)}`;
 
     // ── Step 2: AI cleanup pass ───────────────────────────────────────────
     // Now the input image already shows mostly the part; ask the model to
