@@ -96,35 +96,50 @@ Deno.serve(async (req) => {
         console.warn("ref fetch failed:", url, e);
       }
     }
-    if (refDataUrls.length < 2) {
+    // Need at least the car. In text-only mode that is enough.
+    if (refDataUrls.length < 1 || (!textOnly && refDataUrls.length < 2)) {
       await admin.from("prototypes").update({ fit_preview_status: "failed", fit_preview_error: "Could not load reference images" }).eq("id", prototype_id);
       return json({ error: "Could not load reference images" }, 500);
     }
 
     const carLabel = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
-    const partRefDescription = heroUrl
-      ? `The remaining image is a clay render of the aftermarket aero part the user is prototyping.`
-      : `The remaining ${partRefUrls.length} image(s) are reference photos of the aftermarket aero part the user wants fitted.`;
 
-    const prompt = [
-      `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. ${partRefDescription} It shows the EXACT silhouette, opening, vents, slats, depth, curvature, edge treatment and proportions of the part.`,
-      ``,
-      `THE CAR (first image): ${carLabel}${car.color ? ` (${car.color})` : ""}.`,
-      `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
-      `- Do NOT crop the car. The whole car visible in the first image must remain visible with comfortable margin.`,
-      `- The ONLY change to the car is the addition of the part below.`,
-      ``,
-      `THE PART (remaining reference image(s)) — THIS IS NON-NEGOTIABLE:`,
-      `- You MUST replicate the part shown in those reference photos. Trace its outline. Copy its opening shape, every vent, every slat, every fin, every return, every crease. Match proportions exactly.`,
-      `- DO NOT invent a generic part. DO NOT substitute a similar-looking aftermarket part. DO NOT idealise or "improve" the design.`,
-      `- Place it in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, etc).`,
-      `- Render it in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
-      `- Match scale and perspective to the car so it looks like it actually fits.`,
-      `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners — assume it's bonded on.`,
-      `- STRIP all logos, badges, embossed text, brand marks, model names and decals from the part, even if visible in the reference photos.`,
-      ``,
-      `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, no annotations, no split-screen, no text, no watermarks, no inset thumbnails of the reference part.`,
-    ].join("\n");
+    const prompt = textOnly
+      ? [
+          `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. No reference photos of the part are provided — design it from the description.`,
+          ``,
+          `THE CAR (first image): ${carLabel}${car.color ? ` (${car.color})` : ""}.`,
+          `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
+          `- Do NOT crop the car. The whole car must remain visible with comfortable margin.`,
+          `- The ONLY change to the car is the addition of the part below.`,
+          ``,
+          `THE PART (designed from description): ${partDescription}.`,
+          `- Place it in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, etc).`,
+          `- Render it in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
+          `- Match scale and perspective to the car so it looks like it actually fits.`,
+          `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners. No logos, badges or decals.`,
+          ``,
+          `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, annotations, split-screen, text or watermarks.`,
+        ].join("\n")
+      : [
+          `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. ${heroUrl ? `The remaining image is a clay render of the aftermarket aero part the user is prototyping.` : `The remaining ${partRefUrls.length} image(s) are reference photos of the aftermarket aero part the user wants fitted.`} It shows the EXACT silhouette, opening, vents, slats, depth, curvature, edge treatment and proportions of the part.`,
+          ``,
+          `THE CAR (first image): ${carLabel}${car.color ? ` (${car.color})` : ""}.`,
+          `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
+          `- Do NOT crop the car. The whole car visible in the first image must remain visible with comfortable margin.`,
+          `- The ONLY change to the car is the addition of the part below.`,
+          ``,
+          `THE PART (remaining reference image(s)) — THIS IS NON-NEGOTIABLE:`,
+          `- You MUST replicate the part shown in those reference photos. Trace its outline. Copy its opening shape, every vent, every slat, every fin, every return, every crease. Match proportions exactly.`,
+          `- DO NOT invent a generic part. DO NOT substitute a similar-looking aftermarket part. DO NOT idealise or "improve" the design.`,
+          `- Place it in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, etc).`,
+          `- Render it in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
+          `- Match scale and perspective to the car so it looks like it actually fits.`,
+          `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners — assume it's bonded on.`,
+          `- STRIP all logos, badges, embossed text, brand marks, model names and decals from the part, even if visible in the reference photos.`,
+          ``,
+          `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, no annotations, no split-screen, no text, no watermarks, no inset thumbnails of the reference part.`,
+        ].join("\n");
 
     let imgUrl: string | undefined;
     let lastErr = "";
