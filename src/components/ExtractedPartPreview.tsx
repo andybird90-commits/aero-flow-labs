@@ -567,13 +567,32 @@ export function ExtractedPartPreview({
           </div>
         )}
 
-        {/* RENDERING / REVIEW: single hero render — or the lasso/click trim
-            tool when the user opens "Trim". Mask, once produced, replaces the
-            hero image so the user can see what they're about to mesh. */}
-        {(stage === "rendering" || stage === "review" || stage === "meshing") && (
+        {/* RENDERING / REVIEW / MESHING / READY: 3-pane comparison —
+            on-car | extracted (AI render or trim tool) | 3D mesh. The 3D pane
+            shows a meshing/idle placeholder until the GLB is ready. */}
+        {(stage === "rendering" || stage === "review" || stage === "meshing" || stage === "ready") && (
           <div className="relative flex-1 min-h-0 flex flex-col">
-            <div className="flex justify-center flex-1 min-h-0">
-              <div className="relative w-full h-full rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
+            <div className="flex-1 min-h-0 grid gap-2 grid-rows-3 md:grid-rows-1 md:grid-cols-3">
+              {/* Pane 1 — On car (original concept reference) */}
+              <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
+                {sourceImageUrl ? (
+                  <img
+                    src={sourceImageUrl}
+                    alt="Original part on car"
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="text-xs text-muted-foreground font-mono uppercase tracking-widest">
+                    No reference image
+                  </div>
+                )}
+                <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+                  On car
+                </span>
+              </div>
+
+              {/* Pane 2 — Extracted / drawn part (or trim tool) */}
+              <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
                 {trimOpen && images[0] ? (
                   <PartLasso
                     imageUrl={maskedUrl ?? images[0].url}
@@ -600,6 +619,33 @@ export function ExtractedPartPreview({
                     <span className="text-[9px] font-mono uppercase tracking-widest">Drawing…</span>
                   </div>
                 )}
+                <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+                  Extracted
+                </span>
+              </div>
+
+              {/* Pane 3 — 3D mesh (or placeholder while not ready) */}
+              <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
+                {stage === "ready" && glbUrl ? (
+                  <div ref={mountRef} className="w-full h-full" />
+                ) : stage === "meshing" ? (
+                  <div className="flex flex-col items-center gap-2 text-primary">
+                    <Box className="h-6 w-6 animate-pulse" />
+                    <span className="text-[10px] font-mono uppercase tracking-widest">
+                      Meshing… {meshProgress}%
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                    <Box className="h-6 w-6 opacity-40" />
+                    <span className="text-[9px] font-mono uppercase tracking-widest">
+                      {stage === "rendering" ? "Waiting for render…" : "Click \"Make 3D model\""}
+                    </span>
+                  </div>
+                )}
+                <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+                  3D mesh
+                </span>
               </div>
             </div>
 
@@ -635,43 +681,6 @@ export function ExtractedPartPreview({
                 </Button>
               </div>
             )}
-
-            {stage === "meshing" && (
-              <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2 rounded-md">
-                <Box className="h-6 w-6 text-primary animate-pulse" />
-                <span className="text-xs font-mono uppercase tracking-widest text-primary">
-                  Meshing… {meshProgress}%
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* READY: split panel — original concept on the left, 3D mesh on the right */}
-        {stage === "ready" && (
-          <div className="flex-1 min-h-0 grid gap-2 grid-rows-2 md:grid-rows-1 md:grid-cols-2">
-            <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden flex items-center justify-center">
-              {sourceImageUrl ? (
-                <img
-                  src={sourceImageUrl}
-                  alt="Original part on car"
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <div className="text-xs text-muted-foreground font-mono uppercase tracking-widest">
-                  No reference image
-                </div>
-              )}
-              <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
-                On car
-              </span>
-            </div>
-            <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden">
-              <div ref={mountRef} className="w-full h-full" />
-              <span className="absolute top-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
-                3D mesh
-              </span>
-            </div>
           </div>
         )}
 
