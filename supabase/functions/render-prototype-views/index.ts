@@ -179,37 +179,30 @@ Deno.serve(async (req) => {
       const refsForAngle = isHero
         ? refDataUrls
         : (heroDataUrl ? [heroDataUrl, ...refDataUrls] : refDataUrls);
-      const userContent = [
-        { type: "text", text: promptText },
-        ...refsForAngle.map((url) => ({ type: "image_url", image_url: { url } })),
-      ];
 
       let imgUrl: string | undefined;
       let lastErr = "";
       for (let attempt = 1; attempt <= 3; attempt++) {
-        const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "google/gemini-3.1-flash-image-preview",
-            messages: [{ role: "user", content: userContent }],
-            modalities: ["image", "text"],
-          }),
+        const result = await openaiGenerateImage({
+          apiKey: OPENAI_API_KEY,
+          prompt: promptText,
+          referenceImages: refsForAngle,
+          size: "1536x1024",
+          quality: "high",
         });
-        if (!aiResp.ok) {
-          if (aiResp.status === 429) { await admin.from("prototypes").update({ render_status: "failed", render_error: "Rate limit" }).eq("id", prototype_id); return json({ error: "Rate limit reached" }, 429); }
-          if (aiResp.status === 402) { await admin.from("prototypes").update({ render_status: "failed", render_error: "AI credits exhausted" }).eq("id", prototype_id); return json({ error: "AI credits exhausted" }, 402); }
-          lastErr = `gateway ${aiResp.status}: ${(await aiResp.text()).slice(0, 200)}`;
-          await new Promise((r) => setTimeout(r, 1500 * attempt));
-          continue;
+        if (result.ok && result.dataUrl) {
+          imgUrl = result.dataUrl;
+          break;
         }
-        const text = await aiResp.text();
-        if (!text) { lastErr = "empty body"; await new Promise((r) => setTimeout(r, 1500 * attempt)); continue; }
-        let aiJson: any;
-        try { aiJson = JSON.parse(text); } catch { lastErr = "bad json"; await new Promise((r) => setTimeout(r, 1500 * attempt)); continue; }
-        imgUrl = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-        if (imgUrl) break;
-        lastErr = "no image in response";
+        if (result.status === 429) {
+          await admin.from("prototypes").update({ render_status: "failed", render_error: "Rate limit" }).eq("id", prototype_id);
+          return json({ error: "Rate limit reached" }, 429);
+        }
+        if (result.status === 402 || result.status === 403) {
+          await admin.from("prototypes").update({ render_status: "failed", render_error: "OpenAI billing/access issue" }).eq("id", prototype_id);
+          return json({ error: result.error ?? "OpenAI billing/access issue" }, 402);
+        }
+        lastErr = `openai ${result.status ?? "?"}: ${result.error ?? "unknown"}`;
         await new Promise((r) => setTimeout(r, 1500 * attempt));
       }
       if (!imgUrl) {
