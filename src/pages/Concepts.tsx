@@ -672,8 +672,9 @@ function ConceptCard({
               onClick={handleMeshifyKit}
               title="Reconstruct the entire carbon body kit as one mesh — split it in Fusion / Blender afterwards"
             >
-              {kitBusy ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Boxes className="mr-1.5 h-3.5 w-3.5" />}
-              {kitBusy ? "Reconstructing combined kit… ~60s"
+              {kitBusy || meshifyKit.isPending ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Boxes className="mr-1.5 h-3.5 w-3.5" />}
+              {kitStartPending || meshifyKit.isPending ? "Starting carbon kit mesh…"
+                : kitBusy ? "Reconstructing combined kit… ~60s"
                 : kitStatus === "ready" ? "Re-mesh full kit"
                 : "Mesh full carbon kit"}
             </Button>
