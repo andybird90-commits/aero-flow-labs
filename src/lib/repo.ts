@@ -758,6 +758,51 @@ export function useBuildAeroKit() {
   });
 }
 
+/** Trigger the carbon-isolation pass for a concept. */
+export function useIsolateCarbon() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (conceptId: string) => {
+      const { data, error } = await supabase.functions.invoke("isolate-carbon-bodywork", {
+        body: { concept_id: conceptId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: (_d, conceptId) => {
+      qc.invalidateQueries({ queryKey: ["concepts"] });
+      qc.invalidateQueries({ queryKey: ["concept_carbon_status", conceptId] });
+    },
+  });
+}
+
+/** Poll a concept's carbon_status while an isolation pass is in flight. */
+export function useCarbonStatus(conceptId: string | undefined, active: boolean) {
+  return useQuery({
+    queryKey: ["concept_carbon_status", conceptId],
+    enabled: !!conceptId,
+    refetchInterval: active ? 2500 : false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("concepts")
+        .select("carbon_status, carbon_error, render_front_carbon_url, render_side_carbon_url, render_rear34_carbon_url, render_rear_carbon_url, updated_at")
+        .eq("id", conceptId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as {
+        carbon_status: string;
+        carbon_error: string | null;
+        render_front_carbon_url: string | null;
+        render_side_carbon_url: string | null;
+        render_rear34_carbon_url: string | null;
+        render_rear_carbon_url: string | null;
+        updated_at: string;
+      } | null;
+    },
+  });
+}
+
 /** Poll a concept's aero_kit_status while a build is in flight. */
 export function useAeroKitStatus(conceptId: string | undefined, active: boolean) {
   return useQuery({

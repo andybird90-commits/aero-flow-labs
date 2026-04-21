@@ -5,14 +5,15 @@ import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
 import {
   useBrief, useConcepts, useUpdateConcept, useDeleteConcept,
-  useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, useStylePreset, type Concept,
+  useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, useStylePreset,
+  useIsolateCarbon, useCarbonStatus, type Concept,
 } from "@/lib/repo";
 import { AeroKitProgress, type AeroKitStatus } from "@/components/AeroKitProgress";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Check, X, RefreshCw, Star, Wand2, AlertCircle, MousePointer2, Maximize2, Layers, Download, ChevronLeft, ChevronRight,
+  Sparkles, Check, X, RefreshCw, Star, Wand2, AlertCircle, MousePointer2, Maximize2, Layers, Download, ChevronLeft, ChevronRight, Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
@@ -245,12 +246,40 @@ function ConceptCard({
         : "neutral";
 
   // Build the ordered angle list for the turntable (front → side → rear-3/4 → rear).
-  const angles: Array<{ key: ViewKey; label: string; url: string | null }> = [
+  const c = concept as any;
+  const fullAngles: Array<{ key: ViewKey; label: string; url: string | null }> = [
     { key: "front",  label: "Front 3/4", url: concept.render_front_url },
     { key: "side",   label: "Side",      url: concept.render_side_url },
-    { key: "rear34", label: "Rear 3/4",  url: (concept as any).render_rear34_url as string | null },
+    { key: "rear34", label: "Rear 3/4",  url: c.render_rear34_url as string | null },
     { key: "rear",   label: "Rear",      url: concept.render_rear_url },
   ];
+  const carbonAngles: Array<{ key: ViewKey; label: string; url: string | null }> = [
+    { key: "front",  label: "Front 3/4", url: c.render_front_carbon_url ?? null },
+    { key: "side",   label: "Side",      url: c.render_side_carbon_url ?? null },
+    { key: "rear34", label: "Rear 3/4",  url: c.render_rear34_carbon_url ?? null },
+    { key: "rear",   label: "Rear",      url: c.render_rear_carbon_url ?? null },
+  ];
+
+  const initialCarbonStatus = (c.carbon_status as string | undefined) ?? "idle";
+  const carbonPolling = initialCarbonStatus === "generating" || initialCarbonStatus === "queued";
+  const polledCarbon = useCarbonStatus(concept.id, carbonPolling);
+  const carbonStatus = (polledCarbon.data?.carbon_status ?? initialCarbonStatus) as
+    "idle" | "generating" | "queued" | "ready" | "failed";
+  const carbonError = polledCarbon.data?.carbon_error ?? (c.carbon_error as string | null | undefined);
+  const carbonReady = carbonStatus === "ready";
+  const carbonBusy = carbonStatus === "generating" || carbonStatus === "queued";
+  const isolateCarbon = useIsolateCarbon();
+
+  // If the polled response carries fresh carbon URLs, prefer those.
+  const liveCarbonAngles = polledCarbon.data ? [
+    { key: "front"  as ViewKey, label: "Front 3/4", url: polledCarbon.data.render_front_carbon_url },
+    { key: "side"   as ViewKey, label: "Side",      url: polledCarbon.data.render_side_carbon_url },
+    { key: "rear34" as ViewKey, label: "Rear 3/4",  url: polledCarbon.data.render_rear34_carbon_url },
+    { key: "rear"   as ViewKey, label: "Rear",      url: polledCarbon.data.render_rear_carbon_url },
+  ] : carbonAngles;
+
+  const [carbonMode, setCarbonMode] = useState(false);
+  const angles = carbonMode ? liveCarbonAngles : fullAngles;
   const visibleAngles = angles.filter((a) => !!a.url) as Array<{ key: ViewKey; label: string; url: string }>;
 
   const [angleIdx, setAngleIdx] = useState(0);
@@ -258,6 +287,23 @@ function ConceptCard({
   const [zoomOpen, setZoomOpen] = useState(false);
   const current = visibleAngles[angleIdx];
   const hasMultiple = visibleAngles.length > 1;
+
+  // Keep angleIdx in range when toggling modes / data changes.
+  useEffect(() => {
+    if (angleIdx >= visibleAngles.length) setAngleIdx(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carbonMode, visibleAngles.length]);
+
+  const handleCarbonToggle = async () => {
+    if (carbonBusy) return;
+    if (carbonReady || carbonAngles.some((a) => !!a.url)) {
+      setCarbonMode((m) => !m);
+      return;
+    }
+    // First time — kick off generation and flip on optimistically.
+    setCarbonMode(true);
+    try { await isolateCarbon.mutateAsync(concept.id); } catch { /* surface via status */ }
+  };
 
   const goPrev = () => setAngleIdx((i) => (i - 1 + visibleAngles.length) % visibleAngles.length);
   const goNext = () => setAngleIdx((i) => (i + 1) % visibleAngles.length);
@@ -343,6 +389,27 @@ function ConceptCard({
 
       <div className="absolute top-2 right-2 flex items-center gap-1.5">
         <button
+          onClick={(e) => { e.stopPropagation(); void handleCarbonToggle(); }}
+          disabled={carbonBusy}
+          className={cn(
+            "rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border backdrop-blur transition-colors",
+            carbonMode
+              ? "bg-foreground text-background border-foreground"
+              : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
+            carbonBusy && "opacity-70 cursor-wait",
+          )}
+          title={
+            carbonStatus === "failed" && carbonError
+              ? `Carbon isolation failed: ${carbonError}. Click to retry.`
+              : carbonBusy
+                ? "Generating carbon-only renders…"
+                : "Show only the aftermarket carbon bodywork"
+          }
+        >
+          {carbonBusy ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Boxes className="h-3 w-3" />}
+          {carbonStatus === "failed" ? "Retry carbon" : carbonMode ? "Carbon on" : "Carbon only"}
+        </button>
+        <button
           onClick={(e) => { e.stopPropagation(); setPickMode((p) => !p); }}
           className={cn(
             "rounded-md px-2 py-1 inline-flex items-center gap-1 text-[10px] text-mono uppercase tracking-widest border backdrop-blur transition-colors",
@@ -366,6 +433,24 @@ function ConceptCard({
           </button>
         )}
       </div>
+
+      {carbonMode && !current && (
+        <div className="absolute inset-0 grid place-items-center text-center px-6 pointer-events-none">
+          <div className="space-y-2 max-w-xs">
+            <Boxes className="mx-auto h-8 w-8 text-muted-foreground" />
+            <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              {carbonBusy
+                ? "Isolating carbon parts…"
+                : carbonStatus === "failed"
+                  ? "Carbon isolation failed. Tap retry."
+                  : "No carbon-only renders yet."}
+            </div>
+            {carbonBusy && (
+              <RefreshCw className="mx-auto h-4 w-4 animate-spin text-primary" />
+            )}
+          </div>
+        </div>
+      )}
 
       {hasMultiple && !pickMode && (
         <>
