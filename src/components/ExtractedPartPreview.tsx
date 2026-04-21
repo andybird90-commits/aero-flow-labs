@@ -166,17 +166,57 @@ export function ExtractedPartPreview({
     }
   };
 
-  // Auto-run the AI render only when there's no source image to pre-trim.
-  // When sourceImageUrl is supplied we land on the "pretrim" stage and wait
-  // for the user to either skip or finish trimming.
+  // Auto-run the AI render only when there's no source image to pre-trim
+  // AND no bbox to auto-isolate. When sourceImageUrl is supplied we land on
+  // the "pretrim" or "isolating" stage instead.
   useEffect(() => {
     if (!open) return;
-    if (sourceImageUrl) return; // user drives the flow from pretrim
+    if (sourceImageUrl) return; // user drives the flow from pretrim/isolating
     const signal = { cancelled: false };
     runRender(signal);
     return () => { signal.cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conceptId, kind, label, sourceImageUrl]);
+
+  // Auto-isolate the picked part when bbox + sourceImageUrl are present.
+  // On success → flow straight into rendering with the isolated crop.
+  // On failure → drop into the existing manual lasso pretrim.
+  useEffect(() => {
+    if (!open || !bbox || !sourceImageUrl) return;
+    if (stage !== "isolating") return;
+    const signal = { cancelled: false };
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("isolate-picked-part", {
+          body: {
+            concept_id: conceptId,
+            part_kind: kind,
+            part_label: label,
+            source_image_url: sourceImageUrl,
+            bbox,
+          },
+        });
+        if (signal.cancelled) return;
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+        const url = (data as any)?.isolated_url as string | undefined;
+        if (!url) throw new Error("No isolated URL returned");
+        setIsolatedUrl(url);
+        runRender(signal, true, url);
+      } catch (e: any) {
+        if (signal.cancelled) return;
+        const msg = String(e.message ?? e);
+        toast({
+          title: "Auto-isolate failed",
+          description: `${msg} — outline the part manually.`,
+          variant: "destructive",
+        });
+        setStage("pretrim");
+      }
+    })();
+    return () => { signal.cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, bbox, sourceImageUrl, stage, conceptId, kind, label]);
 
   const [meshProgress, setMeshProgress] = useState<number>(0);
 
