@@ -563,7 +563,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
   return (
     <Dialog open={!!prototype} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-[min(1600px,95vw)] max-h-[92vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Beaker className="h-4 w-4 text-fuchsia-400" /> {prototype.title}
@@ -604,9 +604,9 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
                 </div>
               </div>
             ) : renders.length > 0 ? (
-              <div className="absolute inset-0 grid grid-cols-1 gap-1 p-1 overflow-auto">
+              <div className="absolute inset-0 grid grid-cols-2 gap-1 p-1">
                 {renders.map((r) => (
-                  <div key={r.url} className="relative">
+                  <div key={r.url} className="relative bg-surface-0 rounded overflow-hidden">
                     <img src={r.url} alt={r.angle} className="w-full h-full object-contain" />
                     <span className="absolute bottom-1 left-1 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1 py-0.5 rounded">
                       {r.angle}
