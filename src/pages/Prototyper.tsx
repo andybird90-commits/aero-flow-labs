@@ -34,8 +34,23 @@ import {
   Beaker, Plus, Loader2, Wand2, Box, Download, Trash2, Upload, X, Image as ImageIcon, Car,
 } from "lucide-react";
 import {
-  useMyPrototypes, useCreatePrototype, useDeletePrototype, useGarageCars, type Prototype,
+  useMyPrototypes, useCreatePrototype, useDeletePrototype, useGarageCars, type Prototype, type PrototypeGenerationMode,
 } from "@/lib/repo";
+
+const PLACEMENT_OPTIONS = [
+  { value: "front_bumper", label: "Front bumper / splitter" },
+  { value: "bonnet", label: "Bonnet / hood" },
+  { value: "side", label: "Side intake / side skirt" },
+  { value: "rear_bumper", label: "Rear bumper / diffuser" },
+  { value: "bootlid", label: "Bootlid / rear wing" },
+  { value: "other", label: "Other" },
+] as const;
+
+const MODE_OPTIONS: Array<{ value: PrototypeGenerationMode; label: string; help: string }> = [
+  { value: "exact_photo", label: "Exact replica from photos", help: "Copy the part in your photos as faithfully as possible. Requires uploaded photos." },
+  { value: "text_design", label: "Design from description", help: "Let the AI invent the part from your description. No photos needed." },
+  { value: "inspired_photo", label: "Inspired by photos", help: "Use your photos as inspiration; AI produces a refined version." },
+];
 import { fetchAsDownloadableMesh } from "@/lib/glb-to-stl";
 
 const MAX_FILES = 5;
@@ -228,6 +243,8 @@ function CreatePrototypeDialog({
   const [garageCarId, setGarageCarId] = useState<string>("none");
   const [notes, setNotes] = useState("");
   const [replicateExact, setReplicateExact] = useState(false);
+  const [mode, setMode] = useState<PrototypeGenerationMode>("exact_photo");
+  const [placement, setPlacement] = useState<string>("");
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -238,6 +255,8 @@ function CreatePrototypeDialog({
       setGarageCarId("none");
       setNotes("");
       setReplicateExact(false);
+      setMode("exact_photo");
+      setPlacement("");
       setFiles([]);
       setSubmitting(false);
     }
@@ -284,9 +303,11 @@ function CreatePrototypeDialog({
         title: title.trim() || "Untitled prototype",
         car_context: carContext.trim() || null,
         notes: notes.trim() || null,
-        replicate_exact: replicateExact,
+        replicate_exact: replicateExact || mode === "exact_photo",
         garage_car_id: garageCarId === "none" ? null : garageCarId,
         source_image_urls: uploadedUrls,
+        generation_mode: mode,
+        placement_hint: placement || null,
       });
       toast({ title: "Prototype created" });
       onCreated(created);
@@ -308,6 +329,33 @@ function CreatePrototypeDialog({
         </DialogHeader>
 
         <div className="space-y-3">
+          <div>
+            <Label htmlFor="proto-mode">Workflow</Label>
+            <Select value={mode} onValueChange={(v) => setMode(v as PrototypeGenerationMode)}>
+              <SelectTrigger id="proto-mode"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {MODE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground mt-1">{MODE_OPTIONS.find((o) => o.value === mode)?.help}</p>
+          </div>
+
+          <div>
+            <Label htmlFor="proto-placement">Where on the car?</Label>
+            <Select value={placement || "unset"} onValueChange={(v) => setPlacement(v === "unset" ? "" : v)}>
+              <SelectTrigger id="proto-placement"><SelectValue placeholder="Pick a zone…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unset">— Let the AI guess —</SelectItem>
+                {PLACEMENT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.label}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground mt-1">Telling the AI where the part belongs dramatically improves on-car results.</p>
+          </div>
+
           <div>
             <Label htmlFor="proto-title">Name</Label>
             <Input id="proto-title" placeholder="e.g. Boxster 986 side skirt" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
@@ -501,6 +549,18 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
   const startRender = async () => {
     setBusy("render");
     try {
+      // For exact_photo with photos, isolate the part first so the downstream
+      // renders work from a clean reference instead of a busy raw photo.
+      const genMode = (prototype as any).generation_mode ?? "exact_photo";
+      const isolated = ((prototype as any).isolated_ref_urls as string[]) ?? [];
+      if (genMode === "exact_photo" && sources.length > 0 && isolated.length === 0) {
+        const iso = await supabase.functions.invoke("isolate-prototype-part", {
+          body: { prototype_id: prototype.id },
+        });
+        if (iso.error) throw iso.error;
+        if ((iso.data as any)?.error) throw new Error((iso.data as any).error);
+      }
+
       const { data, error } = await supabase.functions.invoke("render-prototype-views", {
         body: { prototype_id: prototype.id, revision_note: revisionNote.trim() || undefined },
       });

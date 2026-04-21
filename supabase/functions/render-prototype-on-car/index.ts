@@ -1,15 +1,13 @@
 /**
  * render-prototype-on-car
  *
- * Takes the prototype's hero clay render + the user's garage car reference photo
- * and asks gpt-image-1 to composite the part onto the car as a carbon-fibre
- * panel — purely as a visual fit-check so the user can see "does this part
- * make sense on this car?".
+ * Re-runs ONLY the on-car carbon composite (keeps clay views intact). Prefers
+ * isolated_ref_urls when present, falling back to source photos / clay hero.
  *
  * Body: { prototype_id: string }
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { openaiGenerateImage } from "../_shared/openai-image.ts";
+import { lovableGenerateImageWithFallback } from "../_shared/lovable-image.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,7 +15,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -39,51 +37,56 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     const { data: proto, error: protoErr } = await admin
       .from("prototypes")
-      .select("id, user_id, title, car_context, garage_car_id, render_urls, source_image_urls, notes")
+      .select("id, user_id, title, notes, car_context, garage_car_id, render_urls, source_image_urls, isolated_ref_urls, generation_mode, placement_hint")
       .eq("id", prototype_id)
       .eq("user_id", userId)
       .maybeSingle();
     if (protoErr || !proto) return json({ error: "Prototype not found" }, 404);
 
-    if (!proto.garage_car_id) {
+    if (!(proto as any).garage_car_id) {
       return json({ error: "This prototype isn't linked to a garage car" }, 400);
     }
 
-    // Prefer the clay hero if present; otherwise fall back to source photos.
-    // If neither exists, fall back to text-only design from title/notes.
-    const renders = (proto.render_urls as Array<{ angle: string; url: string }> | null) ?? [];
-    const heroUrl = renders.find((r) => r.angle === "hero")?.url ?? renders[0]?.url ?? null;
-    const sourceUrls = (proto.source_image_urls as string[] | null) ?? [];
-    const partRefUrls: string[] = heroUrl ? [heroUrl] : sourceUrls.slice(0, 3);
-    const textOnly = partRefUrls.length === 0;
-    const partDescription = [proto.title?.trim(), ((proto as any).notes ?? "").toString().trim()].filter(Boolean).join(" — ") || "";
-    if (textOnly && !partDescription) return json({ error: "Add a description or upload reference photos first" }, 400);
+    const mode = (((proto as any).generation_mode as string) ?? "exact_photo");
+    const isolated = ((proto as any).isolated_ref_urls as string[] | null) ?? [];
+    const sourceUrls = ((proto as any).source_image_urls as string[] | null) ?? [];
+    const renders = ((proto as any).render_urls as Array<{ angle: string; url: string }> | null) ?? [];
+    const heroUrl = renders.find((r) => r.angle === "hero")?.url ?? null;
+
+    // Reference priority for the on-car composite:
+    //   exact_photo → isolated → source → clay hero
+    //   inspired_photo → source → clay hero
+    //   text_design → none
+    let partRefUrls: string[] = [];
+    if (mode === "text_design") {
+      partRefUrls = [];
+    } else if (mode === "exact_photo") {
+      partRefUrls = isolated.length ? isolated : (sourceUrls.length ? sourceUrls.slice(0, 3) : (heroUrl ? [heroUrl] : []));
+    } else {
+      partRefUrls = sourceUrls.length ? sourceUrls.slice(0, 3) : (heroUrl ? [heroUrl] : []);
+    }
+
+    const titleRaw = ((proto as any).title ?? "").toString().trim();
+    const userNotes = ((proto as any).notes ?? "").toString().trim();
+    const partDescription = [titleRaw, userNotes].filter(Boolean).join(" — ") || "";
+    const placement = ((proto as any).placement_hint ?? "").toString().trim();
+    if (mode === "text_design" && !partDescription) {
+      return json({ error: "Add a description first" }, 400);
+    }
 
     const { data: car, error: carErr } = await admin
       .from("garage_cars")
       .select("id, make, model, year, trim, color, ref_side_url, ref_front34_url, ref_rear34_url, ref_front_url, ref_rear_url")
-      .eq("id", proto.garage_car_id)
+      .eq("id", (proto as any).garage_car_id)
       .eq("user_id", userId)
       .maybeSingle();
     if (carErr || !car) return json({ error: "Garage car not found" }, 404);
 
-    const carRefUrl =
-      car.ref_side_url ||
-      car.ref_front34_url ||
-      car.ref_rear34_url ||
-      car.ref_front_url ||
-      car.ref_rear_url;
+    const carRefUrl = car.ref_side_url || car.ref_front34_url || car.ref_rear34_url || car.ref_front_url || car.ref_rear_url;
     if (!carRefUrl) return json({ error: "Garage car has no reference image yet" }, 400);
 
-    await admin
-      .from("prototypes")
-      .update({ fit_preview_status: "rendering", fit_preview_error: null })
-      .eq("id", prototype_id);
+    await admin.from("prototypes").update({ fit_preview_status: "rendering", fit_preview_error: null }).eq("id", prototype_id);
 
-    // Car FIRST (it is the canvas being edited by /images/edits), part refs after.
-    // The /images/edits endpoint treats the first image as the canvas to modify
-    // and subsequent images as references — putting the car first stops gpt-image-1
-    // from "fusing" the part image into the car.
     const refDataUrls: string[] = [];
     for (const url of [carRefUrl, ...partRefUrls]) {
       try {
@@ -92,64 +95,64 @@ Deno.serve(async (req) => {
         const buf = new Uint8Array(await r.arrayBuffer());
         const mime = r.headers.get("content-type") ?? "image/png";
         refDataUrls.push(`data:${mime};base64,${bytesToBase64(buf)}`);
-      } catch (e) {
-        console.warn("ref fetch failed:", url, e);
-      }
+      } catch (e) { console.warn("ref fetch failed:", url, e); }
     }
-    // Need at least the car. In text-only mode that is enough.
-    if (refDataUrls.length < 1 || (!textOnly && refDataUrls.length < 2)) {
+    if (refDataUrls.length < 1 || (mode !== "text_design" && refDataUrls.length < 2)) {
       await admin.from("prototypes").update({ fit_preview_status: "failed", fit_preview_error: "Could not load reference images" }).eq("id", prototype_id);
       return json({ error: "Could not load reference images" }, 500);
     }
 
     const carLabel = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
+    const placementLine = placement
+      ? `PLACEMENT ON CAR: ${placement}. The part belongs in this anatomical zone — do not place it elsewhere.`
+      : `Place the part in its anatomically correct location based on its shape.`;
 
-    const prompt = textOnly
+    const partBlock = mode === "text_design"
       ? [
-          `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. No reference photos of the part are provided — design it from the description.`,
-          ``,
-          `THE CAR (first image): ${carLabel}${car.color ? ` (${car.color})` : ""}.`,
-          `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
-          `- Do NOT crop the car. The whole car must remain visible with comfortable margin.`,
-          `- The ONLY change to the car is the addition of the part below.`,
-          ``,
           `THE PART (designed from description): ${partDescription}.`,
-          `- Place it in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, etc).`,
-          `- Render it in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
-          `- Match scale and perspective to the car so it looks like it actually fits.`,
-          `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners. No logos, badges or decals.`,
-          ``,
-          `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, annotations, split-screen, text or watermarks.`,
+          placementLine,
+          `- Render in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections.`,
+          `- Match scale and perspective.`,
+          `- No bolts, rivets, mounting tabs, fasteners, logos, badges or decals.`,
+        ].join("\n")
+      : mode === "exact_photo"
+      ? [
+          `THE PART (remaining ${partRefUrls.length} reference image(s)) — NON-NEGOTIABLE EXACT REPLICA:`,
+          `- You MUST replicate the part shown. Trace the outline. Copy every opening, vent, slat, fin, return and crease. Match proportions exactly.`,
+          `- DO NOT invent a generic part. DO NOT substitute a similar-looking part.`,
+          placementLine,
+          `- Render in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on.`,
+          `- Match scale and perspective.`,
+          `- No bolts, rivets, fasteners. STRIP all logos, badges, text and decals from the part.`,
         ].join("\n")
       : [
-          `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. ${heroUrl ? `The remaining image is a clay render of the aftermarket aero part the user is prototyping.` : `The remaining ${partRefUrls.length} image(s) are reference photos of the aftermarket aero part the user wants fitted.`} It shows the EXACT silhouette, opening, vents, slats, depth, curvature, edge treatment and proportions of the part.`,
-          ``,
-          `THE CAR (first image): ${carLabel}${car.color ? ` (${car.color})` : ""}.`,
-          `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
-          `- Do NOT crop the car. The whole car visible in the first image must remain visible with comfortable margin.`,
-          `- The ONLY change to the car is the addition of the part below.`,
-          ``,
-          `THE PART (remaining reference image(s)) — THIS IS NON-NEGOTIABLE:`,
-          `- You MUST replicate the part shown in those reference photos. Trace its outline. Copy its opening shape, every vent, every slat, every fin, every return, every crease. Match proportions exactly.`,
-          `- DO NOT invent a generic part. DO NOT substitute a similar-looking aftermarket part. DO NOT idealise or "improve" the design.`,
-          `- Place it in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, etc).`,
-          `- Render it in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
-          `- Match scale and perspective to the car so it looks like it actually fits.`,
-          `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners — assume it's bonded on.`,
-          `- STRIP all logos, badges, embossed text, brand marks, model names and decals from the part, even if visible in the reference photos.`,
-          ``,
-          `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, no annotations, no split-screen, no text, no watermarks, no inset thumbnails of the reference part.`,
+          `THE PART (remaining ${partRefUrls.length} reference image(s)) — INSPIRATION:`,
+          `- Use the photos as inspiration for character and key shapes, produce a clean refined version.`,
+          placementLine,
+          `- Render in glossy 2x2 twill CARBON FIBRE. Match the car's lighting and reflections.`,
+          `- No bolts, fasteners, logos, badges or decals.`,
         ].join("\n");
+
+    const prompt = [
+      `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it.`,
+      ``,
+      `THE CAR (first image): ${carLabel}${car.color ? ` (${car.color})` : ""}.`,
+      `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
+      `- Do NOT crop the car. The whole car must remain visible with comfortable margin.`,
+      `- The ONLY change to the car is the addition of the part below.`,
+      ``,
+      partBlock,
+      ``,
+      `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, annotations, split-screen, text, watermarks or inset thumbnails.`,
+    ].join("\n");
 
     let imgUrl: string | undefined;
     let lastErr = "";
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const result = await openaiGenerateImage({
-        apiKey: OPENAI_API_KEY,
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const result = await lovableGenerateImageWithFallback({
+        apiKey: LOVABLE_API_KEY,
         prompt,
         referenceImages: refDataUrls,
-        size: "1536x1024",
-        quality: "high",
       });
       if (result.ok && result.dataUrl) { imgUrl = result.dataUrl; break; }
       if (result.status === 429) {
@@ -157,10 +160,10 @@ Deno.serve(async (req) => {
         return json({ error: "Rate limit reached" }, 429);
       }
       if (result.status === 402 || result.status === 403) {
-        await admin.from("prototypes").update({ fit_preview_status: "failed", fit_preview_error: "OpenAI billing/access issue" }).eq("id", prototype_id);
-        return json({ error: result.error ?? "OpenAI billing/access issue" }, 402);
+        await admin.from("prototypes").update({ fit_preview_status: "failed", fit_preview_error: "AI billing/access issue" }).eq("id", prototype_id);
+        return json({ error: result.error ?? "AI billing/access issue" }, 402);
       }
-      lastErr = `openai ${result.status ?? "?"}: ${result.error ?? "unknown"}`;
+      lastErr = `lovable-ai ${result.status ?? "?"}: ${result.error ?? "unknown"}`;
       await new Promise((r) => setTimeout(r, 1500 * attempt));
     }
     if (!imgUrl) {
