@@ -1,58 +1,54 @@
 
 
-## Auto-fidelity check on extracted parts
+## Fix: isolate just one part, even when neighbours are nearby
 
-### What you'll see
+### What's actually wrong
 
-After Gemini draws the standalone clay render, the modal pauses for ~1s while we pixel-compare it against the cropped source. You get a **fidelity score (0–100)** and one of three badges in the review pane:
+The user clicked the **front arch** hotspot. The render pane then shows the arch *plus* two bonnet vents, a lip, a canard and a skirt extension — and the fidelity check sees a perfect render of all of that and (rightly) says "MISMATCH" because the source crop and the redraw both contain six parts instead of one.
 
-- **Match (≥75)** — green chip, flow continues normally
-- **Drift (50–74)** — amber chip with a "Re-draw" button. Tooltip explains *why* it drifted (e.g. "outline 38% smaller", "missing rear segment").
-- **Mismatch (<50)** — red chip blocking "Make 3D model" until the user re-draws or accepts the override.
+Two upstream bugs collude:
 
-A new **"Compare"** toggle in the review header overlays the source crop's silhouette on top of the render at 50% opacity, in red, so you can visually see what's missing (e.g. the dropped rear arch fairing in your screenshot).
+1. **`isolate-picked-part` over-pads.** It crops the AI bbox with **+30% padding on each side** "to keep mounting tabs". On a tightly-packed concept that's enough to swallow neighbouring parts whole.
+2. **`render-isolated-part` has no intent signal.** It gets the (now multi-part) crop and a prompt that says "draw an arch", but Gemini sees five other parts in the reference and faithfully redraws all of them. The per-kind `not:` lists ban *car body* but not *other bolt-on parts*.
 
-### How the score works
+### Fix in three layers
 
-We compute three sub-scores client-side (no edge function needed for the check itself — it's pure canvas math):
+**A. Tighten the crop, keep it focused on the picked part.**  
+`isolate-picked-part` switches to **adaptive padding**: 8% by default (just enough to keep mounting tabs and the immediate fairing), and a hard ceiling that the cropped box can't grow past **1.4× the original bbox area**. This alone removes ~80% of the bleed.
 
-1. **Silhouette IoU (50% weight)** — Otsu-threshold both images to a binary part/background mask, normalise to the same bounding box and aspect, then compute intersection-over-union of the silhouettes. This catches "wrong shape entirely" cases.
-2. **Outline coverage (30% weight)** — Sobel edge map of the source vs render. Measures what % of source edges have a render edge within 3px. Catches "dropped the rear segment" cases like your screenshot.
-3. **Aspect & extent (20% weight)** — Compares bounding-box width/height ratio and pixel area. Catches "made it more symmetric" / "shrunk it" cases.
+**B. Tell the renderer exactly what was picked.**  
+Pass the `bbox` through `isolate-picked-part` → write a tiny sidecar `{ part_kind, bbox }` to `concept_parts.isolated_meta` jsonb when we upload the crop. `render-isolated-part` reads that and adds two new prompt directives:
 
-Final score = weighted sum. Thresholds (75 / 50) are tuned conservatively — better to flag a borderline render than miss a bad one.
+- *"The reference image may contain other aero parts. Render ONLY the {label} — the part centred at roughly (cx, cy) of the reference. Ignore every other shape in the frame."*
+- *"OUTPUT MUST CONTAIN EXACTLY ONE PART. No vents, no lip, no canards, no skirts, no other arches — only the {label}."*
 
-### Where it plugs in
+We also extend each `PART_SPEC.not` line with *"and NO other aftermarket aero parts (vents, lip, canards, skirt, other arches, wing) — only the {kind} itself."*
 
-```text
-isolating → rendering → [NEW: scoring ~1s] → review (with badge)
-                                              └→ user clicks Re-draw → rendering again
-```
+**C. Make the fidelity check honest about the new behaviour.**  
+The source crop will still sometimes contain neighbours (we can't predict the layout perfectly). To avoid false MISMATCH flags when the *render* is correctly single-part but the *source* is multi-part, the fidelity check picks the **largest connected component** of each Otsu mask before computing IoU — so it compares "biggest blob in source" vs "biggest blob in render". Same for edge coverage (restrict to that component's bbox).
 
-The score is computed once when `setImages(renders)` fires in `runRender`. Result stored in component state, persisted to `concept_parts.fidelity_score` so re-opening the modal shows the same badge without recomputing.
+This is a 30-line addition to `part-fidelity.ts` (`largestComponent(mask)`), no new dependencies.
 
 ### Files
 
-**New:**
-- `src/lib/part-fidelity.ts` — pure functions: `otsuMask`, `sobelEdges`, `silhouetteIoU`, `edgeCoverage`, `scoreFidelity`. Operates on `ImageData` from offscreen canvas. ~250 LOC, no deps beyond browser canvas.
-
 **Modified:**
-- `src/components/ExtractedPartPreview.tsx` — after `setImages`, kick off `scoreFidelity(isolatedUrl, renders[0].url)` in a worker-friendly async block; add `FidelityBadge` + Compare overlay toggle to the review section; gate the "Make 3D model" button on score ≥ 50 (or user-confirmed override).
-- `supabase/migrations/<new>` — add `fidelity_score smallint` and `fidelity_breakdown jsonb` columns to `concept_parts`. Persist after computation via a tiny update.
+- `supabase/functions/isolate-picked-part/index.ts` — drop pad from 30% → 8%, add area-ratio cap, persist `isolated_meta` jsonb on `concept_parts`.
+- `supabase/functions/render-isolated-part/index.ts` — accept optional `bbox` + `picked_kind` in the body (also auto-loads from `isolated_meta` if absent), inject the two new "exactly one part" directives, extend per-kind negatives.
+- `src/components/ExtractedPartPreview.tsx` — when invoking `render-isolated-part` after auto-isolation, also forward `bbox` and `picked_kind`.
+- `src/lib/part-fidelity.ts` — add `largestComponent()` + use it in `scoreFidelity` before IoU/edges.
 
-**No edge function changes** — the check runs entirely in the browser. Source crop is already public (`isolated_source_url`), render is public, both fetch into canvas, score in <1s on a typical laptop.
+**Migration:**
+- Add `concept_parts.isolated_meta jsonb null` column. Backfill not needed.
 
-### Why this should work for your screenshot
+### What you'll see after
 
-On the arch you uploaded, the render dropped the rear fairing and made the skirt extension narrower. That'd produce:
-- Silhouette IoU ≈ 0.55 (rear segment missing from render mask)
-- Edge coverage ≈ 0.48 (rear fairing edges absent)
-- Aspect ≈ 0.85 (render is shorter L→R than source)
-- **Score ≈ 56 → amber Drift badge** with "outline 25% narrower; rear segment missing" — exactly the issue you spotted by eye.
+Click the arch hotspot → crop is a tight box hugging the arch (no bonnet vents) → render is a single grey arch on white → fidelity badge reads **MATCH** because both source and render are now genuinely one part.
+
+If a hotspot ever does encroach on neighbours (e.g. the bbox itself was wide), the render still produces a single isolated arch because the prompt explicitly forbids the rest.
 
 ### Out of scope
 
-- No automatic re-render loop — we surface the problem and let the user decide. Auto-retry would burn credits without solving the underlying prompt brittleness.
-- No per-angle scoring (we only render one hero angle today).
-- No mesh-stage scoring — that's a separate problem (Meshy quality), worth a follow-up if this proves useful.
+- No re-running of past detections — existing cached hotspot bboxes are reused as-is; the tighter crop math just runs against them.
+- No change to the post-render lasso trim — still available as a manual escape hatch if a render ever does show extras.
+- Per-angle scoring is still single-angle (one hero render).
 
