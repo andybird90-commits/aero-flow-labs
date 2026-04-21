@@ -180,6 +180,15 @@ export function ExtractedPartPreview({
       if (!renders?.length) throw new Error("No renders returned");
       setImages(renders);
       setStage("review");
+      setFidelity(null);
+      setOverrideFidelity(false);
+      // Kick off the pixel-fidelity check in the background so the user
+      // sees the render immediately and the badge fades in once ready.
+      const compareSource = overrideSourceUrl ?? isolatedUrl ?? sourceImageUrl;
+      const heroRender = renders[0]?.url;
+      if (compareSource && heroRender) {
+        void runFidelityCheck(compareSource, heroRender);
+      }
     } catch (e: any) {
       if (signal?.cancelled) return;
       const msg = String(e.message ?? e);
