@@ -49,10 +49,17 @@ export function ExtractedPartPreview({
   open, onClose, conceptId, kind, label, filenameBase, sourceImageUrl, bbox,
 }: Props) {
   const { toast } = useToast();
-  const [stage, setStage] = useState<Stage>(sourceImageUrl ? "pretrim" : "rendering");
+  // When we have a bbox, kick off auto-isolation first. Otherwise fall back
+  // to the legacy pretrim (lasso) or direct rendering path.
+  const initialStage: Stage =
+    bbox && sourceImageUrl ? "isolating" : sourceImageUrl ? "pretrim" : "rendering";
+  const [stage, setStage] = useState<Stage>(initialStage);
   const [images, setImages] = useState<RenderImage[]>([]);
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** AI-isolated crop of just the picked part. Replaces `sourceImageUrl` in
+   *  the "On car" pane and is sent as the sole reference to render-isolated-part. */
+  const [isolatedUrl, setIsolatedUrl] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
   // Pre-render trim state (lasso on the original concept image)
@@ -73,7 +80,8 @@ export function ExtractedPartPreview({
   // Reset trim state whenever the dialog opens or the underlying render changes.
   useEffect(() => {
     if (!open) return;
-    setStage(sourceImageUrl ? "pretrim" : "rendering");
+    setStage(bbox && sourceImageUrl ? "isolating" : sourceImageUrl ? "pretrim" : "rendering");
+    setIsolatedUrl(null);
     setTrimOpen(false);
     setTrimPoints([]);
     setTrimLasso([]);
@@ -81,7 +89,7 @@ export function ExtractedPartPreview({
     setPrePoints([]);
     setPreLasso([]);
     setPreMaskedUrl(null);
-  }, [open, conceptId, kind, sourceImageUrl]);
+  }, [open, conceptId, kind, sourceImageUrl, bbox]);
 
   const purgeCachedMesh = async () => {
     const { error } = await supabase
