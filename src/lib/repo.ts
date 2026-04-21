@@ -647,7 +647,11 @@ export function useUpsertBrief() {
         constraints: input.patch.constraints ?? [],
         reference_image_paths: input.patch.reference_image_paths ?? [],
         rights_confirmed: input.patch.rights_confirmed ?? false,
-      }).select("*").single();
+        ...(input.patch as any).discipline !== undefined && { discipline: (input.patch as any).discipline },
+        ...(input.patch as any).aggression !== undefined && { aggression: (input.patch as any).aggression },
+        ...(input.patch as any).must_include !== undefined && { must_include: (input.patch as any).must_include },
+        ...(input.patch as any).must_avoid !== undefined && { must_avoid: (input.patch as any).must_avoid },
+      } as any).select("*").single();
       if (error) throw error;
       return data as DesignBrief;
     },
