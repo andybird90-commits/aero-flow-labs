@@ -20,6 +20,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, Wand2, Box, Download, X, RotateCcw, Scissors, MousePointerClick, Lasso, Undo2 } from "lucide-react";
+import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { PartLasso, type LassoMode, type LassoClick, type LassoPoint } from "@/components/PartLasso";
@@ -353,16 +354,39 @@ export function ExtractedPartPreview({
     if (!glbUrl) return;
     try {
       const resp = await fetch(glbUrl);
-      const blob = await resp.blob();
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const buf = await resp.arrayBuffer();
+      // Detect format. Rodin returns binary GLB; older runs may have stored
+      // STL directly. We always hand the user a real binary STL because some
+      // CAD tools (Fusion 360) reject GLB files renamed to .stl.
+      const head4 = new TextDecoder().decode(buf.slice(0, 4));
+      const isGlb = head4 === "glTF";
+      let blob: Blob;
+      let outName = `${filenameBase}.stl`;
+      if (isGlb) {
+        const gltf: any = await new Promise((resolve, reject) =>
+          new GLTFLoader().parse(buf, "", resolve, reject),
+        );
+        const scene = new THREE.Scene();
+        scene.add(gltf.scene);
+        // Bake transforms so exported triangles are in world coordinates.
+        scene.updateMatrixWorld(true);
+        const stlData = new STLExporter().parse(scene, { binary: true }) as DataView;
+        const stlBytes = new Uint8Array(stlData.buffer as ArrayBuffer, stlData.byteOffset, stlData.byteLength);
+        blob = new Blob([stlBytes], { type: "model/stl" });
+      } else {
+        // Already STL — pass through unchanged.
+        blob = new Blob([buf], { type: "model/stl" });
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${filenameBase}.stl`;
+      a.download = outName;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast({ title: `${label} downloaded`, description: `${filenameBase}.stl` });
+      toast({ title: `${label} downloaded`, description: outName });
     } catch (e: any) {
       toast({ title: "Download failed", description: String(e.message ?? e), variant: "destructive" });
     }
