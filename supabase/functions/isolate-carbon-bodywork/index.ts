@@ -28,16 +28,22 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 type AngleKey = "front" | "side" | "rear34" | "rear";
 
 const ISOLATION_PROMPT =
-  `Keep ONLY the aftermarket carbon-fibre bodywork visible in this render ` +
-  `(front splitter, canards, dive planes, side skirts, flared arches, rear diffuser, ` +
-  `rear wing, hood vents, any bolt-on carbon panels). ` +
-  `Completely REMOVE the base car body, painted panels, wheels, tyres, glass, headlights, ` +
-  `tail lights, mirrors, ground/road and the entire background. ` +
-  `Place the isolated carbon parts floating in their correct relative position on a clean ` +
-  `medium-grey studio backdrop with soft, even product lighting and a subtle ground shadow. ` +
-  `Preserve the EXACT shape, proportion, scale, weave direction, and clearcoat reflections of every ` +
-  `carbon part — do not redesign, restyle, or smooth them. ` +
-  `Output a single clean studio product photograph of the carbon kit only. ` +
+  `Treat this image as a layered photograph. Keep ONLY the aftermarket carbon-fibre ` +
+  `bodywork visible (front splitter, canards, dive planes, side skirts, flared arches, ` +
+  `rear diffuser, rear wing, hood vents, any bolt-on carbon panels). ` +
+  `Make the painted base car body, wheels, tyres, glass, headlights, tail lights, mirrors, ` +
+  `ground/road and entire background DISAPPEAR — replace them with a clean medium-grey ` +
+  `studio backdrop with soft, even product lighting and a subtle ground shadow. ` +
+  `CRITICAL — do NOT move, rotate, re-position, re-scale, re-arrange or re-compose the ` +
+  `carbon parts in any way. Each carbon part must stay at the EXACT same pixel position, ` +
+  `same size, same camera angle and same perspective foreshortening as in the input image — ` +
+  `as if you simply erased the painted bodywork around them. ` +
+  `If a carbon part was attached to the car, keep it floating in the same place it was ` +
+  `attached, do not drop it, lift it, or pull it toward the centre. ` +
+  `Preserve the EXACT shape, proportion, weave direction, and clearcoat reflections of every ` +
+  `carbon part — do not redesign, restyle, smooth or stylise them. ` +
+  `Output a single clean studio product photograph of the carbon kit only, with the parts ` +
+  `in their original on-car positions. ` +
   `No car body, no wheels, no background, no text, no watermark.`;
 
 Deno.serve(async (req) => {
