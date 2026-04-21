@@ -1158,7 +1158,7 @@ export function useGenerateGarageCarViews() {
 
 /* ─── LIBRARY + MARKETPLACE ────────────────────────────────── */
 
-export type LibraryItemKind = "concept_image" | "aero_kit_mesh" | "concept_part_mesh";
+export type LibraryItemKind = "concept_image" | "aero_kit_mesh" | "concept_part_mesh" | "prototype_part_mesh";
 export type LibraryVisibility = "private" | "public";
 export type MarketplaceListingStatus = "draft" | "active" | "paused";
 
