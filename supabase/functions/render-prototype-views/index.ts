@@ -3,16 +3,18 @@
  *
  * Prototyper edge function. Takes 1-5 user-uploaded reference photos of a
  * physical part (on or off a car) and an optional car description, then asks
- * Gemini to redraw it as a clean clay-style aero part on a white background.
+ * gpt-image-1 to redraw it as a clean clay-style aero part on a white
+ * background.
  *
- * We render TWO orientations:
- *   - hero  : front 3/4 view, hero product shot
- *   - back  : rear 3/4 view, showing the reverse / inner side
+ * NEW behaviour (on-car first):
+ *   - If the prototype is linked to a garage car, we generate THREE images in
+ *     order, writing progress to the row as we go:
+ *        1) ON-CAR carbon composite  → fit_preview_url       (PRIMARY)
+ *        2) clay HERO (front 3/4)    → render_urls[0]        (for meshing)
+ *        3) clay BACK (hollow back)  → render_urls[1]        (back-of-part check)
+ *   - If no garage car is linked, we just render the two clay views as before.
  *
- * The renders are uploaded to the public concept-renders bucket and saved
- * back onto the prototype row.
- *
- * Body: { prototype_id: string }
+ * Body: { prototype_id: string, revision_note?: string }
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { openaiGenerateImage } from "../_shared/openai-image.ts";
@@ -64,7 +66,7 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     const { data: proto, error: protoErr } = await admin
       .from("prototypes")
-      .select("id, user_id, title, car_context, notes, replicate_exact, source_image_urls")
+      .select("id, user_id, title, car_context, notes, replicate_exact, source_image_urls, garage_car_id")
       .eq("id", prototype_id)
       .eq("user_id", userId)
       .maybeSingle();
@@ -73,12 +75,44 @@ Deno.serve(async (req) => {
     const sourceUrls = (proto.source_image_urls as string[] | null) ?? [];
     if (!sourceUrls.length) return json({ error: "No source images uploaded" }, 400);
 
-    await admin
-      .from("prototypes")
-      .update({ render_status: "rendering", render_error: null })
-      .eq("id", prototype_id);
+    // Optional: load garage car ref so we can do on-car shot first.
+    let carRefDataUrl: string | null = null;
+    let carLabel = "";
+    let carColor = "";
+    if (proto.garage_car_id) {
+      const { data: car } = await admin
+        .from("garage_cars")
+        .select("make, model, year, trim, color, ref_side_url, ref_front34_url, ref_rear34_url, ref_front_url, ref_rear_url")
+        .eq("id", proto.garage_car_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (car) {
+        carLabel = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
+        carColor = car.color ?? "";
+        const carRefUrl =
+          car.ref_side_url || car.ref_front34_url || car.ref_rear34_url ||
+          car.ref_front_url || car.ref_rear_url;
+        if (carRefUrl) {
+          try {
+            const r = await fetch(carRefUrl);
+            if (r.ok) {
+              const buf = new Uint8Array(await r.arrayBuffer());
+              const mime = r.headers.get("content-type") ?? "image/png";
+              carRefDataUrl = `data:${mime};base64,${bytesToBase64(buf)}`;
+            }
+          } catch (e) { console.warn("car ref fetch failed", e); }
+        }
+      }
+    }
 
-    // Inline the source images as data URLs so Gemini definitely receives them.
+    const initialUpdate: Record<string, unknown> = { render_status: "rendering", render_error: null };
+    if (carRefDataUrl) {
+      initialUpdate.fit_preview_status = "rendering";
+      initialUpdate.fit_preview_error = null;
+    }
+    await admin.from("prototypes").update(initialUpdate).eq("id", prototype_id);
+
+    // Inline source images as data URLs so OpenAI definitely sees them.
     const refDataUrls: string[] = [];
     for (const url of sourceUrls) {
       try {
@@ -99,21 +133,61 @@ Deno.serve(async (req) => {
     const carContext = (proto.car_context ?? "").trim();
     const userNotes = ((proto as any).notes ?? "").toString().trim();
     const replicateExact = !!(proto as any).replicate_exact;
-    const renders: Array<{ angle: string; url: string }> = [];
-    let heroDataUrl: string | null = null;
-
-    const FIDELITY_HERO = replicateExact
-      ? `FIDELITY: REPLICA MODE — copy the part in the photos as faithfully as possible. Preserve every vent, return, crease, fillet, transition and proportion exactly. Do NOT idealise, smooth out, or "improve" the design. If something is asymmetric in the photos, keep it asymmetric.`
-      : `FIDELITY: Re-draw a clean, idealised version of the part — the SHAPE and proportions must match, but you may smooth out manufacturing flaws, scratches, dirt, and odd reflections.`;
-
-    const FIDELITY_BACK = replicateExact
-      ? `FIDELITY: REPLICA MODE — match the hero render exactly, no creative reinterpretation.`
-      : `FIDELITY: Match the hero render exactly.`;
-
     const combinedNotes = [userNotes, revisionNote].filter(Boolean).join("\n\nREVISION REQUEST (apply on top of any earlier notes):\n");
     const NOTES_BLOCK = combinedNotes
       ? `\nUSER NOTES (HIGHEST PRIORITY — follow these literally, override any conflicting default behaviour):\n${combinedNotes}\n`
       : ``;
+
+    /* ─── STEP 1: On-car carbon composite (if car linked) ─── */
+    let fitUrlPublic: string | null = null;
+    if (carRefDataUrl) {
+      const onCarPrompt = [
+        `IMAGE 1 is a photo of the user's car: ${carLabel}${carColor ? ` (${carColor})` : ""}.`,
+        `The remaining images are reference photos of an aftermarket aero part the user wants fitted to that car.`,
+        ``,
+        `TASK: Produce a single photoreal image of IMAGE 1's car with the part from the other images fitted in its correct location, rendered in real CARBON FIBRE.`,
+        ``,
+        `Rules:`,
+        `- Keep the car in IMAGE 1 unchanged: same angle, same colour, same lighting, same background, same wheels, same proportions.`,
+        `- Place the part in its anatomically correct location on the car (e.g. side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, etc).`,
+        `- Render the part in real glossy 2x2 twill carbon fibre with a clear-coat. Match the scene's lighting and reflections so it looks bonded on, not pasted.`,
+        `- Match scale and perspective to the car. The part must look like it belongs there.`,
+        `- Do NOT add bolts, rivets, mounting tabs or fasteners — assume it's bonded on.`,
+        `- Do NOT add text, badges, logos, watermarks.`,
+        `- Output a clean photoreal image, no labels, no annotations, no split-screen.`,
+        NOTES_BLOCK,
+      ].filter(Boolean).join("\n");
+
+      const onCarRefs = [carRefDataUrl, ...refDataUrls];
+      const result = await runWithRetry(onCarPrompt, onCarRefs);
+      if (!result.ok) {
+        // Don't kill the whole job — record the failure on fit_preview and carry on with clay views.
+        await admin.from("prototypes").update({ fit_preview_status: "failed", fit_preview_error: result.error ?? "on-car render failed" }).eq("id", prototype_id);
+      } else {
+        const uploaded = await uploadDataUrl(admin, result.dataUrl!, userId, prototype_id, "on-car");
+        if (uploaded.ok) {
+          fitUrlPublic = uploaded.url!;
+          await admin.from("prototypes").update({
+            fit_preview_status: "ready",
+            fit_preview_url: fitUrlPublic,
+            fit_preview_error: null,
+          }).eq("id", prototype_id);
+        } else {
+          await admin.from("prototypes").update({ fit_preview_status: "failed", fit_preview_error: uploaded.error ?? "upload failed" }).eq("id", prototype_id);
+        }
+      }
+    }
+
+    /* ─── STEP 2 + 3: Clay hero + clay back ─── */
+    const FIDELITY_HERO = replicateExact
+      ? `FIDELITY: REPLICA MODE — copy the part in the photos as faithfully as possible. Preserve every vent, return, crease, fillet, transition and proportion exactly. Do NOT idealise, smooth out, or "improve" the design. If something is asymmetric in the photos, keep it asymmetric.`
+      : `FIDELITY: Re-draw a clean, idealised version of the part — the SHAPE and proportions must match, but you may smooth out manufacturing flaws, scratches, dirt, and odd reflections.`;
+    const FIDELITY_BACK = replicateExact
+      ? `FIDELITY: REPLICA MODE — match the hero render exactly, no creative reinterpretation.`
+      : `FIDELITY: Match the hero render exactly.`;
+
+    const renders: Array<{ angle: string; url: string }> = [];
+    let heroDataUrl: string | null = null;
 
     for (const angle of ANGLES) {
       const isHero = angle.key === "hero";
@@ -180,47 +254,18 @@ Deno.serve(async (req) => {
         ? refDataUrls
         : (heroDataUrl ? [heroDataUrl, ...refDataUrls] : refDataUrls);
 
-      let imgUrl: string | undefined;
-      let lastErr = "";
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        const result = await openaiGenerateImage({
-          apiKey: OPENAI_API_KEY,
-          prompt: promptText,
-          referenceImages: refsForAngle,
-          size: "1536x1024",
-          quality: "high",
-        });
-        if (result.ok && result.dataUrl) {
-          imgUrl = result.dataUrl;
-          break;
-        }
-        if (result.status === 429) {
-          await admin.from("prototypes").update({ render_status: "failed", render_error: "Rate limit" }).eq("id", prototype_id);
-          return json({ error: "Rate limit reached" }, 429);
-        }
-        if (result.status === 402 || result.status === 403) {
-          await admin.from("prototypes").update({ render_status: "failed", render_error: "OpenAI billing/access issue" }).eq("id", prototype_id);
-          return json({ error: result.error ?? "OpenAI billing/access issue" }, 402);
-        }
-        lastErr = `openai ${result.status ?? "?"}: ${result.error ?? "unknown"}`;
-        await new Promise((r) => setTimeout(r, 1500 * attempt));
+      const result = await runWithRetry(promptText, refsForAngle);
+      if (!result.ok) {
+        await admin.from("prototypes").update({ render_status: "failed", render_error: result.error ?? "render failed" }).eq("id", prototype_id);
+        return json({ error: `Image gen failed: ${result.error ?? "unknown"}` }, 502);
       }
-      if (!imgUrl) {
-        await admin.from("prototypes").update({ render_status: "failed", render_error: lastErr }).eq("id", prototype_id);
-        return json({ error: `Image gen failed: ${lastErr}` }, 502);
+      const uploaded = await uploadDataUrl(admin, result.dataUrl!, userId, prototype_id, angle.key);
+      if (!uploaded.ok) {
+        await admin.from("prototypes").update({ render_status: "failed", render_error: uploaded.error ?? "upload failed" }).eq("id", prototype_id);
+        return json({ error: uploaded.error ?? "upload failed" }, 500);
       }
-
-      const m = imgUrl.match(/^data:(.+?);base64,(.+)$/);
-      if (!m) { await admin.from("prototypes").update({ render_status: "failed", render_error: "bad image format" }).eq("id", prototype_id); return json({ error: "bad image" }, 500); }
-      const mime = m[1];
-      const bytes = base64ToBytes(m[2]);
-      const ext = mime.includes("png") ? "png" : "jpg";
-      const path = `${userId}/prototypes/${prototype_id}/${angle.key}-${Date.now()}.${ext}`;
-      const { error: upErr } = await admin.storage.from("concept-renders").upload(path, bytes, { contentType: mime, upsert: true });
-      if (upErr) { await admin.from("prototypes").update({ render_status: "failed", render_error: upErr.message }).eq("id", prototype_id); return json({ error: `Upload failed: ${upErr.message}` }, 500); }
-      const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
-      renders.push({ angle: angle.key, url: publicUrl });
-      if (isHero) heroDataUrl = imgUrl;
+      renders.push({ angle: angle.key, url: uploaded.url! });
+      if (isHero) heroDataUrl = result.dataUrl!;
     }
 
     await admin
@@ -234,12 +279,50 @@ Deno.serve(async (req) => {
       })
       .eq("id", prototype_id);
 
-    return json({ renders });
+    return json({ renders, fit_preview_url: fitUrlPublic });
   } catch (e) {
     console.error("render-prototype-views error:", e);
     return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
   }
 });
+
+async function runWithRetry(prompt: string, refs: string[]): Promise<{ ok: boolean; dataUrl?: string; error?: string; status?: number }> {
+  let lastErr = "";
+  let lastStatus: number | undefined;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const result = await openaiGenerateImage({
+      apiKey: OPENAI_API_KEY,
+      prompt,
+      referenceImages: refs,
+      size: "1536x1024",
+      quality: "high",
+    });
+    if (result.ok && result.dataUrl) return { ok: true, dataUrl: result.dataUrl };
+    lastStatus = result.status;
+    lastErr = `openai ${result.status ?? "?"}: ${result.error ?? "unknown"}`;
+    if (result.status === 429 || result.status === 402 || result.status === 403) break;
+    await new Promise((r) => setTimeout(r, 1500 * attempt));
+  }
+  return { ok: false, error: lastErr, status: lastStatus };
+}
+
+async function uploadDataUrl(
+  admin: ReturnType<typeof createClient>,
+  dataUrl: string,
+  userId: string,
+  prototypeId: string,
+  angleKey: string,
+): Promise<{ ok: boolean; url?: string; error?: string }> {
+  const m = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+  if (!m) return { ok: false, error: "bad image format" };
+  const mime = m[1];
+  const bytes = base64ToBytes(m[2]);
+  const ext = mime.includes("png") ? "png" : "jpg";
+  const path = `${userId}/prototypes/${prototypeId}/${angleKey}-${Date.now()}.${ext}`;
+  const { error: upErr } = await admin.storage.from("concept-renders").upload(path, bytes, { contentType: mime, upsert: true });
+  if (upErr) return { ok: false, error: upErr.message };
+  return { ok: true, url: admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl };
+}
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
