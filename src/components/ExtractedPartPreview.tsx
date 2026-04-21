@@ -63,6 +63,12 @@ export function ExtractedPartPreview({
   /** AI-isolated crop of just the picked part. Replaces `sourceImageUrl` in
    *  the "On car" pane and is sent as the sole reference to render-isolated-part. */
   const [isolatedUrl, setIsolatedUrl] = useState<string | null>(null);
+  /** Pixel-fidelity comparison between isolated source crop and AI render. */
+  const [fidelity, setFidelity] = useState<FidelityResult | null>(null);
+  const [scoring, setScoring] = useState(false);
+  const [compareOverlay, setCompareOverlay] = useState(false);
+  /** User opt-out: allow meshing even when fidelity is "mismatch". */
+  const [overrideFidelity, setOverrideFidelity] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
 
   // Pre-render trim state (lasso on the original concept image)
