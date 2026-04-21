@@ -274,6 +274,8 @@ export type Database = {
           aero_kit_url: string | null
           aero_kit_warning: string | null
           ai_notes: string | null
+          carbon_error: string | null
+          carbon_status: string
           concept_set_id: string | null
           created_at: string
           direction: string | null
@@ -284,10 +286,14 @@ export type Database = {
           preview_mesh_status: string
           preview_mesh_url: string | null
           project_id: string
+          render_front_carbon_url: string | null
           render_front_direct_url: string | null
           render_front_url: string | null
+          render_rear_carbon_url: string | null
           render_rear_url: string | null
+          render_rear34_carbon_url: string | null
           render_rear34_url: string | null
+          render_side_carbon_url: string | null
           render_side_opposite_url: string | null
           render_side_url: string | null
           status: Database["public"]["Enums"]["concept_status"]
@@ -301,6 +307,8 @@ export type Database = {
           aero_kit_url?: string | null
           aero_kit_warning?: string | null
           ai_notes?: string | null
+          carbon_error?: string | null
+          carbon_status?: string
           concept_set_id?: string | null
           created_at?: string
           direction?: string | null
@@ -311,10 +319,14 @@ export type Database = {
           preview_mesh_status?: string
           preview_mesh_url?: string | null
           project_id: string
+          render_front_carbon_url?: string | null
           render_front_direct_url?: string | null
           render_front_url?: string | null
+          render_rear_carbon_url?: string | null
           render_rear_url?: string | null
+          render_rear34_carbon_url?: string | null
           render_rear34_url?: string | null
+          render_side_carbon_url?: string | null
           render_side_opposite_url?: string | null
           render_side_url?: string | null
           status?: Database["public"]["Enums"]["concept_status"]
@@ -328,6 +340,8 @@ export type Database = {
           aero_kit_url?: string | null
           aero_kit_warning?: string | null
           ai_notes?: string | null
+          carbon_error?: string | null
+          carbon_status?: string
           concept_set_id?: string | null
           created_at?: string
           direction?: string | null
@@ -338,10 +352,14 @@ export type Database = {
           preview_mesh_status?: string
           preview_mesh_url?: string | null
           project_id?: string
+          render_front_carbon_url?: string | null
           render_front_direct_url?: string | null
           render_front_url?: string | null
+          render_rear_carbon_url?: string | null
           render_rear_url?: string | null
+          render_rear34_carbon_url?: string | null
           render_rear34_url?: string | null
+          render_side_carbon_url?: string | null
           render_side_opposite_url?: string | null
           render_side_url?: string | null
           status?: Database["public"]["Enums"]["concept_status"]
