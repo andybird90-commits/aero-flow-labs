@@ -31,11 +31,12 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Beaker, Plus, Loader2, Wand2, Box, Download, Trash2, Upload, X, Image as ImageIcon, Car, Sparkles, RefreshCw, AlertCircle,
+  Beaker, Plus, Loader2, Wand2, Box, Download, Trash2, Upload, X, Image as ImageIcon, Car, Sparkles, RefreshCw, AlertCircle, MousePointer2,
 } from "lucide-react";
 import {
   useMyPrototypes, useCreatePrototype, useDeletePrototype, useGarageCars, type Prototype, type PrototypeGenerationMode,
 } from "@/lib/repo";
+import PrototypeMaskEditor from "@/components/PrototypeMaskEditor";
 
 const PLACEMENT_OPTIONS = [
   { value: "front_bumper", label: "Front bumper / splitter" },
