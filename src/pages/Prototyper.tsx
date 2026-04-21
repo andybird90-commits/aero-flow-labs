@@ -919,8 +919,25 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onClose}><X className="h-4 w-4 mr-1" /> Close</Button>
-          <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || isFitting || !hasRenderInput}>
-            {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length || fitUrl ? (revisionNote.trim() ? "Re-render with note" : "Re-render preview") : "Render preview"}</>}
+          <Button
+            variant="outline"
+            onClick={startRender}
+            disabled={isRendering || isMeshing || isFitting || !hasRenderInput}
+          >
+            {isRendering ? (
+              <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> {genMode === "exact_photo" && sources.length > 0 && !isolatedRefs.length ? "Isolating + rendering…" : "Rendering…"}</>
+            ) : (
+              <>
+                <Wand2 className="h-4 w-4 mr-1" />
+                {renders.length || fitUrl
+                  ? (revisionNote.trim() ? "Re-render with note" : "Re-render preview")
+                  : genMode === "exact_photo"
+                    ? "Render exact fit"
+                    : genMode === "text_design"
+                      ? "Generate concept"
+                      : "Render inspired version"}
+              </>
+            )}
           </Button>
           {garageCarId && (fitUrl || renders.length > 0) && (
             <Button
