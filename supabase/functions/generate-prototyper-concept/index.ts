@@ -112,30 +112,53 @@ Deno.serve(async (req) => {
       `Keep the car body, paint colour, lighting and camera angle identical. ` +
       `Only modify the ${zoneText}. Photoreal output.`;
 
-    // Call Lovable AI Gateway (Gemini 3 image preview supports edit-with-reference)
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3.1-flash-image-preview",
-        messages: [{
-          role: "user",
-          content: [
-            { type: "text", text: fullPrompt },
-            { type: "image_url", image_url: { url: sourceUrl } },
-          ],
-        }],
-        modalities: ["image", "text"],
-      }),
-    });
+    // Call Lovable AI Gateway with retries + fallback model on transient errors.
+    const callGateway = async (model: string) =>
+      fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: fullPrompt },
+              { type: "image_url", image_url: { url: sourceUrl } },
+            ],
+          }],
+          modalities: ["image", "text"],
+        }),
+      });
 
-    if (!aiRes.ok) {
-      const errText = await aiRes.text();
-      throw new Error(`AI gateway ${aiRes.status}: ${errText}`);
+    const models = [
+      "google/gemini-3.1-flash-image-preview",
+      "google/gemini-3-pro-image-preview",
+    ];
+    let aiRes: Response | null = null;
+    let lastErr = "";
+    outer: for (const model of models) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const r = await callGateway(model);
+        if (r.ok) { aiRes = r; break outer; }
+        lastErr = `${r.status}: ${(await r.text()).slice(0, 300)}`;
+        // Hard failures — don't retry / fall back
+        if (r.status === 401 || r.status === 402 || r.status === 429 || r.status === 400) {
+          if (r.status === 429 || r.status === 402) {
+            return new Response(
+              JSON.stringify({ error: r.status === 429 ? "Rate limit reached, please retry shortly." : "AI credits exhausted. Add credits in Settings → Workspace → Usage." }),
+              { status: r.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+          throw new Error(`AI gateway ${lastErr}`);
+        }
+        // Transient (5xx) — backoff then retry
+        await new Promise((res) => setTimeout(res, 600 * (attempt + 1)));
+      }
     }
+    if (!aiRes) throw new Error(`AI gateway unavailable after retries (${lastErr})`);
 
     const aiJson = await aiRes.json();
     const imageData =
