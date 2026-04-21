@@ -808,49 +808,76 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
           {/* Pane 1.5 — Isolated reference (only for exact_photo mode with photos). */}
           {showIsolatedPanel && (
-            <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden group" style={{ aspectRatio: "4 / 3" }}>
-              <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
-                Isolated reference
-              </span>
-              {referenceStatus === "processing" || (busy === "render" && !isolatedRefs.length) ? (
-                <div className="absolute inset-0 grid place-items-center text-primary">
-                  <div className="flex flex-col items-center gap-2">
-                    <Sparkles className="h-5 w-5 animate-pulse" />
-                    <span className="text-[9px] font-mono uppercase tracking-widest">Isolating…</span>
+            <div className="flex flex-col gap-1.5">
+              <div className="relative rounded-md border border-border bg-surface-0 overflow-hidden group" style={{ aspectRatio: "4 / 3" }}>
+                <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-surface-0/80 text-muted-foreground px-1.5 py-0.5 rounded">
+                  Isolated reference
+                </span>
+                {referenceStatus === "processing" || (busy === "render" && !isolatedRefs.length) || busy === "refine" ? (
+                  <div className="absolute inset-0 grid place-items-center text-primary">
+                    <div className="flex flex-col items-center gap-2">
+                      <Sparkles className="h-5 w-5 animate-pulse" />
+                      <span className="text-[9px] font-mono uppercase tracking-widest">
+                        {busy === "refine" ? "Cleaning up…" : "Isolating…"}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ) : isolatedRefs[0] ? (
-                <>
-                  <img src={isolatedRefs[0]} alt="Isolated part reference" className="absolute inset-0 w-full h-full object-contain" />
-                  <button
-                    type="button"
-                    onClick={reisolate}
+                ) : isolatedRefs[0] ? (
+                  <>
+                    <img src={isolatedRefs[0]} alt="Isolated part reference" className="absolute inset-0 w-full h-full object-contain" />
+                    <button
+                      type="button"
+                      onClick={reisolate}
+                      disabled={busy !== null}
+                      title="Re-isolate from source photos"
+                      className="absolute top-1 right-1 inline-flex items-center gap-1 rounded-md bg-background/70 backdrop-blur px-1.5 py-1 text-[10px] text-foreground/90 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-background/90 disabled:opacity-40"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </button>
+                  </>
+                ) : referenceStatus === "failed" ? (
+                  <div className="absolute inset-0 grid place-items-center text-destructive p-3 text-center">
+                    <div className="flex flex-col items-center gap-1.5">
+                      <AlertCircle className="h-5 w-5" />
+                      <span className="text-[10px]">{referenceError ?? "Isolation failed"}</span>
+                      <Button size="sm" variant="outline" className="mt-1 h-6 text-[10px]" onClick={reisolate} disabled={busy !== null}>
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="absolute inset-0 grid place-items-center text-muted-foreground p-3 text-center">
+                    <div className="flex flex-col items-center gap-1.5">
+                      <Sparkles className="h-5 w-5 opacity-40" />
+                      <span className="text-[9px] font-mono uppercase tracking-widest">Auto-isolates on render</span>
+                      <Button size="sm" variant="outline" className="mt-1 h-6 text-[10px]" onClick={reisolate} disabled={busy !== null}>
+                        Isolate now
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {isolatedRefs[0] && (
+                <div className="flex gap-1">
+                  <Input
+                    value={refineNote}
+                    onChange={(e) => setRefineNote(e.target.value)}
+                    placeholder='Cleanup, e.g. "remove the small grille on the left"'
+                    className="h-7 text-[11px]"
                     disabled={busy !== null}
-                    title="Re-isolate from source photos"
-                    className="absolute top-1 right-1 inline-flex items-center gap-1 rounded-md bg-background/70 backdrop-blur px-1.5 py-1 text-[10px] text-foreground/90 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-background/90 disabled:opacity-40"
+                    onKeyDown={(e) => { if (e.key === "Enter" && refineNote.trim() && busy === null) refineReference(); }}
+                    maxLength={500}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[10px] shrink-0"
+                    onClick={refineReference}
+                    disabled={busy !== null || !refineNote.trim()}
+                    title="Apply this cleanup to the isolated reference"
                   >
-                    <RefreshCw className="h-3 w-3" />
-                  </button>
-                </>
-              ) : referenceStatus === "failed" ? (
-                <div className="absolute inset-0 grid place-items-center text-destructive p-3 text-center">
-                  <div className="flex flex-col items-center gap-1.5">
-                    <AlertCircle className="h-5 w-5" />
-                    <span className="text-[10px]">{referenceError ?? "Isolation failed"}</span>
-                    <Button size="sm" variant="outline" className="mt-1 h-6 text-[10px]" onClick={reisolate} disabled={busy !== null}>
-                      Retry
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="absolute inset-0 grid place-items-center text-muted-foreground p-3 text-center">
-                  <div className="flex flex-col items-center gap-1.5">
-                    <Sparkles className="h-5 w-5 opacity-40" />
-                    <span className="text-[9px] font-mono uppercase tracking-widest">Auto-isolates on render</span>
-                    <Button size="sm" variant="outline" className="mt-1 h-6 text-[10px]" onClick={reisolate} disabled={busy !== null}>
-                      Isolate now
-                    </Button>
-                  </div>
+                    {busy === "refine" ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />Apply</>}
+                  </Button>
                 </div>
               )}
             </div>
