@@ -697,7 +697,9 @@ function ConceptCard({
                         a.download = `${concept.title || "carbon-kit"}.glb`;
                         document.body.appendChild(a); a.click(); a.remove();
                         setTimeout(() => URL.revokeObjectURL(u), 1000);
-                      } catch {/* noop */}
+                      } catch (e: any) {
+                        toast({ title: "GLB download failed", description: String(e?.message ?? e), variant: "destructive" });
+                      }
                     }}
                   >
                     <Download className="mr-1.5 h-3.5 w-3.5" /> GLB
@@ -705,19 +707,30 @@ function ConceptCard({
                   <Button
                     variant="glass"
                     size="sm"
-                    disabled={!kitStlUrl}
+                    disabled={!kitGlbUrl}
                     onClick={async () => {
-                      const url = kitStlUrl ?? kitGlbUrl;
+                      // Rodin returns a GLB. Convert it client-side to a real
+                      // binary STL so Fusion / SolidWorks don't choke on the
+                      // glTF magic bytes inside a .stl-named file.
                       try {
-                        const resp = await fetch(url);
-                        const blob = await resp.blob();
+                        const { fetchAsDownloadableMesh } = await import("@/lib/glb-to-stl");
+                        const { blob } = await fetchAsDownloadableMesh(
+                          kitGlbUrl,
+                          "model/gltf-binary",
+                        );
                         const u = URL.createObjectURL(blob);
                         const a = document.createElement("a");
                         a.href = u;
                         a.download = `${concept.title || "carbon-kit"}.stl`;
                         document.body.appendChild(a); a.click(); a.remove();
                         setTimeout(() => URL.revokeObjectURL(u), 1000);
-                      } catch {/* noop */}
+                      } catch (e: any) {
+                        toast({
+                          title: "STL conversion failed",
+                          description: String(e?.message ?? e),
+                          variant: "destructive",
+                        });
+                      }
                     }}
                   >
                     <Download className="mr-1.5 h-3.5 w-3.5" /> STL
