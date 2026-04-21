@@ -620,7 +620,7 @@ function ConceptCard({
         </div>
       )}
 
-      {hasMultiple && !pickMode && (
+      {hasMultiple && !anyPartMode && (
         <>
           <button
             type="button"
@@ -686,6 +686,11 @@ function ConceptCard({
         {pickMode && (
           <div className="text-[10px] text-mono uppercase tracking-widest text-primary/80">
             Click any highlighted part → downloads as STL
+          </div>
+        )}
+        {traceMode && (
+          <div className="text-[10px] text-mono uppercase tracking-widest text-primary/80">
+            Pick a part type, drag a box → saved to your fitted kit
           </div>
         )}
 
