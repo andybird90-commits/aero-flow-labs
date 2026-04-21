@@ -968,6 +968,7 @@ export type Database = {
           mesh_task_id: string | null
           notes: string | null
           placement_hint: string | null
+          primary_source_index: number
           reference_error: string | null
           reference_status: string
           render_error: string | null
@@ -975,6 +976,7 @@ export type Database = {
           render_urls: Json
           replicate_exact: boolean
           source_image_urls: Json
+          source_mask_urls: Json
           title: string
           updated_at: string
           user_id: string
@@ -995,6 +997,7 @@ export type Database = {
           mesh_task_id?: string | null
           notes?: string | null
           placement_hint?: string | null
+          primary_source_index?: number
           reference_error?: string | null
           reference_status?: string
           render_error?: string | null
@@ -1002,6 +1005,7 @@ export type Database = {
           render_urls?: Json
           replicate_exact?: boolean
           source_image_urls?: Json
+          source_mask_urls?: Json
           title?: string
           updated_at?: string
           user_id: string
@@ -1022,6 +1026,7 @@ export type Database = {
           mesh_task_id?: string | null
           notes?: string | null
           placement_hint?: string | null
+          primary_source_index?: number
           reference_error?: string | null
           reference_status?: string
           render_error?: string | null
@@ -1029,6 +1034,7 @@ export type Database = {
           render_urls?: Json
           replicate_exact?: boolean
           source_image_urls?: Json
+          source_mask_urls?: Json
           title?: string
           updated_at?: string
           user_id?: string

@@ -31,11 +31,12 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Beaker, Plus, Loader2, Wand2, Box, Download, Trash2, Upload, X, Image as ImageIcon, Car, Sparkles, RefreshCw, AlertCircle,
+  Beaker, Plus, Loader2, Wand2, Box, Download, Trash2, Upload, X, Image as ImageIcon, Car, Sparkles, RefreshCw, AlertCircle, MousePointer2,
 } from "lucide-react";
 import {
   useMyPrototypes, useCreatePrototype, useDeletePrototype, useGarageCars, type Prototype, type PrototypeGenerationMode,
 } from "@/lib/repo";
+import PrototypeMaskEditor from "@/components/PrototypeMaskEditor";
 
 const PLACEMENT_OPTIONS = [
   { value: "front_bumper", label: "Front bumper / splitter" },
@@ -487,9 +488,10 @@ function CreatePrototypeDialog({
 function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | null; onClose: () => void }) {
   const { toast } = useToast();
   const [meshProgress, setMeshProgress] = useState(0);
-  const [busy, setBusy] = useState<"render" | "mesh" | "fit" | "refine" | null>(null);
+  const [busy, setBusy] = useState<"render" | "mesh" | "fit" | "refine" | "mask" | null>(null);
   const [revisionNote, setRevisionNote] = useState("");
   const [refineNote, setRefineNote] = useState("");
+  const [maskingSource, setMaskingSource] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
 
   const sources = useMemo(() => ((prototype?.source_image_urls as string[]) ?? []), [prototype]);
@@ -503,6 +505,12 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
     () => (((prototype as any)?.isolated_ref_urls as string[]) ?? []),
     [prototype],
   );
+  const sourceMasks = useMemo(
+    () => (((prototype as any)?.source_mask_urls as Array<{ source_index: number; url: string }>) ?? []),
+    [prototype],
+  );
+  const primarySourceIdx: number = (prototype as any)?.primary_source_index ?? 0;
+  const hasMaskForPrimary = sourceMasks.some((m) => m?.source_index === primarySourceIdx);
   const referenceStatus: string = (prototype as any)?.reference_status ?? "idle";
   const referenceError: string | null = (prototype as any)?.reference_error ?? null;
   const placement: string | null = (prototype as any)?.placement_hint ?? null;
@@ -570,17 +578,29 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
   if (!prototype) return null;
 
+  const isolateNow = async (forceCleanup?: boolean) => {
+    if (hasMaskForPrimary) {
+      const res = await supabase.functions.invoke("build-prototype-reference-from-mask", {
+        body: { prototype_id: prototype.id, cleanup: forceCleanup !== false },
+      });
+      if (res.error) throw res.error;
+      if ((res.data as any)?.error) throw new Error((res.data as any).error);
+      return;
+    }
+    const iso = await supabase.functions.invoke("isolate-prototype-part", {
+      body: { prototype_id: prototype.id },
+    });
+    if (iso.error) throw iso.error;
+    if ((iso.data as any)?.error) throw new Error((iso.data as any).error);
+  };
+
   const startRender = async () => {
     setBusy("render");
     try {
       // For exact_photo with photos, isolate the part first so the downstream
       // renders work from a clean reference instead of a busy raw photo.
       if (genMode === "exact_photo" && sources.length > 0 && isolatedRefs.length === 0) {
-        const iso = await supabase.functions.invoke("isolate-prototype-part", {
-          body: { prototype_id: prototype.id },
-        });
-        if (iso.error) throw iso.error;
-        if ((iso.data as any)?.error) throw new Error((iso.data as any).error);
+        await isolateNow();
       }
 
       const { data, error } = await supabase.functions.invoke("render-prototype-views", {
@@ -617,17 +637,39 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
   const reisolate = async () => {
     setBusy("render");
     try {
-      const iso = await supabase.functions.invoke("isolate-prototype-part", {
-        body: { prototype_id: prototype.id },
-      });
-      if (iso.error) throw iso.error;
-      if ((iso.data as any)?.error) throw new Error((iso.data as any).error);
+      await isolateNow();
       const { data: fresh } = await (supabase as any)
         .from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
       if (fresh) Object.assign(prototype, fresh);
-      toast({ title: "Reference re-isolated" });
+      toast({ title: hasMaskForPrimary ? "Reference rebuilt from your mask" : "Reference re-isolated" });
     } catch (e: any) {
       toast({ title: "Isolation failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveMask = async (maskDataUrl: string, sourceUrl: string) => {
+    setBusy("mask");
+    try {
+      const save = await supabase.functions.invoke("save-prototype-mask", {
+        body: { prototype_id: prototype.id, source_url: sourceUrl, mask_data_url: maskDataUrl },
+      });
+      if (save.error) throw save.error;
+      if ((save.data as any)?.error) throw new Error((save.data as any).error);
+      // Build the reference from the new mask immediately.
+      const build = await supabase.functions.invoke("build-prototype-reference-from-mask", {
+        body: { prototype_id: prototype.id, cleanup: true },
+      });
+      if (build.error) throw build.error;
+      if ((build.data as any)?.error) throw new Error((build.data as any).error);
+      const { data: fresh } = await (supabase as any)
+        .from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
+      if (fresh) Object.assign(prototype, fresh);
+      setMaskingSource(null);
+      toast({ title: "Reference built from your mask" });
+    } catch (e: any) {
+      toast({ title: "Mask save failed", description: String(e.message ?? e), variant: "destructive" });
     } finally {
       setBusy(null);
     }
@@ -809,9 +851,32 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
               Source
             </span>
             <div className="absolute inset-0 grid grid-cols-2 gap-1 p-1 overflow-auto">
-              {sources.map((u, i) => (
-                <img key={u + i} src={u} alt="" className="rounded object-cover w-full h-full" />
-              ))}
+              {sources.map((u, i) => {
+                const masked = sourceMasks.some((m) => m?.source_index === i);
+                const isPrimary = i === primarySourceIdx;
+                return (
+                  <div key={u + i} className="relative group/thumb rounded overflow-hidden bg-surface-0">
+                    <img src={u} alt="" className="w-full h-full object-cover" />
+                    {masked && (
+                      <span className="absolute top-1 left-1 z-10 text-[9px] uppercase tracking-widest font-mono bg-emerald-500/90 text-emerald-950 px-1 py-0.5 rounded">
+                        {isPrimary ? "Mask ✓" : "Masked"}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setMaskingSource(u)}
+                      disabled={busy !== null}
+                      title={masked ? "Edit the mask" : "Mark the part on this photo"}
+                      className="absolute inset-0 grid place-items-center bg-background/0 hover:bg-background/60 backdrop-blur-0 hover:backdrop-blur transition-all opacity-0 hover:opacity-100 focus:opacity-100 disabled:cursor-not-allowed"
+                    >
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground border border-border">
+                        <MousePointer2 className="h-3 w-3" />
+                        {masked ? "Edit mask" : "Mark the part"}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
               {sources.length === 0 && (
                 <div className="col-span-2 grid place-items-center text-muted-foreground">
                   <ImageIcon className="h-6 w-6 opacity-40" />
@@ -862,10 +927,22 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
                 ) : (
                   <div className="absolute inset-0 grid place-items-center text-muted-foreground p-3 text-center">
                     <div className="flex flex-col items-center gap-1.5">
-                      <Sparkles className="h-5 w-5 opacity-40" />
-                      <span className="text-[9px] font-mono uppercase tracking-widest">Auto-isolates on render</span>
-                      <Button size="sm" variant="outline" className="mt-1 h-6 text-[10px]" onClick={reisolate} disabled={busy !== null}>
-                        Isolate now
+                      <MousePointer2 className="h-5 w-5 opacity-50 text-fuchsia-400" />
+                      <span className="text-[10px] leading-tight max-w-[180px]">
+                        For best results, click <span className="text-foreground font-medium">Mark the part</span> on a source photo to lasso the exact shape.
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-1 h-6 text-[10px]"
+                        onClick={() => sources[0] && setMaskingSource(sources[0])}
+                        disabled={busy !== null || !sources.length}
+                      >
+                        <MousePointer2 className="h-3 w-3 mr-1" /> Mark the part
+                      </Button>
+                      <span className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/70">or</span>
+                      <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={reisolate} disabled={busy !== null}>
+                        Auto-isolate (less accurate)
                       </Button>
                     </div>
                   </div>
@@ -1040,6 +1117,13 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
           )}
         </DialogFooter>
       </DialogContent>
+      <PrototypeMaskEditor
+        open={!!maskingSource}
+        imageUrl={maskingSource}
+        onClose={() => setMaskingSource(null)}
+        onSave={saveMask}
+        saving={busy === "mask"}
+      />
     </Dialog>
   );
 }
