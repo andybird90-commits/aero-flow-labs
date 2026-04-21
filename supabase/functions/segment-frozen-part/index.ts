@@ -25,8 +25,9 @@ const REPLICATE_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// SAM 2 hosted on Replicate (point-prompt mask).
-// meta/sam-2 takes click coordinates in absolute image pixels.
+// SAM 2 hosted on Replicate. Replicate's current meta/sam-2 endpoint is an
+// automatic mask generator, not a point-prompt endpoint, so we run SAM and
+// deterministically choose the individual mask under/nearest the user's click.
 const SAM_MODEL =
   "meta/sam-2:fe97b453a6455861e3bac769b441ca1f1086110da7466dbb65cf1eecfd60dc83";
 
@@ -63,8 +64,7 @@ async function pollReplicate(predictionUrl: string): Promise<any> {
 
 async function runSAM(
   imageUrl: string,
-  clickPx: { x: number; y: number },
-): Promise<string> {
+): Promise<string[]> {
   const create = await fetch("https://api.replicate.com/v1/predictions", {
     method: "POST",
     headers: {
@@ -75,8 +75,10 @@ async function runSAM(
       version: SAM_MODEL.split(":")[1],
       input: {
         image: imageUrl,
-        clicks: `[${clickPx.x},${clickPx.y},1]`,
-        mask_only: true,
+        points_per_side: 32,
+        pred_iou_thresh: 0.88,
+        stability_score_thresh: 0.95,
+        use_m2m: true,
       },
     }),
   });
@@ -85,17 +87,39 @@ async function runSAM(
   }
   const prediction = await create.json();
   const finished = await pollReplicate(prediction.urls.get);
-  // SAM 2 output shape varies: can be a string URL, an array of URLs, or an
-  // object like { combined_mask: "url", individual_masks: ["url", ...] }.
-  // Walk the structure to find the first usable URL string.
+  // SAM 2 output is usually { combined_mask, individual_masks }. Prefer
+  // individual masks so the user's click selects one exact object instead of
+  // returning the whole combined segmentation overlay.
   const out = finished.output;
-  const url = extractFirstUrl(out);
-  if (!url) {
+  const urls = extractMaskUrls(out);
+  if (!urls.length) {
     throw new Error(
       `SAM returned no usable mask URL. Raw output: ${JSON.stringify(out).slice(0, 500)}`,
     );
   }
-  return url;
+  return urls;
+}
+
+function extractMaskUrls(val: unknown): string[] {
+  if (!val) return [];
+  if (typeof val === "object" && !Array.isArray(val)) {
+    const obj = val as Record<string, unknown>;
+    const individual = collectUrls(obj.individual_masks);
+    if (individual.length) return individual;
+    for (const key of ["mask", "masks", "output", "url", "combined_mask"]) {
+      const found = collectUrls(obj[key]);
+      if (found.length) return found;
+    }
+  }
+  return collectUrls(val);
+}
+
+function collectUrls(val: unknown): string[] {
+  if (!val) return [];
+  if (typeof val === "string") return val.startsWith("http") ? [val] : [];
+  if (Array.isArray(val)) return val.flatMap(collectUrls);
+  if (typeof val === "object") return Object.values(val as Record<string, unknown>).flatMap(collectUrls);
+  return [];
 }
 
 function extractFirstUrl(val: unknown): string | null {
