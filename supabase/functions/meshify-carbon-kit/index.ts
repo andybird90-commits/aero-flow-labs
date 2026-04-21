@@ -135,6 +135,25 @@ Deno.serve(async (req) => {
       });
       if (!createResp.ok) {
         const t = await createResp.text();
+        // Rate limit (Replicate throttles to 6/min while balance < $5).
+        // Don't mark the concept as failed — surface a soft "rate_limited"
+        // so the UI can prompt a retry without losing state.
+        if (createResp.status === 429) {
+          let retryAfter = 10;
+          try {
+            const parsed = JSON.parse(t);
+            if (typeof parsed?.retry_after === "number") retryAfter = parsed.retry_after;
+          } catch { /* ignore */ }
+          await admin.from("concepts").update({
+            carbon_kit_status: "idle",
+            carbon_kit_error: null,
+          }).eq("id", concept.id);
+          return json({
+            status: "rate_limited",
+            retry_after: retryAfter,
+            message: `Replicate is rate-limiting requests (try again in ~${retryAfter}s). This happens when your Replicate balance is below $5.`,
+          });
+        }
         await admin.from("concepts").update({
           carbon_kit_status: "failed",
           carbon_kit_error: `Rodin ${createResp.status}: ${t.slice(0, 300)}`,
