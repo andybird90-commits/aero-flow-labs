@@ -339,6 +339,8 @@ function FittedParts({
   );
 
   const isVisible = (kind: string) => visibility?.[kind] !== false;
+  const shell = 0.002;
+  const standThickness = 0.012;
 
   const splitter = isVisible("splitter") ? findPart(parts, "splitter") : undefined;
   const wing = isVisible("wing") ? findPart(parts, "wing") : undefined;
@@ -361,16 +363,16 @@ function FittedParts({
         return (
           <group position={[p.x + protr / 2, p.y, p.z]}>
             <mesh material={partMat} castShadow>
-              <boxGeometry args={[protr, 0.022, splitW]} />
+              <boxGeometry args={[protr, shell, splitW]} />
             </mesh>
             {fenceH > 0.005 && [-1, 1].map((side) => (
               <mesh
                 key={side}
-                position={[0, fenceH / 2 + 0.011, side * (splitW / 2 - fenceInset)]}
+                position={[0, fenceH / 2 + shell / 2, side * (splitW / 2 - fenceInset)]}
                 material={partMat}
                 castShadow
               >
-                <boxGeometry args={[protr * 0.9, fenceH, 0.012]} />
+                <boxGeometry args={[protr * 0.9, fenceH, shell]} />
               </mesh>
             ))}
           </group>
@@ -383,7 +385,7 @@ function FittedParts({
         const p = nudged(a.splitter, n);
         return (
           <mesh position={[p.x + depth / 2, p.y + 0.04, p.z]} material={accentMat} castShadow>
-            <boxGeometry args={[depth, 0.012, width * 0.9]} />
+            <boxGeometry args={[depth, shell, width * 0.9]} />
           </mesh>
         );
       })()}
@@ -407,7 +409,7 @@ function FittedParts({
               material={accentMat}
               castShadow
             >
-              <boxGeometry args={[chord, 0.01, span]} />
+              <boxGeometry args={[chord, shell, span]} />
             </mesh>
           ));
         });
@@ -426,11 +428,11 @@ function FittedParts({
           return (
             <group key={side} position={[p.x, p.y, p.z]}>
               <mesh material={partMat} castShadow>
-                <boxGeometry args={[skirtLen, depth, 0.04]} />
+                <boxGeometry args={[skirtLen, depth, shell]} />
               </mesh>
               {drop > 0.005 && (
-                <mesh position={[0, -depth / 2 - drop / 2, side * 0.01]} material={partMat} castShadow>
-                  <boxGeometry args={[skirtLen * 0.95, drop, 0.025]} />
+                <mesh position={[0, -depth / 2 - drop / 2, side * 0.005]} material={partMat} castShadow>
+                  <boxGeometry args={[skirtLen * 0.95, drop, shell]} />
                 </mesh>
               )}
             </group>
@@ -451,11 +453,11 @@ function FittedParts({
           return (
             <mesh
               key={i}
-              position={[s.x, p.y + height * 0.25, p.z + (s.side * flare) / 2]}
+              position={[s.x, p.y + height * 0.25, p.z + s.side * flare]}
               material={partMat}
               castShadow
             >
-              <boxGeometry args={[0.5, 0.18, flare]} />
+              <boxGeometry args={[0.5, 0.18, shell]} />
             </mesh>
           );
         });
@@ -468,7 +470,7 @@ function FittedParts({
         const p = nudged(a.ducktail, n);
         return (
           <mesh position={[p.x, p.y, p.z]} rotation={[0, 0, kick]} material={partMat} castShadow>
-            <boxGeometry args={[0.22, h, width * 0.85]} />
+            <boxGeometry args={[0.22, h, shell]} />
           </mesh>
         );
       })()}
@@ -486,20 +488,20 @@ function FittedParts({
           <group position={[p.x, p.y, p.z]}>
             {[-1, 1].map((side) => (
               <mesh key={side} position={[0, -standH / 2, span * 0.42 * side]} material={partMat} castShadow>
-                <boxGeometry args={[0.04, standH, 0.04]} />
+                <boxGeometry args={[standThickness, standH, standThickness]} />
               </mesh>
             ))}
             <mesh rotation={[0, 0, -aoa]} material={partMat} castShadow>
-              <boxGeometry args={[chord, 0.025, span]} />
+              <boxGeometry args={[chord, 0.004, span]} />
             </mesh>
             {[-1, 1].map((side) => (
               <mesh key={`plate-${side}`} position={[0, 0, side * span / 2]} rotation={[0, 0, -aoa]} material={partMat} castShadow>
-                <boxGeometry args={[chord * 1.05, chord * 0.45, 0.01]} />
+                <boxGeometry args={[chord * 1.05, chord * 0.45, shell]} />
               </mesh>
             ))}
             {gurney > 0.001 && (
-              <mesh position={[-chord / 2, 0.012 + gurney / 2, 0]} material={accentMat}>
-                <boxGeometry args={[0.012, gurney, span * 0.98]} />
+              <mesh position={[-chord / 2, 0.004 + gurney / 2, 0]} material={accentMat}>
+                <boxGeometry args={[shell, gurney, span * 0.98]} />
               </mesh>
             )}
           </group>
@@ -518,13 +520,13 @@ function FittedParts({
         return (
           <group position={[p.x - 0.15, p.y, p.z]} rotation={[0, 0, angle]}>
             <mesh material={partMat} castShadow>
-              <boxGeometry args={[diffLen, 0.025, diffW]} />
+              <boxGeometry args={[diffLen, shell, diffW]} />
             </mesh>
             {Array.from({ length: strakeCount }).map((_, i) => {
               const z = -diffW / 2 + (i + 1) * spacing;
               return (
-                <mesh key={i} position={[0, strakeH / 2 + 0.012, z]} material={partMat} castShadow>
-                  <boxGeometry args={[diffLen * 0.95, strakeH, 0.01]} />
+                <mesh key={i} position={[0, strakeH / 2 + shell, z]} material={partMat} castShadow>
+                  <boxGeometry args={[diffLen * 0.95, strakeH, shell]} />
                 </mesh>
               );
             })}
