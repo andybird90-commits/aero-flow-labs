@@ -39,7 +39,7 @@ import { ModeSwitcher, type PrototyperMode } from "@/components/prototyper/ModeS
 import { PrototyperLeftPanel } from "@/components/prototyper/PrototyperLeftPanel";
 import { PrototyperCanvas } from "@/components/prototyper/PrototyperCanvas";
 import { PrototyperRightPanel } from "@/components/prototyper/PrototyperRightPanel";
-import { Beaker, Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2 } from "lucide-react";
 
 const VIEW_FIELD_MAP: Record<ViewAngle, keyof GarageCar> = {
   front: "ref_front_url",
