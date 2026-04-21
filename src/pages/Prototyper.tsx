@@ -60,7 +60,7 @@ export default function PrototyperPage() {
         if (active) {
           // pick the latest version of the active prototype
           supabase.from("prototypes").select("*").eq("id", active.id).maybeSingle().then(({ data }) => {
-            if (data) setActive(data as Prototype);
+            if (data) setActive(data as unknown as Prototype);
           });
         }
       })
@@ -546,6 +546,24 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
     }
   };
 
+  const startFit = async () => {
+    setBusy("fit");
+    try {
+      const { data, error } = await supabase.functions.invoke("render-prototype-on-car", {
+        body: { prototype_id: prototype.id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const { data: fresh } = await (supabase as any).from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
+      if (fresh) Object.assign(prototype, fresh);
+      toast({ title: "Fit preview ready" });
+    } catch (e: any) {
+      toast({ title: "Fit preview failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const downloadStl = async () => {
     if (!glbUrl) return;
     try {
@@ -563,6 +581,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
 
   const isRendering = busy === "render" || prototype.render_status === "rendering";
   const isMeshing = busy === "mesh" || prototype.mesh_status === "meshing";
+  const isFitting = busy === "fit" || fitStatus === "rendering";
 
   return (
     <Dialog open={!!prototype} onOpenChange={(o) => !o && onClose()}>
