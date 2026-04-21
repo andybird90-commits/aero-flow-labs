@@ -305,6 +305,116 @@ function BriefInner({ projectId }: { projectId: string }) {
       </div>
 
       <div className="glass rounded-xl p-5 space-y-4">
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <Target className="h-3 w-3" /> Discipline
+            </label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {DISCIPLINES.map((d) => {
+                const on = discipline === d.value;
+                return (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => setDiscipline(d.value)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs transition-colors",
+                      on
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-surface-1 text-muted-foreground hover:text-foreground hover:border-border/80",
+                    )}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <Flame className="h-3 w-3" /> Aggression
+            </label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {AGGRESSIONS.map((a) => {
+                const on = aggression === a.value;
+                return (
+                  <button
+                    key={a.value}
+                    type="button"
+                    onClick={() => setAggression(a.value)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs transition-colors",
+                      on
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-surface-1 text-muted-foreground hover:text-foreground hover:border-border/80",
+                    )}
+                  >
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-border">
+          <div>
+            <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Must include</label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {AERO_FEATURES.map((f) => {
+                const on = mustInclude.includes(f);
+                const blocked = mustAvoid.includes(f);
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    disabled={blocked}
+                    onClick={() => toggle(mustInclude, f, setMustInclude)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs transition-colors",
+                      on
+                        ? "border-success bg-success/10 text-success"
+                        : "border-border bg-surface-1 text-muted-foreground hover:text-foreground hover:border-border/80",
+                      blocked && "opacity-30 cursor-not-allowed",
+                    )}
+                  >
+                    {f}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Must avoid</label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {AERO_FEATURES.map((f) => {
+                const on = mustAvoid.includes(f);
+                const blocked = mustInclude.includes(f);
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    disabled={blocked}
+                    onClick={() => toggle(mustAvoid, f, setMustAvoid)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs transition-colors",
+                      on
+                        ? "border-destructive bg-destructive/10 text-destructive"
+                        : "border-border bg-surface-1 text-muted-foreground hover:text-foreground hover:border-border/80",
+                      blocked && "opacity-30 cursor-not-allowed",
+                    )}
+                  >
+                    {f}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="glass rounded-xl p-5 space-y-4">
         <div>
           <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
             <Tag className="h-3 w-3" /> Style tags
