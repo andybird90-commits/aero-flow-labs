@@ -119,7 +119,7 @@ export function ExtractedPartPreview({
   const loadFromCache = async (signal?: { cancelled: boolean }) => {
     const { data, error } = await supabase
       .from("concept_parts")
-      .select("render_urls, glb_url")
+      .select("render_urls, glb_url, isolated_source_url, fidelity_score, fidelity_breakdown")
       .eq("concept_id", conceptId)
       .eq("kind", kind)
       .maybeSingle();
@@ -128,6 +128,15 @@ export function ExtractedPartPreview({
     const renders = ((data.render_urls as unknown) as RenderImage[] | null) ?? [];
     if (!renders.length) return false;
     setImages(renders);
+    if (data.isolated_source_url) setIsolatedUrl(data.isolated_source_url);
+    if (typeof data.fidelity_score === "number" && data.fidelity_breakdown) {
+      const score = data.fidelity_score;
+      setFidelity({
+        score,
+        status: score >= 75 ? "match" : score >= 50 ? "drift" : "mismatch",
+        breakdown: data.fidelity_breakdown as any,
+      });
+    }
     if (data.glb_url) {
       setGlbUrl(data.glb_url);
       setStage("ready");
