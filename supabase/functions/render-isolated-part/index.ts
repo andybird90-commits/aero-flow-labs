@@ -99,6 +99,10 @@ const SURFACE_TREATMENT =
   "ABSOLUTELY NO carbon-fibre weave, NO carbon twill pattern, NO glossy paint, NO metallic flake, NO chrome, NO reflections, NO decals, NO logos, NO surface texture or material detail. " +
   "Just clean smooth geometry with soft even shading so the SHAPE reads clearly. The goal is a featureless surface that highlights form only.";
 
+const SHELL_TREATMENT =
+  "CRITICAL THICKNESS: this part is a thin-walled composite shell with approximately 2mm wall thickness, NOT a solid billet block. " +
+  "All visible edges must read as very thin sheet material. If the real part would be open-backed / hollow on the car-facing side, keep it open-backed here too instead of filling it in as a solid mass.";
+
 // Single hero render only. Gemini Pro image gen is ~50s per call; multiple
 // sequential calls blow past the 150s edge function timeout, and our best
 // fidelity results came from a single Pro render. Meshy can still build a
@@ -236,6 +240,7 @@ Deno.serve(async (req) => {
         ``,
         `SURFACE TREATMENT (CRITICAL):`,
         `${SURFACE_TREATMENT}`,
+        `${SHELL_TREATMENT}`,
         ``,
         `STRICT ISOLATION — READ TWICE:`,
         `- The part is FULLY DETACHED. It is sitting on a white seamless cyclorama.`,
@@ -269,6 +274,7 @@ Deno.serve(async (req) => {
         ``,
         `SURFACE TREATMENT (CRITICAL):`,
         `${SURFACE_TREATMENT}`,
+        `${SHELL_TREATMENT}`,
         ``,
         `${spec.not}`,
         ``,
