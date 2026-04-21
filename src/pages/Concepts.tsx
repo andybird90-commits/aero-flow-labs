@@ -421,6 +421,23 @@ function ConceptCard({
     try { await isolateCarbon.mutateAsync(concept.id); } catch { /* surface via status */ }
   };
 
+  const handleMeshifyKit = async () => {
+    if (kitBusy || meshifyKit.isPending) return;
+    setKitStartPending(true);
+    toast({
+      title: "Carbon kit meshing started",
+      description: "Preparing matte-white kit renders, then sending side + rear views to Rodin.",
+    });
+    try {
+      await meshifyKit.mutateAsync(concept.id);
+      toast({ title: "Rodin reconstruction queued", description: "The card will update while the mesh is generated." });
+    } catch (e: any) {
+      toast({ title: "Couldn’t start mesh", description: String(e?.message ?? e), variant: "destructive" });
+    } finally {
+      setKitStartPending(false);
+    }
+  };
+
   const goPrev = () => setAngleIdx((i) => (i - 1 + visibleAngles.length) % visibleAngles.length);
   const goNext = () => setAngleIdx((i) => (i + 1) % visibleAngles.length);
 
