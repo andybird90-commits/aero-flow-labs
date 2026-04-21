@@ -473,8 +473,9 @@ function CreatePrototypeDialog({
 function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | null; onClose: () => void }) {
   const { toast } = useToast();
   const [meshProgress, setMeshProgress] = useState(0);
-  const [busy, setBusy] = useState<"render" | "mesh" | "fit" | null>(null);
+  const [busy, setBusy] = useState<"render" | "mesh" | "fit" | "refine" | null>(null);
   const [revisionNote, setRevisionNote] = useState("");
+  const [refineNote, setRefineNote] = useState("");
   const mountRef = useRef<HTMLDivElement>(null);
 
   const sources = useMemo(() => ((prototype?.source_image_urls as string[]) ?? []), [prototype]);
@@ -613,6 +614,28 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
       toast({ title: "Reference re-isolated" });
     } catch (e: any) {
       toast({ title: "Isolation failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const refineReference = async () => {
+    const instruction = refineNote.trim();
+    if (!instruction) return;
+    setBusy("refine");
+    try {
+      const res = await supabase.functions.invoke("refine-prototype-reference", {
+        body: { prototype_id: prototype.id, instruction },
+      });
+      if (res.error) throw res.error;
+      if ((res.data as any)?.error) throw new Error((res.data as any).error);
+      const { data: fresh } = await (supabase as any)
+        .from("prototypes").select("*").eq("id", prototype.id).maybeSingle();
+      if (fresh) Object.assign(prototype, fresh);
+      setRefineNote("");
+      toast({ title: "Reference cleaned up", description: "Now re-render to apply downstream." });
+    } catch (e: any) {
+      toast({ title: "Cleanup failed", description: String(e.message ?? e), variant: "destructive" });
     } finally {
       setBusy(null);
     }
