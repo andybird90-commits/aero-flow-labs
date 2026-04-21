@@ -111,8 +111,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { concept_id, part_kind, label, source_image_url } = await req.json() as {
+    const { concept_id, part_kind, label, source_image_url, bbox: bodyBbox, picked_kind } = await req.json() as {
       concept_id?: string; part_kind?: string; label?: string; source_image_url?: string;
+      bbox?: { x: number; y: number; w: number; h: number };
+      picked_kind?: string;
     };
     if (!concept_id || !part_kind) {
       return json({ error: "concept_id and part_kind are required" }, 400);
@@ -138,6 +140,29 @@ Deno.serve(async (req) => {
       .eq("user_id", userId)
       .maybeSingle();
     if (!concept) return json({ error: "Concept not found" }, 404);
+
+    // Load the picked-part metadata from concept_parts so we can tell
+    // Gemini exactly which part in the reference to render. Falls back to
+    // values supplied by the caller.
+    let intentBbox = bodyBbox ?? null;
+    let intentKind = picked_kind ?? part_kind;
+    if (!intentBbox || !picked_kind) {
+      const { data: cp } = await admin
+        .from("concept_parts")
+        .select("isolated_meta")
+        .eq("concept_id", concept_id)
+        .eq("kind", part_kind)
+        .maybeSingle();
+      const meta = (cp as any)?.isolated_meta;
+      if (meta) {
+        if (!intentBbox && meta.bbox_in_crop) intentBbox = meta.bbox_in_crop;
+        if (!picked_kind && meta.part_kind) intentKind = meta.part_kind;
+      }
+    }
+    const cxNorm = intentBbox ? intentBbox.x + intentBbox.w / 2 : 0.5;
+    const cyNorm = intentBbox ? intentBbox.y + intentBbox.h / 2 : 0.5;
+    const cxPct = Math.round(cxNorm * 100);
+    const cyPct = Math.round(cyNorm * 100);
 
     const styleHint = [
       `Concept name: "${concept.title}"`,
