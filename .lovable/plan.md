@@ -1,125 +1,143 @@
-# Prototyper Page Pivot — Build Plan
 
-> **Hard rule:** Copy, mirror, isolate, snap-opposite, move, scale and rotate actions MUST NOT call any generative image model. They are handled by stored masks + deterministic 2D transforms.
 
----
+## Strategic pivot: split the geometry path in two
 
-## Phase 1 — Data model & infrastructure
+You've validated that mounted-part picking on a render is a dead end. This plan locks that learning into the product by **removing the Prototyper workflow as the primary path**, **gating the existing image-to-3D flow to free-standing parts only**, and **adding a Blender-based external worker** for body-conforming parts (arches, scoops, skirts, side-skirts) that fits geometry against the saved base car mesh.
 
-### 1.1 New `frozen_parts` table (migration)
-Columns:
-- `id`, `user_id`, `prototype_id` (FK), `garage_car_id` (FK, nullable)
-- `name` (text), `category` (text — side_scoop, splitter, canard, vent, etc.)
-- `mount_zone` (text: `front_bumper | front_quarter | bonnet | door_quarter | sill | rear_quarter | rear_bumper | wing_zone`)
-- `side` (text: `left | right | center`)
-- `symmetry_allowed` (bool, default true)
-- `silhouette_locked` (bool, default true)
-- `source_image_url`, `mask_url`, `silhouette_url` (text)
-- `bbox` (jsonb — `{x,y,w,h}` normalized 0–1)
-- `anchor_points` (jsonb — `{top, bottom, leading_edge, trailing_edge, attach_edge}`)
-- `view_angle` (text: `front | front34 | side | rear34 | rear`)
-- `created_at`, `updated_at`
-- RLS: owner-only CRUD
+Three things ship:
 
-### 1.2 New storage bucket `frozen-parts` (public)
-- Path: `{user_id}/{prototype_id}/{frozen_part_id}/{mask|silhouette|preview}.png`
-- Owner write, public read
-
-### 1.3 Edge function `segment-frozen-part` (NEW)
-- Inputs: `source_image_url`, `click_point: {x,y}` (normalized), optional `bbox_hint`
-- Calls Replicate Segment Anything (SAM)
-- Returns: mask PNG (full frame), silhouette PNG (transparent cutout), bbox, suggested anchor points
-- Uploads PNGs to `frozen-parts` bucket
-- Does NOT write to `frozen_parts` table (Save step does that)
-
-### 1.4 Edge function `place-frozen-part` (NEW — deterministic, NO AI)
-- Inputs: `frozen_part_id`, `target_image_url`, `transform: {x, y, scale, rotation, mirror, perspective_skew?}`
-- Loads frozen part's silhouette PNG
-- Mirror = horizontal flip via imagescript
-- Perspective skew = 4-point transform for opposite-side snapping on 3/4 views
-- Composites transformed silhouette over target image
-- Returns composited PNG URL
-- **No call to ai.gateway.lovable.dev anywhere in this function**
-
-### 1.5 Hide legacy prototypes
-- New page query filters out rows lacking any `frozen_parts`
-- Old prototypes still in DB & accessible via Library/Exports
+1. Remove Prototyper from primary nav and stop investing in it
+2. Gate `meshify-part` so it only runs on free-standing part kinds
+3. Stand up a Blender worker with 4 jobs: `prepare_base_mesh`, `fit_part_to_zone`, `mirror_part`, `export_stl`
 
 ---
 
-## Phase 2 — New `src/pages/Prototyper.tsx` (FULL REBUILD)
+### 1. Retire the Prototyper as the main flow
 
-### Layout (3-column shell)
+- Remove the **Prototyper** sidebar entry from `src/components/AppSidebar.tsx`
+- Keep `/prototyper` route alive but only reachable from `/library` for existing prototypes (no new entry point)
+- Add a one-line banner on `/prototyper` explaining the workflow is paused and pointing users to Concepts → isolated parts
+- No data deletion. Existing `prototypes` and `frozen_parts` rows remain queryable
 
-**Left panel** — Garage car selector (REQUIRED), active car view picker, frozen-part library grid
+### 2. Classify parts as free-standing vs body-conforming
 
-**Centre canvas** — active car view, mode-aware overlays (concept render / mask preview / drag handles)
+Add a single source-of-truth classifier in `src/lib/part-classification.ts`:
 
-**Right panel** — mode-specific controls:
+```text
+FREE_STANDING:    diffuser, wing, splitter_section, vent_insert, canard,
+                  rear_wing, front_splitter, gurney_flap
+BODY_CONFORMING:  side_scoop, front_arch, rear_arch, side_skirt,
+                  bonnet_vent, fender_flare, front_lip
+```
 
-| Mode | Controls |
-|---|---|
-| Generate | style preset, prompt, target zone, aggression slider, generate button |
-| Freeze | mask preview, brush/erase, category, mount zone, side, symmetry, lock-silhouette, save |
-| Place | clone, mirror, snap-opposite, x/y/rotation/scale, lock |
+Wire this into:
 
-### Mode switcher
-Three tab buttons: **Generate · Freeze Part · Place**. Place disabled until ≥1 frozen part exists.
+- **`ExtractedPartPreview.tsx`** — when the user clicks "Make 3D model", branch:
+  - free-standing → existing `meshify-part` (Rodin) flow, unchanged
+  - body-conforming → show "Send to geometry worker" CTA instead, queues a `geometry_jobs` row
+- **`meshify-part/index.ts`** edge function — server-side guard: reject body-conforming kinds with a 422 and a clear message, so we can't accidentally regress
+
+### 3. External Blender worker (new)
+
+A small Python service (run as a separate container/Modal/Replicate cog — chosen at deploy time) exposing 4 jobs. We'll integrate via a new `geometry_jobs` table + edge function dispatcher; the worker itself is **not deployed by Lovable** (it lives in your geometry repo) but we wire the contract end-to-end.
+
+**New table `geometry_jobs`:**
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | pk |
+| user_id | uuid | RLS owner |
+| concept_id | uuid | FK |
+| part_kind | text | body-conforming kind |
+| mount_zone | text | front_quarter, rear_quarter, sill, etc. |
+| side | text | left / right / center |
+| job_type | text | `prepare_base_mesh` / `fit_part_to_zone` / `mirror_part` / `export_stl` |
+| status | text | queued / running / succeeded / failed |
+| inputs | jsonb | { base_mesh_url, part_template_url, zone_bbox, params } |
+| outputs | jsonb | { fitted_stl_url, glb_url, preview_png_url } |
+| worker_task_id | text | external job id |
+| error | text | nullable |
+| created_at, updated_at | timestamptz | |
+
+RLS: owner-only CRUD. Add to library trigger so successful jobs surface in `/library`.
+
+**New edge function `dispatch-geometry-job`:**
+
+- Accepts `{ concept_id, part_kind, mount_zone, side, job_type, inputs }`
+- Validates user owns the concept and the base car mesh
+- Inserts a `geometry_jobs` row (status=queued)
+- POSTs to the worker URL stored in a new secret `BLENDER_WORKER_URL` with auth header `BLENDER_WORKER_TOKEN`
+- Returns the `geometry_jobs.id` so the client can poll
+
+**New edge function `geometry-job-status`:**
+
+- Polls the worker for a given `worker_task_id`
+- On success: downloads the artifacts, re-hosts in `geometries` bucket, updates `geometry_jobs.outputs`, sets status to `succeeded`
+- On failure: writes `error`, sets status to `failed`
+
+**Worker contract (documented in `docs/blender-worker.md`):**
+
+```text
+POST /jobs
+  body: { job_type, inputs: { base_mesh_url, part_template_url?, zone, params } }
+  returns: { task_id }
+
+GET  /jobs/:task_id
+  returns: { status, progress, outputs?: { fitted_stl_url, ... }, error? }
+```
+
+For each `job_type`:
+
+- **prepare_base_mesh** — load car STL, decimate to 100k tris, weld, orient, output canonical OBJ
+- **fit_part_to_zone** — load base mesh + part template, crop to zone bbox, project rear face to body surface, offset 2mm, trim overlaps, optionally thicken to wall thickness, save fitted STL
+- **mirror_part** — mirror across vehicle Y axis with optional perspective correction, weld seam
+- **export_stl** — final clean STL + slicer-ready GLB preview
+
+### 4. UI: "Send to geometry worker" surface
+
+- New dialog component `src/components/SendToGeometryWorker.tsx` opened from `ExtractedPartPreview` for body-conforming kinds
+- Form fields: mount zone (dropdown from `mount-zones.ts`), side (left/right/center), wall thickness (mm), offset (mm)
+- Calls `dispatch-geometry-job` then polls `geometry-job-status` every 4s
+- On success: shows fitted STL in the existing 3D viewer + "Mirror" and "Download STL" buttons that fire follow-up jobs
+
+### 5. Library + Marketplace integration
+
+- Add `geometry_part_mesh` to `LibraryItemKind` so fitted parts appear alongside concept parts and aero kits
+- Trigger `sync_geometry_job_library_items` mirrors successful `geometry_jobs` into `library_items` so they're sellable
 
 ---
 
-## Phase 3 — Mode wiring
+## Technical details
 
-- **Generate** → reuses existing `generate-concepts` (the ONLY AI call path)
-- **Freeze** → click → `segment-frozen-part` → user refines → save row in `frozen_parts`
-- **Place** → drag/clone/mirror → `place-frozen-part` (pixel ops only, no AI)
+**New files**
+- `src/lib/part-classification.ts` — kind → `free_standing | body_conforming`
+- `src/components/SendToGeometryWorker.tsx` — dispatch UI
+- `src/lib/geometry-jobs.ts` — react-query hooks for `geometry_jobs`
+- `supabase/functions/dispatch-geometry-job/index.ts`
+- `supabase/functions/geometry-job-status/index.ts`
+- `supabase/migrations/<ts>_geometry_jobs.sql`
+- `docs/blender-worker.md` — worker HTTP contract spec
 
----
+**Edited files**
+- `src/components/AppSidebar.tsx` — drop Prototyper entry
+- `src/pages/Prototyper.tsx` — paused banner, deprioritise
+- `src/components/ExtractedPartPreview.tsx` — branch on classification
+- `supabase/functions/meshify-part/index.ts` — server-side reject body-conforming kinds
+- `src/lib/repo.ts` — add `geometry_part_mesh` to `LibraryItemKind`
 
-## Phase 4 — Approve & export
+**Secrets needed** (asked at implementation time)
+- `BLENDER_WORKER_URL` — your hosted worker base URL
+- `BLENDER_WORKER_TOKEN` — bearer token
 
-- "Approve Overlay" composites all placed instances into one PNG (`prototypes.fit_preview_url`) and writes a placement manifest JSON
-- Manifest is the handoff artifact for the future CAD/STL stage
+**Out of scope** (per your bottom line)
+- Building the Blender worker code itself — that lives outside Lovable
+- Deleting old `prototypes` / `frozen_parts` data
+- Replacing the Concepts page or isolated-part renders (those work)
 
----
+**Acceptance criteria**
+1. Prototyper not in sidebar; old prototypes still openable from Library
+2. `meshify-part` returns 422 for body-conforming kinds
+3. New "Send to geometry worker" CTA appears on body-conforming hotspots in Concepts
+4. `geometry_jobs` row + worker POST happens on dispatch
+5. Successful worker output appears in `/library` as `geometry_part_mesh`
 
-## Files
-
-**Backend (new):**
-- `supabase/migrations/<ts>_frozen_parts.sql`
-- `supabase/functions/segment-frozen-part/index.ts`
-- `supabase/functions/place-frozen-part/index.ts`
-
-**Frontend (new):**
-- `src/pages/Prototyper.tsx` (full rewrite)
-- `src/components/prototyper/PrototyperShell.tsx`
-- `src/components/prototyper/PrototyperLeftPanel.tsx`
-- `src/components/prototyper/PrototyperCanvas.tsx`
-- `src/components/prototyper/PrototyperRightPanel.tsx`
-- `src/components/prototyper/ModeSwitcher.tsx`
-- `src/components/prototyper/FrozenPartCard.tsx`
-- `src/components/prototyper/MaskRefineTool.tsx`
-- `src/components/prototyper/PlacementOverlay.tsx`
-- `src/lib/prototyper/transforms.ts`
-- `src/lib/prototyper/mount-zones.ts`
-
----
-
-## Acceptance criteria
-
-1. **Mirror** on a frozen part produces a pixel-perfect horizontal flip — verifiable by hashing the silhouette PNG.
-2. **Snap Opposite** repositions to the mirrored mount zone with no shape change.
-3. Grep: only Generate-mode code in the new Prototyper calls `ai.gateway.lovable.dev`.
-4. `frozen_parts` rows persist all metadata.
-5. Approve Overlay produces composited PNG + JSON manifest.
-6. Old prototypes are not visible in the new page list but still in DB.
-
----
-
-## Out of scope (explicit)
-
-- STL / watertight meshing
-- Mount tab design
-- Aero/physics calc
-- Marketplace export of frozen parts
-- Cross-prototype frozen-part sharing
