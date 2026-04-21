@@ -25,8 +25,9 @@ const REPLICATE_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// SAM 2 hosted on Replicate (point-prompt mask).
-// meta/sam-2 takes click coordinates in absolute image pixels.
+// SAM 2 hosted on Replicate. Replicate's current meta/sam-2 endpoint is an
+// automatic mask generator, not a point-prompt endpoint, so we run SAM and
+// deterministically choose the individual mask under/nearest the user's click.
 const SAM_MODEL =
   "meta/sam-2:fe97b453a6455861e3bac769b441ca1f1086110da7466dbb65cf1eecfd60dc83";
 
@@ -63,8 +64,7 @@ async function pollReplicate(predictionUrl: string): Promise<any> {
 
 async function runSAM(
   imageUrl: string,
-  clickPx: { x: number; y: number },
-): Promise<string> {
+): Promise<string[]> {
   const create = await fetch("https://api.replicate.com/v1/predictions", {
     method: "POST",
     headers: {
@@ -75,8 +75,10 @@ async function runSAM(
       version: SAM_MODEL.split(":")[1],
       input: {
         image: imageUrl,
-        clicks: `[${clickPx.x},${clickPx.y},1]`,
-        mask_only: true,
+        points_per_side: 32,
+        pred_iou_thresh: 0.88,
+        stability_score_thresh: 0.95,
+        use_m2m: true,
       },
     }),
   });
@@ -85,46 +87,45 @@ async function runSAM(
   }
   const prediction = await create.json();
   const finished = await pollReplicate(prediction.urls.get);
-  // SAM 2 output shape varies: can be a string URL, an array of URLs, or an
-  // object like { combined_mask: "url", individual_masks: ["url", ...] }.
-  // Walk the structure to find the first usable URL string.
+  // SAM 2 output is usually { combined_mask, individual_masks }. Prefer
+  // individual masks so the user's click selects one exact object instead of
+  // returning the whole combined segmentation overlay.
   const out = finished.output;
-  const url = extractFirstUrl(out);
-  if (!url) {
+  const urls = extractMaskUrls(out);
+  if (!urls.length) {
     throw new Error(
       `SAM returned no usable mask URL. Raw output: ${JSON.stringify(out).slice(0, 500)}`,
     );
   }
-  return url;
+  return urls;
 }
 
-function extractFirstUrl(val: unknown): string | null {
-  if (!val) return null;
-  if (typeof val === "string") {
-    return val.startsWith("http") ? val : null;
-  }
-  if (Array.isArray(val)) {
-    for (const item of val) {
-      const found = extractFirstUrl(item);
-      if (found) return found;
-    }
-    return null;
-  }
-  if (typeof val === "object") {
-    // Prefer common SAM 2 keys before generic walk.
+function extractMaskUrls(val: unknown): string[] {
+  if (!val) return [];
+  if (typeof val === "object" && !Array.isArray(val)) {
     const obj = val as Record<string, unknown>;
-    for (const key of ["combined_mask", "mask", "output", "url"]) {
-      if (key in obj) {
-        const found = extractFirstUrl(obj[key]);
-        if (found) return found;
-      }
-    }
-    for (const v of Object.values(obj)) {
-      const found = extractFirstUrl(v);
-      if (found) return found;
+    const individual = collectUrls(obj.individual_masks);
+    if (individual.length) return individual;
+    for (const key of ["mask", "masks", "output", "url", "combined_mask"]) {
+      const found = collectUrls(obj[key]);
+      if (found.length) return found;
     }
   }
-  return null;
+  return collectUrls(val);
+}
+
+function collectUrls(val: unknown): string[] {
+  if (!val) return [];
+  if (typeof val === "string") return val.startsWith("http") ? [val] : [];
+  if (Array.isArray(val)) return val.flatMap(collectUrls);
+  if (typeof val === "object") return Object.values(val as Record<string, unknown>).flatMap(collectUrls);
+  return [];
+}
+
+function rgbaToUint32(px: number | Uint8ClampedArray | number[]): number {
+  if (typeof px === "number") return px;
+  const [r = 0, g = 0, b = 0, a = 255] = px;
+  return ((r & 0xff) << 24) | ((g & 0xff) << 16) | ((b & 0xff) << 8) | (a & 0xff);
 }
 
 async function buildSilhouetteAndBbox(
@@ -153,11 +154,11 @@ async function buildSilhouetteAndBbox(
 
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      const m = mask.getRGBAAt(x + 1, y + 1); // imagescript is 1-indexed
+      const m = rgbaToUint32(mask.getRGBAAt(x + 1, y + 1)); // imagescript is 1-indexed
       const r = (m >> 24) & 0xff;
       const inside = r > 127;
       if (inside) {
-        const px = src.getRGBAAt(x + 1, y + 1);
+        const px = rgbaToUint32(src.getRGBAAt(x + 1, y + 1));
         silhouette.setPixelAt(x + 1, y + 1, px);
         maskClean.setPixelAt(x + 1, y + 1, 0xffffffff);
         if (x < minX) minX = x;
@@ -201,6 +202,58 @@ async function buildSilhouetteAndBbox(
   };
 }
 
+async function chooseMaskForClick(
+  maskUrls: string[],
+  sourceSize: { w: number; h: number },
+  clickPx: { x: number; y: number },
+): Promise<Uint8Array> {
+  const { Image } = await import("https://deno.land/x/imagescript@1.2.17/mod.ts");
+  let best: { bytes: Uint8Array; score: number } | null = null;
+  for (const url of maskUrls.slice(0, 80)) {
+    const bytes = await fetchAsBuffer(url);
+    let img = await Image.decode(bytes);
+    if (img.width !== sourceSize.w || img.height !== sourceSize.h) {
+      img = img.resize(sourceSize.w, sourceSize.h);
+    }
+    const score = scoreMaskForClick(img, clickPx, sourceSize);
+    if (!best || score < best.score) best = { bytes, score };
+    if (score === 0) break;
+  }
+  if (!best || !Number.isFinite(best.score)) {
+    throw new Error("SAM did not return a mask near the click. Try clicking nearer the center of the part.");
+  }
+  return best.bytes;
+}
+
+function scoreMaskForClick(
+  mask: any,
+  clickPx: { x: number; y: number },
+  size: { w: number; h: number },
+): number {
+  const cx = Math.max(0, Math.min(size.w - 1, clickPx.x));
+  const cy = Math.max(0, Math.min(size.h - 1, clickPx.y));
+  const at = (x: number, y: number) => {
+    const m = rgbaToUint32(mask.getRGBAAt(x + 1, y + 1));
+    return ((m >> 24) & 0xff) > 127;
+  };
+  if (at(cx, cy)) return 0;
+
+  const maxRadius = Math.ceil(Math.max(size.w, size.h) * 0.16);
+  for (let r = 3; r <= maxRadius; r += 3) {
+    for (let dy = -r; dy <= r; dy += 3) {
+      for (let dx = -r; dx <= r; dx += 3) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const x = cx + dx;
+        const y = cy + dy;
+        if (x >= 0 && y >= 0 && x < size.w && y < size.h && at(x, y)) {
+          return Math.hypot(dx, dy);
+        }
+      }
+    }
+  }
+  return Infinity;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -242,11 +295,13 @@ Deno.serve(async (req) => {
       y: Math.round(body.click_point.y * h),
     };
 
-    // 2. Run SAM via Replicate.
-    const maskUrl = await runSAM(body.source_image_url, clickPx);
+    // 2. Run SAM via Replicate, then choose the generated mask under/nearest
+    //    the click. This keeps SAM as segmentation-only while making clicks
+    //    deterministic and precise.
+    const maskUrls = await runSAM(body.source_image_url);
+    const maskBytes = await chooseMaskForClick(maskUrls, { w, h }, clickPx);
 
     // 3. Build clean mask, silhouette PNG, bbox, anchor points.
-    const maskBytes = await fetchAsBuffer(maskUrl);
     const { silhouette, maskClean, bbox, anchors } =
       await buildSilhouetteAndBbox(sourceBytes, maskBytes);
 
