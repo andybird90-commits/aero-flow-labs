@@ -99,10 +99,10 @@ async function runRender(
       .eq("id", prototype_id)
       .eq("user_id", userId)
       .maybeSingle();
-    if (protoErr || !proto) return json({ error: "Prototype not found" }, 404);
+    if (protoErr || !proto) throw new Error("Prototype not found");
 
     const sourceUrls = (proto.source_image_urls as string[] | null) ?? [];
-    if (!sourceUrls.length) return json({ error: "No source images uploaded" }, 400);
+    if (!sourceUrls.length) throw new Error("No source images uploaded");
 
     // Optional: load garage car ref so we can do on-car shot first.
     let carRefDataUrl: string | null = null;
@@ -286,12 +286,12 @@ async function runRender(
       const result = await runWithRetry(promptText, refsForAngle);
       if (!result.ok) {
         await admin.from("prototypes").update({ render_status: "failed", render_error: result.error ?? "render failed" }).eq("id", prototype_id);
-        return json({ error: `Image gen failed: ${result.error ?? "unknown"}` }, 502);
+        throw new Error(`Image gen failed: ${result.error ?? "unknown"}`);
       }
       const uploaded = await uploadDataUrl(admin, result.dataUrl!, userId, prototype_id, angle.key);
       if (!uploaded.ok) {
         await admin.from("prototypes").update({ render_status: "failed", render_error: uploaded.error ?? "upload failed" }).eq("id", prototype_id);
-        return json({ error: uploaded.error ?? "upload failed" }, 500);
+        throw new Error(uploaded.error ?? "upload failed");
       }
       renders.push({ angle: angle.key, url: uploaded.url! });
       if (isHero) heroDataUrl = result.dataUrl!;
@@ -308,12 +308,8 @@ async function runRender(
       })
       .eq("id", prototype_id);
 
-    return json({ renders, fit_preview_url: fitUrlPublic });
-  } catch (e) {
-    console.error("render-prototype-views error:", e);
-    return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
   }
-});
+}
 
 async function runWithRetry(prompt: string, refs: string[]): Promise<{ ok: boolean; dataUrl?: string; error?: string; status?: number }> {
   let lastErr = "";
