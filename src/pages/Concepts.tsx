@@ -371,6 +371,19 @@ function ConceptCard({
   const carbonBusy = carbonStatus === "generating" || carbonStatus === "queued";
   const isolateCarbon = useIsolateCarbon();
 
+  // Combined carbon-kit mesh (single GLB for the whole kit, user splits in CAD).
+  const initialKitStatus = (c.carbon_kit_status as string | undefined) ?? "idle";
+  const kitPolling = initialKitStatus === "generating" || initialKitStatus === "queued";
+  const polledKit = useCarbonKitStatus(concept.id, kitPolling);
+  const kitStatus = (polledKit.data?.carbon_kit_status ?? initialKitStatus) as
+    "idle" | "queued" | "generating" | "ready" | "failed";
+  const kitGlbUrl = polledKit.data?.carbon_kit_glb_url ?? (c.carbon_kit_glb_url as string | null | undefined);
+  const kitStlUrl = polledKit.data?.carbon_kit_stl_url ?? (c.carbon_kit_stl_url as string | null | undefined);
+  const kitScaleM = polledKit.data?.carbon_kit_scale_m ?? (c.carbon_kit_scale_m as number | null | undefined);
+  const kitError = polledKit.data?.carbon_kit_error ?? (c.carbon_kit_error as string | null | undefined);
+  const kitBusy = kitStatus === "generating" || kitStatus === "queued";
+  const meshifyKit = useMeshifyCarbonKit();
+
   // If the polled response carries fresh carbon URLs, prefer those.
   const liveCarbonAngles = polledCarbon.data ? [
     { key: "front"  as ViewKey, label: "Front 3/4", url: polledCarbon.data.render_front_carbon_url },
