@@ -679,6 +679,10 @@ export function useActiveConceptSet(projectId: string | undefined) {
   return useQuery({
     queryKey: ["concept_set_active", projectId],
     enabled: !!projectId,
+    refetchInterval: (query) => {
+      const set = query.state.data as ConceptSet | null | undefined;
+      return set?.status === "generating" ? 5000 : false;
+    },
     queryFn: async () => {
       const { data, error } = await supabase
         .from("concept_sets")

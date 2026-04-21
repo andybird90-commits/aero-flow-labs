@@ -9,14 +9,9 @@
  * Body shape:
  *   { project_id: string; brief_id: string; snapshot_data_url?: string }
  *
- * Returns: { count: number, concept_ids: string[] }
- *
- * Notes
- * - We deliberately do NOT promise photorealistic concept-to-mesh fidelity.
- *   These renders are creative direction; geometry comes from the parametric
- *   parts pipeline downstream.
- * - Auth: caller must be the owner of `project_id` (RLS enforces this on the
- *   final concept insert via service role check).
+ * Returns either:
+ *   { ok: true, queued: true } when the batch is queued in the background
+ *   { count: number, concept_ids: string[] } for an internal single-variation run
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -28,7 +23,9 @@ const corsHeaders = {
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-concepts`;
 
 type AngleKey =
   | "front"
@@ -41,19 +38,26 @@ type AngleKey =
 interface Body {
   project_id: string;
   brief_id: string;
-  /** Legacy single snapshot (front 3/4). Kept for backward compatibility. */
   snapshot_data_url?: string | null;
-  /** Map of camera preset -> data URL. Preferred input. */
   snapshots?: Partial<Record<AngleKey, string | null>>;
+  variation_index?: number | null;
 }
 
-/**
- * Three deliberately divergent design directions. The brief always wins on
- * specifics (colour, era, vibe, constraints) — these only set the *intensity*
- * and *purpose* axis so the user gets meaningfully different options instead
- * of three near-identical renders.
- */
-const VARIATIONS: Array<{ title: string; direction: string; modifier: string; emphasis: string }> = [
+type Variation = {
+  title: string;
+  direction: string;
+  modifier: string;
+  emphasis: string;
+};
+
+type GenerationContext = {
+  conceptSetId: string | null;
+  stylePrompt: string;
+  variations: Variation[];
+  snaps: Record<AngleKey, string | null>;
+};
+
+const VARIATIONS: Variation[] = [
   {
     title: "OEM+ refined",
     direction: "Subtle, road-friendly enhancements that keep the factory identity. Clean splitter, modest skirts, restrained ducktail. No giant wing, no flared arches.",
@@ -74,6 +78,21 @@ const VARIATIONS: Array<{ title: string; direction: string; modifier: string; em
   },
 ];
 
+const ANGLES: Array<{ key: AngleKey; label: string; framing: string }> = [
+  { key: "front_three_quarter", label: "front three-quarter",
+    framing: "three-quarter front view from the driver's side, slight low angle, full car in frame" },
+  { key: "front", label: "front",
+    framing: "direct front view, perpendicular to the car, headlights and grille fully visible, full width in frame" },
+  { key: "side", label: "side profile",
+    framing: "pure side profile view from the driver's side, perpendicular to the car, full body in frame" },
+  { key: "side_opposite", label: "side profile (opposite)",
+    framing: "pure side profile view from the passenger side, perpendicular to the car, full body in frame — show any asymmetric details like the fuel filler cap on this side" },
+  { key: "rear_three_quarter", label: "rear three-quarter",
+    framing: "three-quarter rear view from the passenger side, full car in frame" },
+  { key: "rear", label: "rear",
+    framing: "direct rear view showing the full back of the car, taillights visible" },
+];
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -83,9 +102,8 @@ Deno.serve(async (req) => {
       return json({ error: "project_id and brief_id are required" }, 400);
     }
 
-    // Auth user
     const authHeader = req.headers.get("Authorization") ?? "";
-    const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: userRes, error: userErr } = await userClient.auth.getUser();
@@ -93,404 +111,463 @@ Deno.serve(async (req) => {
     const userId = userRes.user.id;
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const ctx = await loadGenerationContext(admin, body, userId);
 
-    // Load brief
-    const { data: brief, error: bErr } = await admin
-      .from("design_briefs")
-      .select("*")
-      .eq("id", body.brief_id)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (bErr || !brief) return json({ error: "Brief not found" }, 404);
-
-    // Optional style preset — RLS allows owner OR public, so service role read is fine.
-    let preset: any = null;
-    if ((brief as any).style_preset_id) {
-      const { data: p } = await admin
-        .from("style_presets")
-        .select("*")
-        .eq("id", (brief as any).style_preset_id)
-        .maybeSingle();
-      preset = p;
-    }
-
-    // Resolve concept_set
-    const { data: cs } = await admin
-      .from("concept_sets")
-      .select("id")
-      .eq("project_id", body.project_id)
-      .eq("user_id", userId)
-      .order("created_at")
-      .limit(1)
-      .maybeSingle();
-
-    // Load the subject vehicle so the prompt can anchor the AI to the right
-    // make/model. Without this, text-only generation drifts to whatever the
-    // model feels like (we've seen a "Boxster" project come back as a BRZ).
-    let vehicleLabel = "";
-    {
-      const { data: proj } = await admin
-        .from("projects")
-        .select("name, car:cars(name, template:car_templates(make, model, trim, year_range))")
-        .eq("id", body.project_id)
-        .maybeSingle();
-      const tmpl: any = (proj as any)?.car?.template;
-      if (tmpl?.make && tmpl?.model) {
-        vehicleLabel = `${tmpl.make} ${tmpl.model}${tmpl.trim ? " " + tmpl.trim : ""}${tmpl.year_range ? ` (${tmpl.year_range})` : ""}`;
-      } else if ((proj as any)?.car?.name) {
-        vehicleLabel = (proj as any).car.name;
-      } else if ((proj as any)?.name) {
-        vehicleLabel = (proj as any).name;
+    if (body.variation_index == null) {
+      if (ctx.conceptSetId) {
+        await admin.from("concept_sets").update({ status: "generating" }).eq("id", ctx.conceptSetId);
       }
-    }
 
-    // When a style preset is used, IT IS AUTHORITATIVE. We deliberately
-    // ignore the per-project brief's tags / constraints / build type so the
-    // same DNA gets applied uniformly to every car the user runs through it
-    // (just like a real shop's signature kit — Pandem, RWB, Liberty Walk).
-    // The brief's free-text prompt is still appended as an optional addendum
-    // for car-specific notes (e.g. "keep the factory headlights").
-    const presetMode = !!preset;
-    const styleTags = presetMode
-      ? (Array.isArray(preset?.style_tags) ? preset.style_tags : [])
-      : (Array.isArray(brief.style_tags) ? brief.style_tags : []);
-    const styleConstraints = presetMode
-      ? (Array.isArray(preset?.constraints) ? preset.constraints : [])
-      : (Array.isArray(brief.constraints) ? brief.constraints : []);
-    const buildType = presetMode
-      ? (preset?.build_type || null)
-      : (brief.build_type || null);
-
-    const stylePrompt = [
-      vehicleLabel
-        ? `SUBJECT VEHICLE (highest priority — the result MUST be this exact car, no other model): ${vehicleLabel}.`
-        : "",
-      preset?.prompt ? `Style DNA — ${preset.name} (this is the signature kit, apply it to the subject vehicle above): ${preset.prompt}` : "",
-      brief.prompt ? (presetMode ? `Car-specific notes (do not override the style DNA): ${brief.prompt}` : `Project brief: ${brief.prompt}`) : "",
-      buildType ? `Build type: ${buildType}.` : "",
-      styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
-      styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
-    ].filter(Boolean).join(" ");
-
-    // Pick the variation set. With a preset, all three variations stay within
-    // the preset DNA (only intensity/spec differs) so the user gets three
-    // takes of the *same* style instead of three different shops' styles.
-    const variations = presetMode ? presetVariations(preset) : VARIATIONS;
-
-    const inserted: string[] = [];
-
-    // If the project is linked to a garage car, prefer ITS 4 generated views
-    // as the canonical OEM identity references. They override any per-call
-    // snapshots the client may have sent.
-    const garageRefs: Partial<Record<AngleKey, string>> = {};
-    {
-      const { data: proj } = await admin
-        .from("projects")
-        .select("garage_car_id")
-        .eq("id", body.project_id)
-        .maybeSingle();
-      const gcId = (proj as any)?.garage_car_id;
-      if (gcId) {
-          const { data: gc } = await admin
-          .from("garage_cars")
-          .select("ref_front_url, ref_front34_url, ref_side_url, ref_side_opposite_url, ref_rear34_url, ref_rear_url")
-          .eq("id", gcId)
-          .maybeSingle();
-        if (gc) {
-          // Pass the public bucket URLs straight to the AI gateway. We used to
-          // fetch + base64 each one here, which burned 6 round-trips and several
-          // MB of memory before the first AI call — pushing the worker past its
-          // CPU/wall-time budget (WORKER_RESOURCE_LIMIT). The gateway accepts
-          // https URLs in image_url.url, so this is a no-op for quality.
-          if ((gc as any).ref_front_url)          garageRefs.front               = (gc as any).ref_front_url;
-          if ((gc as any).ref_front34_url)        garageRefs.front_three_quarter = (gc as any).ref_front34_url;
-          if ((gc as any).ref_side_url)           garageRefs.side                = (gc as any).ref_side_url;
-          if ((gc as any).ref_side_opposite_url)  garageRefs.side_opposite       = (gc as any).ref_side_opposite_url;
-          if ((gc as any).ref_rear34_url)         garageRefs.rear_three_quarter  = (gc as any).ref_rear34_url;
-          if ((gc as any).ref_rear_url)           garageRefs.rear                = (gc as any).ref_rear_url;
-          console.log("generate-concepts: using garage car refs =", Object.keys(garageRefs));
+      // @ts-ignore EdgeRuntime is provided by Deno.
+      EdgeRuntime.waitUntil(queueAllVariations({ authHeader, body, variationCount: ctx.variations.length, conceptSetId: ctx.conceptSetId }).catch(async (e) => {
+        console.error("generate-concepts queue failed:", e);
+        if (ctx.conceptSetId) {
+          await admin.from("concept_sets").update({ status: "failed" }).eq("id", ctx.conceptSetId);
         }
-      }
+      }));
+
+      return json({ ok: true, queued: true });
     }
 
-    // Normalise snapshots: garage-car refs win, then per-angle map, then legacy single image.
-    const snaps: Record<AngleKey, string | null> = {
-      front:               garageRefs.front ?? body.snapshots?.front ?? null,
-      front_three_quarter: garageRefs.front_three_quarter ?? body.snapshots?.front_three_quarter ?? body.snapshot_data_url ?? null,
-      side:                garageRefs.side ?? body.snapshots?.side ?? null,
-      side_opposite:       garageRefs.side_opposite ?? body.snapshots?.side_opposite ?? null,
-      rear_three_quarter:  garageRefs.rear_three_quarter ?? body.snapshots?.rear_three_quarter ?? null,
-      rear:                garageRefs.rear ?? body.snapshots?.rear ?? body.snapshots?.rear_three_quarter ?? null,
-    };
-
-    const ANGLES: Array<{ key: AngleKey; label: string; framing: string }> = [
-      { key: "front_three_quarter", label: "front three-quarter",
-        framing: "three-quarter front view from the driver's side, slight low angle, full car in frame" },
-      { key: "front", label: "front",
-        framing: "direct front view, perpendicular to the car, headlights and grille fully visible, full width in frame" },
-      { key: "side", label: "side profile",
-        framing: "pure side profile view from the driver's side, perpendicular to the car, full body in frame" },
-      { key: "side_opposite", label: "side profile (opposite)",
-        framing: "pure side profile view from the passenger side, perpendicular to the car, full body in frame — show any asymmetric details like the fuel filler cap on this side" },
-      { key: "rear_three_quarter", label: "rear three-quarter",
-        framing: "three-quarter rear view from the passenger side, full car in frame" },
-      { key: "rear", label: "rear",
-        framing: "direct rear view showing the full back of the car, taillights visible" },
-    ];
-
-    console.log("generate-concepts: snapshots present =",
-      Object.fromEntries(Object.entries(snaps).map(([k, v]) => [k, !!v])));
-
-    /**
-     * Render one angle for a variation.
-     *
-     * `referenceImages` is an ordered list of reference data URLs / public URLs
-     * to send alongside the prompt. The first reference is treated as the
-     * primary identity anchor (the user's car for the front pass, or the
-     * just-generated front concept for the side/rear passes).
-     *
-     * Returns both the public URL (for DB) and a data URL (for chaining as
-     * a reference into subsequent angle calls).
-     */
-    async function renderAngle(
-      v: typeof VARIATIONS[number],
-      angle: typeof ANGLES[number],
-      referenceImages: string[],
-      mode: "from_user_car" | "from_concept_front",
-    ): Promise<{ publicUrl: string; dataUrl: string } | null> {
-      const hasRef = referenceImages.length > 0;
-
-      // Carbon-fibre finish for ALL added bodywork — gives instant visual
-      // contrast against the OEM painted panels so the user can clearly see
-      // exactly which parts have been added vs the factory body.
-      const carbonFinish =
-        `MATERIAL FINISH (critical): every added/modified aero or styling part — splitter, ` +
-        `lip, canards, side skirts, arch flares, diffuser, ducktail, wing, hood/wing vents — ` +
-        `MUST be finished in glossy 2x2 twill carbon fibre with a clearly visible black weave ` +
-        `pattern and crisp clearcoat reflections. The carbon weave must be obvious at this ` +
-        `viewing distance. The OEM body panels (doors, roof, fenders, bumpers above the splitter) ` +
-        `MUST stay in their original factory paint colour — do NOT paint the whole car carbon, ` +
-        `do NOT paint the whole car black. The carbon parts should visually pop against the ` +
-        `painted body so it is unmistakable which parts are bolt-ons.`;
-
-      const fromUserPrompt =
-        `Re-render THE EXACT CAR shown in the reference image with an added ${v.modifier} body kit, ` +
-        `framed as a ${angle.framing}. ` +
-        `CRITICAL: Preserve the original car's identity — same make and model, same body shape, ` +
-        `same silhouette, same greenhouse, same headlight and taillight design, same wheelbase, ` +
-        `same door and window lines, same overall proportions. Do NOT replace the car with a ` +
-        `different model. ` +
-        `Only add or modify bolt-on aero/styling parts (front splitter, side skirts, arches, rear ` +
-        `diffuser, wing, canards) consistent with the styling brief. ` +
-        `\n\nDESIGN DIRECTION (this variation): ${v.direction} ` +
-        `\nKEY EMPHASIS: ${v.emphasis} ` +
-        `\n\n${carbonFinish}` +
-        `\n\nUSER BRIEF (highest priority — must be reflected in the result): ${stylePrompt} ` +
-        `\n\nStudio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
-        `no text, no watermark, no UI overlays.`;
-
-      const fromConceptPrompt =
-        `The reference image shows a custom car concept (front three-quarter view) with a specific ` +
-        `body kit, paint colour, and wheels. Render THE SAME EXACT CAR — same make, model, ` +
-        `silhouette, paint colour, wheels, and body kit details (splitter, skirts, arches, wing, ` +
-        `diffuser, canards) — but viewed from a different camera angle: ${angle.framing}. ` +
-        `CRITICAL: This must look like the same physical car as the reference, just photographed ` +
-        `from another side. Do NOT change the colour, do NOT change the wheels, do NOT change the ` +
-        `aero kit shapes. The carbon-fibre aero parts in the reference MUST stay carbon-fibre ` +
-        `(glossy 2x2 twill weave) and the OEM painted panels MUST stay their original colour. ` +
-        `Match the reference's lighting style, backdrop, and overall mood. ` +
-        `Studio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
-        `no text, no watermark, no UI overlays.`;
-
-      const textPrompt =
-        `Premium automotive concept render of a custom car body kit, ${angle.framing}. ` +
-        `${v.modifier}. ` +
-        `\n\nDESIGN DIRECTION: ${v.direction} ` +
-        `\nKEY EMPHASIS: ${v.emphasis} ` +
-        `\n\n${carbonFinish}` +
-        `\n\nUSER BRIEF (highest priority — must be reflected in the result): ${stylePrompt} ` +
-        `\n\nStudio lighting, dark dramatic backdrop, photorealistic, concept design quality, ` +
-        `sharp focus, clean reflections, no text, no watermark.`;
-
-      const promptText = !hasRef
-        ? textPrompt
-        : mode === "from_concept_front"
-          ? fromConceptPrompt
-          : fromUserPrompt;
-
-      const messages: any[] = [{
-        role: "user",
-        content: [{ type: "text", text: promptText }],
-      }];
-      for (const ref of referenceImages) {
-        messages[0].content.push({ type: "image_url", image_url: { url: ref } });
-      }
-
-      const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3.1-flash-image-preview",
-          messages,
-          modalities: ["image", "text"],
-        }),
-      });
-
-      if (!aiResp.ok) {
-        const t = await aiResp.text();
-        console.error(`AI gen failed (${v.title} / ${angle.key}):`, aiResp.status, t.slice(0, 200));
-        if (aiResp.status === 429) throw new Error("__RATE_LIMIT__");
-        if (aiResp.status === 402) throw new Error("__NO_CREDITS__");
-        return null;
-      }
-
-      const rawText = await aiResp.text();
-      if (!rawText) {
-        console.error(`AI gen empty body (${v.title} / ${angle.key})`);
-        return null;
-      }
-      let aiJson: any;
-      try {
-        aiJson = JSON.parse(rawText);
-      } catch (parseErr) {
-        console.error(`AI gen JSON parse failed (${v.title} / ${angle.key}):`, rawText.slice(0, 200));
-        return null;
-      }
-      const imgUrl: string | undefined = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-
-      if (!imgUrl?.startsWith("data:image/")) {
-        console.error(`Image gen produced no data URL (${v.title} / ${angle.key})`);
-        return null;
-      }
-
-      const [, mime, b64] = imgUrl.match(/^data:(image\/[a-z+]+);base64,(.*)$/i) ?? [];
-      if (!b64) return null;
-
-      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-      const ext = mime?.includes("jpeg") ? "jpg" : "png";
-      const path = `${userId}/${body.project_id}/${crypto.randomUUID()}.${ext}`;
-
-      const { error: upErr } = await admin.storage
-        .from("concept-renders")
-        .upload(path, bytes, { contentType: mime, upsert: false });
-      if (upErr) {
-        console.error("upload failed:", upErr);
-        return null;
-      }
-      const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
-      return { publicUrl, dataUrl: imgUrl };
+    if (!Number.isInteger(body.variation_index) || body.variation_index < 0 || body.variation_index >= ctx.variations.length) {
+      return json({ error: "variation_index out of range" }, 400);
     }
 
-    // Shared ref-type guard — refs may be data: URLs (legacy snapshots) or
-    // https: URLs (garage-car bucket assets). Both work with the AI gateway.
-    const isImageRef = (u: string | null | undefined): u is string =>
-      !!u && (u.startsWith("data:image/") || u.startsWith("https://") || u.startsWith("http://"));
+    const conceptId = await runSingleVariation({
+      admin,
+      body,
+      userId,
+      context: ctx,
+      variationIndex: body.variation_index,
+    });
 
-    try {
-      // Run variations SEQUENTIALLY. Running all 3 in parallel meant
-      // 3 × 6 = 18 concurrent Gemini calls each returning a multi-MB base64
-      // image — the worker hit WORKER_RESOURCE_LIMIT (CPU/memory) before
-      // most responses were even received. One variation at a time keeps
-      // peak concurrency at 5 (the inner fan-out), well under the budget.
-      const variationResults: Array<{ v: typeof variations[number]; byKey: Partial<Record<AngleKey, string>> } | null> = [];
-      for (const v of variations) {
-        const heroAngle = ANGLES.find((a) => a.key === "front_three_quarter")!;
-        const otherAngles = ANGLES.filter((a) => a.key !== "front_three_quarter");
-
-        // 1) FRONT 3/4 first — anchors paint, wheels and kit details.
-        const userFrontRef = snaps.front_three_quarter;
-        const frontRefs = isImageRef(userFrontRef) ? [userFrontRef] : [];
-        const frontResult = await renderAngle(v, heroAngle, frontRefs, "from_user_car");
-        if (!frontResult) {
-          console.warn("Front 3/4 render failed for variation:", v.title);
-          variationResults.push(null);
-          continue;
-        }
-
-        // 2) Other 5 angles in parallel, anchored to the front-3/4 concept.
-        // IMPORTANT: pass the PUBLIC URL of the just-uploaded front render,
-        // not its data URL. Carrying multi-MB base64 strings through 5
-        // parallel sub-calls was a major contributor to the worker hitting
-        // its memory ceiling. The AI gateway accepts https URLs just fine.
-        const otherResults = await Promise.all(otherAngles.map(async (a) => {
-          const userAngleRef = snaps[a.key];
-          const refs: string[] = [frontResult.publicUrl];
-          if (isImageRef(userAngleRef)) refs.push(userAngleRef);
-          const r = await renderAngle(v, a, refs, "from_concept_front");
-          return { key: a.key, result: r };
-        }));
-
-        const byKey: Partial<Record<AngleKey, string>> = {
-          front_three_quarter: frontResult.publicUrl,
-        };
-        for (const { key, result } of otherResults) {
-          if (result?.publicUrl) byKey[key] = result.publicUrl;
-        }
-        if (Object.keys(byKey).length === 0) {
-          console.warn("All angles failed for variation:", v.title);
-          variationResults.push(null);
-          continue;
-        }
-        variationResults.push({ v, byKey });
-      }
-
-
-      for (const vr of variationResults) {
-        if (!vr) continue;
-        const { v, byKey } = vr;
-        const { data: concept, error: cErr } = await admin
-          .from("concepts")
-          .insert({
-            user_id: userId,
-            project_id: body.project_id,
-            concept_set_id: cs?.id ?? null,
-            title: v.title,
-            direction: v.direction,
-            status: "pending",
-            // Note: render_front_url historically held the front 3/4 view.
-            render_front_url:         byKey.front_three_quarter ?? null,
-            render_front_direct_url:  byKey.front ?? null,
-            render_side_url:          byKey.side ?? null,
-            render_side_opposite_url: byKey.side_opposite ?? null,
-            render_rear34_url:        byKey.rear_three_quarter ?? null,
-            render_rear_url:          byKey.rear ?? null,
-            ai_notes: stylePrompt.slice(0, 500),
-          })
-          .select("id")
-          .single();
-        if (cErr) {
-          console.error("concept insert failed:", cErr);
-          continue;
-        }
-        inserted.push(concept.id);
-      }
-    } catch (err: any) {
-      const msg = String(err?.message ?? err);
-      if (msg === "__RATE_LIMIT__") return json({ error: "Rate limit reached. Try again shortly." }, 429);
-      if (msg === "__NO_CREDITS__") return json({ error: "AI credits exhausted." }, 402);
-      throw err;
+    if (!conceptId) {
+      return json({ error: "Variation generation failed" }, 500);
     }
 
-    if (inserted.length === 0) {
-      return json({ error: "No concepts could be generated. Please try again." }, 500);
-    }
-
-    // Bump project status
-    await admin
-      .from("projects")
-      .update({ status: "concepts" })
-      .eq("id", body.project_id)
-      .eq("user_id", userId);
-
-    return json({ count: inserted.length, concept_ids: inserted });
+    return json({ count: 1, concept_ids: [conceptId], variation_index: body.variation_index });
   } catch (e) {
     console.error("generate-concepts error:", e);
     return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
   }
 });
+
+async function loadGenerationContext(admin: any, body: Body, userId: string): Promise<GenerationContext> {
+  const { data: brief, error: bErr } = await admin
+    .from("design_briefs")
+    .select("*")
+    .eq("id", body.brief_id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (bErr || !brief) throw new Error("Brief not found");
+
+  let preset: any = null;
+  if ((brief as any).style_preset_id) {
+    const { data: p } = await admin
+      .from("style_presets")
+      .select("*")
+      .eq("id", (brief as any).style_preset_id)
+      .maybeSingle();
+    preset = p;
+  }
+
+  const { data: cs } = await admin
+    .from("concept_sets")
+    .select("id")
+    .eq("project_id", body.project_id)
+    .eq("user_id", userId)
+    .order("created_at")
+    .limit(1)
+    .maybeSingle();
+
+  let vehicleLabel = "";
+  {
+    const { data: proj } = await admin
+      .from("projects")
+      .select("name, car:cars(name, template:car_templates(make, model, trim, year_range))")
+      .eq("id", body.project_id)
+      .maybeSingle();
+    const tmpl: any = (proj as any)?.car?.template;
+    if (tmpl?.make && tmpl?.model) {
+      vehicleLabel = `${tmpl.make} ${tmpl.model}${tmpl.trim ? " " + tmpl.trim : ""}${tmpl.year_range ? ` (${tmpl.year_range})` : ""}`;
+    } else if ((proj as any)?.car?.name) {
+      vehicleLabel = (proj as any).car.name;
+    } else if ((proj as any)?.name) {
+      vehicleLabel = (proj as any).name;
+    }
+  }
+
+  const presetMode = !!preset;
+  const styleTags = presetMode
+    ? (Array.isArray(preset?.style_tags) ? preset.style_tags : [])
+    : (Array.isArray(brief.style_tags) ? brief.style_tags : []);
+  const styleConstraints = presetMode
+    ? (Array.isArray(preset?.constraints) ? preset.constraints : [])
+    : (Array.isArray(brief.constraints) ? brief.constraints : []);
+  const buildType = presetMode
+    ? (preset?.build_type || null)
+    : (brief.build_type || null);
+
+  const stylePrompt = [
+    vehicleLabel
+      ? `SUBJECT VEHICLE (highest priority — the result MUST be this exact car, no other model): ${vehicleLabel}.`
+      : "",
+    preset?.prompt ? `Style DNA — ${preset.name} (this is the signature kit, apply it to the subject vehicle above): ${preset.prompt}` : "",
+    brief.prompt ? (presetMode ? `Car-specific notes (do not override the style DNA): ${brief.prompt}` : `Project brief: ${brief.prompt}`) : "",
+    buildType ? `Build type: ${buildType}.` : "",
+    styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
+    styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
+  ].filter(Boolean).join(" ");
+
+  const variations = presetMode ? presetVariations(preset) : VARIATIONS;
+
+  const garageRefs: Partial<Record<AngleKey, string>> = {};
+  {
+    const { data: proj } = await admin
+      .from("projects")
+      .select("garage_car_id")
+      .eq("id", body.project_id)
+      .maybeSingle();
+    const gcId = (proj as any)?.garage_car_id;
+    if (gcId) {
+      const { data: gc } = await admin
+        .from("garage_cars")
+        .select("ref_front_url, ref_front34_url, ref_side_url, ref_side_opposite_url, ref_rear34_url, ref_rear_url")
+        .eq("id", gcId)
+        .maybeSingle();
+      if (gc) {
+        if ((gc as any).ref_front_url) garageRefs.front = (gc as any).ref_front_url;
+        if ((gc as any).ref_front34_url) garageRefs.front_three_quarter = (gc as any).ref_front34_url;
+        if ((gc as any).ref_side_url) garageRefs.side = (gc as any).ref_side_url;
+        if ((gc as any).ref_side_opposite_url) garageRefs.side_opposite = (gc as any).ref_side_opposite_url;
+        if ((gc as any).ref_rear34_url) garageRefs.rear_three_quarter = (gc as any).ref_rear34_url;
+        if ((gc as any).ref_rear_url) garageRefs.rear = (gc as any).ref_rear_url;
+        console.log("generate-concepts: using garage car refs =", Object.keys(garageRefs));
+      }
+    }
+  }
+
+  const snaps: Record<AngleKey, string | null> = {
+    front: garageRefs.front ?? body.snapshots?.front ?? null,
+    front_three_quarter: garageRefs.front_three_quarter ?? body.snapshots?.front_three_quarter ?? body.snapshot_data_url ?? null,
+    side: garageRefs.side ?? body.snapshots?.side ?? null,
+    side_opposite: garageRefs.side_opposite ?? body.snapshots?.side_opposite ?? null,
+    rear_three_quarter: garageRefs.rear_three_quarter ?? body.snapshots?.rear_three_quarter ?? null,
+    rear: garageRefs.rear ?? body.snapshots?.rear ?? body.snapshots?.rear_three_quarter ?? null,
+  };
+
+  console.log("generate-concepts: snapshots present =",
+    Object.fromEntries(Object.entries(snaps).map(([k, v]) => [k, !!v])));
+
+  return {
+    conceptSetId: cs?.id ?? null,
+    stylePrompt,
+    variations,
+    snaps,
+  };
+}
+
+async function runSingleVariation({
+  admin,
+  body,
+  userId,
+  context,
+  variationIndex,
+}: {
+  admin: any;
+  body: Body;
+  userId: string;
+  context: GenerationContext;
+  variationIndex: number;
+}) {
+  const v = context.variations[variationIndex];
+  const heroAngle = ANGLES.find((a) => a.key === "front_three_quarter")!;
+  const otherAngles = ANGLES.filter((a) => a.key !== "front_three_quarter");
+
+  const userFrontRef = context.snaps.front_three_quarter;
+  const frontRefs = isImageRef(userFrontRef) ? [userFrontRef] : [];
+  const frontResult = await renderAngle({
+    admin,
+    userId,
+    projectId: body.project_id,
+    variation: v,
+    angle: heroAngle,
+    referenceImages: frontRefs,
+    mode: "from_user_car",
+    stylePrompt: context.stylePrompt,
+  });
+  if (!frontResult) {
+    console.warn("Front 3/4 render failed for variation:", v.title);
+    return null;
+  }
+
+  const otherResults = await Promise.all(otherAngles.map(async (a) => {
+    const userAngleRef = context.snaps[a.key];
+    const refs: string[] = [frontResult.publicUrl];
+    if (isImageRef(userAngleRef)) refs.push(userAngleRef);
+    const result = await renderAngle({
+      admin,
+      userId,
+      projectId: body.project_id,
+      variation: v,
+      angle: a,
+      referenceImages: refs,
+      mode: "from_concept_front",
+      stylePrompt: context.stylePrompt,
+    });
+    return { key: a.key, result };
+  }));
+
+  const byKey: Partial<Record<AngleKey, string>> = {
+    front_three_quarter: frontResult.publicUrl,
+  };
+  for (const { key, result } of otherResults) {
+    if (result?.publicUrl) byKey[key] = result.publicUrl;
+  }
+  if (Object.keys(byKey).length === 0) {
+    console.warn("All angles failed for variation:", v.title);
+    return null;
+  }
+
+  const { data: concept, error: cErr } = await admin
+    .from("concepts")
+    .insert({
+      user_id: userId,
+      project_id: body.project_id,
+      concept_set_id: context.conceptSetId,
+      title: v.title,
+      direction: v.direction,
+      status: "pending",
+      render_front_url: byKey.front_three_quarter ?? null,
+      render_front_direct_url: byKey.front ?? null,
+      render_side_url: byKey.side ?? null,
+      render_side_opposite_url: byKey.side_opposite ?? null,
+      render_rear34_url: byKey.rear_three_quarter ?? null,
+      render_rear_url: byKey.rear ?? null,
+      ai_notes: context.stylePrompt.slice(0, 500),
+    })
+    .select("id")
+    .single();
+  if (cErr) {
+    console.error("concept insert failed:", cErr);
+    return null;
+  }
+
+  return concept.id as string;
+}
+
+async function renderAngle({
+  admin,
+  userId,
+  projectId,
+  variation,
+  angle,
+  referenceImages,
+  mode,
+  stylePrompt,
+}: {
+  admin: any;
+  userId: string;
+  projectId: string;
+  variation: Variation;
+  angle: (typeof ANGLES)[number];
+  referenceImages: string[];
+  mode: "from_user_car" | "from_concept_front";
+  stylePrompt: string;
+}): Promise<{ publicUrl: string; dataUrl: string } | null> {
+  const hasRef = referenceImages.length > 0;
+
+  const carbonFinish =
+    `MATERIAL FINISH (critical): every added/modified aero or styling part — splitter, ` +
+    `lip, canards, side skirts, arch flares, diffuser, ducktail, wing, hood/wing vents — ` +
+    `MUST be finished in glossy 2x2 twill carbon fibre with a clearly visible black weave ` +
+    `pattern and crisp clearcoat reflections. The carbon weave must be obvious at this ` +
+    `viewing distance. The OEM body panels (doors, roof, fenders, bumpers above the splitter) ` +
+    `MUST stay in their original factory paint colour — do NOT paint the whole car carbon, ` +
+    `do NOT paint the whole car black. The carbon parts should visually pop against the ` +
+    `painted body so it is unmistakable which parts are bolt-ons.`;
+
+  const fromUserPrompt =
+    `Re-render THE EXACT CAR shown in the reference image with an added ${variation.modifier} body kit, ` +
+    `framed as a ${angle.framing}. ` +
+    `CRITICAL: Preserve the original car's identity — same make and model, same body shape, ` +
+    `same silhouette, same greenhouse, same headlight and taillight design, same wheelbase, ` +
+    `same door and window lines, same overall proportions. Do NOT replace the car with a ` +
+    `different model. ` +
+    `Only add or modify bolt-on aero/styling parts (front splitter, side skirts, arches, rear ` +
+    `diffuser, wing, canards) consistent with the styling brief. ` +
+    `\n\nDESIGN DIRECTION (this variation): ${variation.direction} ` +
+    `\nKEY EMPHASIS: ${variation.emphasis} ` +
+    `\n\n${carbonFinish}` +
+    `\n\nUSER BRIEF (highest priority — must be reflected in the result): ${stylePrompt} ` +
+    `\n\nStudio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
+    `no text, no watermark, no UI overlays.`;
+
+  const fromConceptPrompt =
+    `The reference image shows a custom car concept (front three-quarter view) with a specific ` +
+    `body kit, paint colour, and wheels. Render THE SAME EXACT CAR — same make, model, ` +
+    `silhouette, paint colour, wheels, and body kit details (splitter, skirts, arches, wing, ` +
+    `diffuser, canards) — but viewed from a different camera angle: ${angle.framing}. ` +
+    `CRITICAL: This must look like the same physical car as the reference, just photographed ` +
+    `from another side. Do NOT change the colour, do NOT change the wheels, do NOT change the ` +
+    `aero kit shapes. The carbon-fibre aero parts in the reference MUST stay carbon-fibre ` +
+    `(glossy 2x2 twill weave) and the OEM painted panels MUST stay their original colour. ` +
+    `Match the reference's lighting style, backdrop, and overall mood. ` +
+    `Studio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
+    `no text, no watermark, no UI overlays.`;
+
+  const textPrompt =
+    `Premium automotive concept render of a custom car body kit, ${angle.framing}. ` +
+    `${variation.modifier}. ` +
+    `\n\nDESIGN DIRECTION: ${variation.direction} ` +
+    `\nKEY EMPHASIS: ${variation.emphasis} ` +
+    `\n\n${carbonFinish}` +
+    `\n\nUSER BRIEF (highest priority — must be reflected in the result): ${stylePrompt} ` +
+    `\n\nStudio lighting, dark dramatic backdrop, photorealistic, concept design quality, ` +
+    `sharp focus, clean reflections, no text, no watermark.`;
+
+  const promptText = !hasRef
+    ? textPrompt
+    : mode === "from_concept_front"
+      ? fromConceptPrompt
+      : fromUserPrompt;
+
+  const messages: any[] = [{
+    role: "user",
+    content: [{ type: "text", text: promptText }],
+  }];
+  for (const ref of referenceImages) {
+    messages[0].content.push({ type: "image_url", image_url: { url: ref } });
+  }
+
+  const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-3.1-flash-image-preview",
+      messages,
+      modalities: ["image", "text"],
+    }),
+  });
+
+  if (!aiResp.ok) {
+    const t = await aiResp.text();
+    console.error(`AI gen failed (${variation.title} / ${angle.key}):`, aiResp.status, t.slice(0, 200));
+    if (aiResp.status === 429) throw new Error("__RATE_LIMIT__");
+    if (aiResp.status === 402) throw new Error("__NO_CREDITS__");
+    return null;
+  }
+
+  const rawText = await aiResp.text();
+  if (!rawText) {
+    console.error(`AI gen empty body (${variation.title} / ${angle.key})`);
+    return null;
+  }
+  let aiJson: any;
+  try {
+    aiJson = JSON.parse(rawText);
+  } catch {
+    console.error(`AI gen JSON parse failed (${variation.title} / ${angle.key}):`, rawText.slice(0, 200));
+    return null;
+  }
+  const imgUrl: string | undefined = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+  if (!imgUrl?.startsWith("data:image/")) {
+    console.error(`Image gen produced no data URL (${variation.title} / ${angle.key})`);
+    return null;
+  }
+
+  const [, mime, b64] = imgUrl.match(/^data:(image\/[a-z+]+);base64,(.*)$/i) ?? [];
+  if (!b64) return null;
+
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const ext = mime?.includes("jpeg") ? "jpg" : "png";
+  const path = `${userId}/${projectId}/${crypto.randomUUID()}.${ext}`;
+
+  const { error: upErr } = await admin.storage
+    .from("concept-renders")
+    .upload(path, bytes, { contentType: mime, upsert: false });
+  if (upErr) {
+    console.error("upload failed:", upErr);
+    return null;
+  }
+
+  const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
+  return { publicUrl, dataUrl: imgUrl };
+}
+
+async function queueAllVariations({
+  authHeader,
+  body,
+  variationCount,
+  conceptSetId,
+}: {
+  authHeader: string;
+  body: Body;
+  variationCount: number;
+  conceptSetId: string | null;
+}) {
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  let successCount = 0;
+  const failures: string[] = [];
+
+  for (let variationIndex = 0; variationIndex < variationCount; variationIndex += 1) {
+    const resp = await fetch(FUNCTION_URL, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        apikey: SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        project_id: body.project_id,
+        brief_id: body.brief_id,
+        snapshot_data_url: body.snapshot_data_url ?? null,
+        snapshots: body.snapshots ?? {},
+        variation_index: variationIndex,
+      }),
+    });
+
+    const raw = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = null;
+    }
+
+    if (!resp.ok) {
+      failures.push(`variation ${variationIndex}: ${raw.slice(0, 200)}`);
+      if (resp.status === 402 || resp.status === 429) break;
+      continue;
+    }
+
+    successCount += Number(parsed?.count ?? 0);
+  }
+
+  if (conceptSetId) {
+    await admin.from("concept_sets").update({
+      status: successCount > 0 ? "ready" : "failed",
+    }).eq("id", conceptSetId);
+  }
+
+  if (successCount > 0) {
+    await admin
+      .from("projects")
+      .update({ status: "concepts" })
+      .eq("id", body.project_id);
+  }
+
+  if (failures.length) {
+    console.error("generate-concepts queue failures:", failures);
+  }
+}
+
+function isImageRef(u: string | null | undefined): u is string {
+  return !!u && (u.startsWith("data:image/") || u.startsWith("https://") || u.startsWith("http://"));
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -499,13 +576,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-/**
- * When a style preset is active, all three variations stay inside its DNA.
- * Only the *intensity* and *spec* changes — never the design language. This
- * means the user gets three takes of (e.g.) Pandem applied to their car,
- * not OEM+ vs Pandem vs Widebody-GT.
- */
-function presetVariations(preset: any): Array<{ title: string; direction: string; modifier: string; emphasis: string }> {
+function presetVariations(preset: any): Variation[] {
   const name = preset?.name ?? "preset";
   const dna = preset?.prompt ?? "";
   return [
