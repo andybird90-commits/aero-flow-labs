@@ -668,15 +668,8 @@ function ConceptCard({
               variant="hero"
               size="sm"
               className="w-full"
-              disabled={kitBusy || (!carbonReady && !carbonAngles.some((a) => !!a.url))}
-              onClick={async () => {
-                try {
-                  await meshifyKit.mutateAsync(concept.id);
-                } catch (e: any) {
-                  // surfaced via kitError via polling
-                  console.error(e);
-                }
-              }}
+              disabled={kitBusy || meshifyKit.isPending || (!carbonReady && !carbonAngles.some((a) => !!a.url))}
+              onClick={handleMeshifyKit}
               title="Reconstruct the entire carbon body kit as one mesh — split it in Fusion / Blender afterwards"
             >
               {kitBusy ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Boxes className="mr-1.5 h-3.5 w-3.5" />}
