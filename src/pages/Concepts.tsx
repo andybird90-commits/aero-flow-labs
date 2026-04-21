@@ -514,8 +514,8 @@ function ConceptCard({
         </div>
       )}
 
-      {/* Click-to-extract hotspots overlay */}
-      {current && (
+      {/* Click-to-extract hotspots overlay (AI pick mode) */}
+      {current && pickMode && (
         <PartHotspotOverlay
           active={pickMode}
           view={current.key}
@@ -526,8 +526,17 @@ function ConceptCard({
         />
       )}
 
+      {/* Manual trace overlay — deterministic, no AI */}
+      {current && traceMode && (
+        <PartTraceOverlay
+          active={traceMode}
+          view={current.key}
+          projectId={projectId}
+        />
+      )}
+
       <div className={cn(
-        "absolute top-2 right-2 flex items-center gap-1.5",
+        "absolute top-2 right-2 flex items-center gap-1.5 z-30",
         // In the zoom dialog the built-in close (X) sits at top-right, so
         // shift this toolbar left to avoid the click target overlapping it.
         variant === "zoom" && "right-12",
@@ -553,21 +562,36 @@ function ConceptCard({
           {carbonBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Boxes className="h-3.5 w-3.5" />}
           {carbonStatus === "failed" ? "Retry carbon" : carbonMode ? "Carbon on" : "Carbon only"}
         </button>
+        {/* Manual trace — primary recommended path */}
         <button
-          onClick={(e) => { e.stopPropagation(); setPickMode((p) => !p); }}
+          onClick={(e) => { e.stopPropagation(); setPartMode((m) => m === "trace" ? "none" : "trace"); }}
+          className={cn(
+            "rounded-md px-3 py-1.5 inline-flex items-center gap-1.5 text-xs text-mono uppercase tracking-widest border backdrop-blur transition-colors",
+            traceMode
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
+          )}
+          title="Manually trace each kit piece — deterministic CAD geometry, valid STL every time"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          {traceMode ? "Tracing" : "Trace kit"}
+        </button>
+        {/* AI pick — secondary, kept for power users */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setPartMode((m) => m === "pick" ? "none" : "pick"); }}
           className={cn(
             "rounded-md px-3 py-1.5 inline-flex items-center gap-1.5 text-xs text-mono uppercase tracking-widest border backdrop-blur transition-colors",
             pickMode
               ? "bg-primary/90 text-primary-foreground border-primary"
               : "bg-surface-0/85 text-muted-foreground border-border hover:text-foreground",
           )}
-          title="Click any part on the render to extract it as STL"
+          title="AI-detected hotspots — experimental, may misidentify overlapping parts"
         >
           <MousePointer2 className="h-3.5 w-3.5" />
-          {pickMode ? "Picking" : "Pick parts"}
+          {pickMode ? "Picking" : "AI pick"}
         </button>
         {variant === "card" && <StatusChip tone={tone as any} size="sm">{concept.status}</StatusChip>}
-        {variant === "card" && current && !pickMode && (
+        {variant === "card" && current && !anyPartMode && (
           <button
             onClick={(e) => { e.stopPropagation(); setZoomOpen(true); }}
             className="rounded-md px-2 py-1.5 inline-flex items-center gap-1 text-xs text-mono uppercase tracking-widest border bg-surface-0/85 text-muted-foreground border-border hover:text-foreground backdrop-blur transition-colors"
