@@ -175,26 +175,44 @@ async function runRender(
     /* ─── STEP 1: On-car carbon composite (if car linked) ─── */
     let fitUrlPublic: string | null = null;
     if (carRefDataUrl) {
-      const onCarPrompt = [
-        `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. The remaining ${refDataUrls.length} image(s) are reference photos of the EXACT PART to add — they show its true silhouette, opening, vents, slats, depth, curvature, edge treatment and proportions.`,
-        ``,
-        `THE CAR (first image): ${carLabel}${carColor ? ` (${carColor})` : ""}.`,
-        `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
-        `- Do NOT crop the car. The whole car visible in the first image must remain visible with comfortable margin.`,
-        `- The ONLY change to the car is the addition of the part below.`,
-        ``,
-        `THE PART (remaining ${refDataUrls.length} reference image(s)) — THIS IS NON-NEGOTIABLE:`,
-        `- You MUST replicate the part shown in those reference photos. Trace its outline. Copy its opening shape, every vent, every slat, every fin, every return, every crease. Match proportions exactly.`,
-        `- DO NOT invent a generic part. DO NOT substitute a similar-looking aftermarket part. DO NOT idealise or "improve" the design. If you are unsure what the part looks like, look at the reference photos again.`,
-        `- Place the part in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, vented bonnet on the bonnet, etc).`,
-        `- Render the part in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
-        `- Match scale and perspective to the car so it looks like it actually fits.`,
-        `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners — assume it's bonded on.`,
-        `- STRIP all logos, badges, embossed text, brand marks, model names and decals from the part, even if visible in the reference photos.`,
-        ``,
-        `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, no annotations, no split-screen, no text, no watermarks, no inset thumbnails of the reference part.`,
-        NOTES_BLOCK,
-      ].filter(Boolean).join("\n");
+      const onCarPrompt = textOnly
+        ? [
+            `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. No reference photos of the part are provided — you must design it from the description.`,
+            ``,
+            `THE CAR (first image): ${carLabel}${carColor ? ` (${carColor})` : ""}.`,
+            `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
+            `- Do NOT crop the car. The whole car visible in the first image must remain visible with comfortable margin.`,
+            `- The ONLY change to the car is the addition of the part below.`,
+            ``,
+            `THE PART (designed from description): ${partDescription}.`,
+            `- Place it in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, vented bonnet on the bonnet, etc).`,
+            `- Render it in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
+            `- Match scale and perspective so it looks like it actually fits this car.`,
+            `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners. No logos, badges, embossed text or decals.`,
+            ``,
+            `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, annotations, split-screen, text or watermarks.`,
+            NOTES_BLOCK,
+          ].filter(Boolean).join("\n")
+        : [
+            `You are editing the FIRST image (the car) by bonding an aftermarket aero part onto it. The remaining ${refDataUrls.length} image(s) are reference photos of the EXACT PART to add — they show its true silhouette, opening, vents, slats, depth, curvature, edge treatment and proportions.`,
+            ``,
+            `THE CAR (first image): ${carLabel}${carColor ? ` (${carColor})` : ""}.`,
+            `- Output MUST be the same car, same angle, same body colour, same lighting, same background, same wheels, same proportions, same reflections.`,
+            `- Do NOT crop the car. The whole car visible in the first image must remain visible with comfortable margin.`,
+            `- The ONLY change to the car is the addition of the part below.`,
+            ``,
+            `THE PART (remaining ${refDataUrls.length} reference image(s)) — THIS IS NON-NEGOTIABLE:`,
+            `- You MUST replicate the part shown in those reference photos. Trace its outline. Copy its opening shape, every vent, every slat, every fin, every return, every crease. Match proportions exactly.`,
+            `- DO NOT invent a generic part. DO NOT substitute a similar-looking aftermarket part. DO NOT idealise or "improve" the design. If you are unsure what the part looks like, look at the reference photos again.`,
+            `- Place the part in its anatomically correct location on the car (side scoop in the side intake area, front splitter on the front bumper, rear wing on the bootlid, vented bonnet on the bonnet, etc).`,
+            `- Render the part in real glossy 2x2 twill CARBON FIBRE with a clear-coat. Match the car's lighting and reflections so it looks bonded on, not pasted.`,
+            `- Match scale and perspective to the car so it looks like it actually fits.`,
+            `- Do NOT add bolts, rivets, mounting tabs, screws or fasteners — assume it's bonded on.`,
+            `- STRIP all logos, badges, embossed text, brand marks, model names and decals from the part, even if visible in the reference photos.`,
+            ``,
+            `Output: ONE clean photoreal image of the whole car with the part fitted in carbon fibre. No labels, no annotations, no split-screen, no text, no watermarks, no inset thumbnails of the reference part.`,
+            NOTES_BLOCK,
+          ].filter(Boolean).join("\n");
 
       // Car FIRST (it is the canvas being edited by /images/edits), part refs after.
       const onCarRefs = [carRefDataUrl, ...refDataUrls];
