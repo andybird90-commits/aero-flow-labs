@@ -26,7 +26,9 @@ import { useToast } from "@/hooks/use-toast";
 import { PartLasso, type LassoMode, type LassoClick, type LassoPoint } from "@/components/PartLasso";
 import { scoreFidelity, type FidelityResult } from "@/lib/part-fidelity";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ShieldCheck, ShieldAlert, ShieldX, Eye, EyeOff } from "lucide-react";
+import { ShieldCheck, ShieldAlert, ShieldX, Eye, EyeOff, Send } from "lucide-react";
+import { isBodyConforming, FIT_CLASS_DESCRIPTION } from "@/lib/part-classification";
+import { SendToGeometryWorker } from "@/components/SendToGeometryWorker";
 
 interface Props {
   open: boolean;

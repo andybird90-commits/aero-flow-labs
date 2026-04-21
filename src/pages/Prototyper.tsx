@@ -478,6 +478,8 @@ function PausedBanner() {
     </div>
   );
 }
+
+function NewPrototypeDialog(props: {
   open: boolean;
   onOpenChange: (b: boolean) => void;
   title: string;
