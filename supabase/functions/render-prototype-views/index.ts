@@ -28,12 +28,15 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const SURFACE =
   "Render the part as a smooth uniform matte light-grey clay model. " +
-  "ABSOLUTELY NO carbon-fibre weave, NO glossy paint, NO chrome, NO reflections, NO decals, NO logos, NO surface texture. " +
+  "ABSOLUTELY NO carbon-fibre weave, NO glossy paint, NO chrome, NO reflections, NO surface texture. " +
+  "STRIP ALL LOGOS, BADGES, EMBOSSED TEXT, MODEL NAMES, BRAND MARKS, DECALS AND STICKERS — even if clearly visible in the reference photos. The output must be a clean unbranded shape only. " +
   "Just clean smooth geometry with soft even shading so the SHAPE reads clearly.";
 
 const SHELL =
-  "MATERIAL CONSTRUCTION: render this as a moulded composite/fibreglass aero part — the SHELL/WALL itself is thin (~2mm) like a real bonded-on bodykit panel, but the part still has its FULL real-world three-dimensional shape, height, depth, curvature and flare. " +
-  "Do NOT flatten the part into a thin ribbon or strip. Only the visible EDGES (the open-backed inner side) should read as thin sheet material. " +
+  "MATERIAL CONSTRUCTION — THIS IS CRITICAL: render this as a HOLLOW thin-shell moulded composite/fibreglass aero part, like a real bonded-on bodykit panel. " +
+  "The wall thickness is ~2mm. The part is NOT a solid lump or solid wedge. It is a SHELL with an OPEN BACK / CONCAVE INNER CAVITY. " +
+  "Think of it like a plastic mask, a fibreglass scoop, or a vacuum-formed panel — outer surface follows the reference shape, inner surface is a hollow concave cavity that mirrors the outer shape ~2mm inward. " +
+  "The part still has its FULL real-world three-dimensional outer shape, height, depth, curvature and flare — do NOT flatten it into a thin ribbon. " +
   "FIXING METHOD IS NOT YOUR PROBLEM: do NOT add bolt holes, screw holes, fastener heads, rivets, mounting tabs, mounting flanges, brackets or clips. The part will be bonded or bolted on AFTER printing.";
 
 const ANGLES = [
