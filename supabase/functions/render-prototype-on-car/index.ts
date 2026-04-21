@@ -79,9 +79,9 @@ Deno.serve(async (req) => {
       .update({ fit_preview_status: "rendering", fit_preview_error: null })
       .eq("id", prototype_id);
 
-    // Inline both refs as data URLs so OpenAI definitely sees them.
+    // Inline car ref + part refs as data URLs so OpenAI definitely sees them.
     const refDataUrls: string[] = [];
-    for (const url of [carRefUrl, heroUrl]) {
+    for (const url of [carRefUrl, ...partRefUrls]) {
       try {
         const r = await fetch(url);
         if (!r.ok) continue;
@@ -98,12 +98,15 @@ Deno.serve(async (req) => {
     }
 
     const carLabel = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
+    const partRefDescription = heroUrl
+      ? `IMAGE 2 is a clay render of an aftermarket aero part the user is prototyping for that car.`
+      : `The remaining images are reference photos of an aftermarket aero part the user wants fitted to that car.`;
 
     const prompt = [
       `IMAGE 1 is a photo of the user's car: ${carLabel}${car.color ? ` (${car.color})` : ""}.`,
-      `IMAGE 2 is a clay render of an aftermarket aero part the user is prototyping for that car.`,
+      partRefDescription,
       ``,
-      `TASK: Produce a single photoreal image of IMAGE 1's car with the part from IMAGE 2 fitted in its correct location, rendered in real CARBON FIBRE.`,
+      `TASK: Produce a single photoreal image of IMAGE 1's car with the part fitted in its correct location, rendered in real CARBON FIBRE.`,
       ``,
       `Rules:`,
       `- Keep the car in IMAGE 1 unchanged: same angle, same colour, same lighting, same background, same wheels, same proportions.`,
