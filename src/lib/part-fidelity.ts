@@ -219,8 +219,14 @@ export async function scoreFidelity(sourceUrl: string, renderUrl: string): Promi
   const srcData = toCanvas(srcImg, WORK_SIZE);
   const rndData = toCanvas(rndImg, WORK_SIZE);
 
-  const srcMask = otsuMask(srcData);
-  const rndMask = otsuMask(rndData);
+  // Otsu, then take ONLY the largest connected component on each side.
+  // The source crop often contains neighbouring parts (vents, lip etc.) that
+  // the renderer is now explicitly told to ignore; comparing whole masks
+  // would produce a false MISMATCH when the render is correctly single-part.
+  const srcMaskRaw = otsuMask(srcData);
+  const rndMaskRaw = otsuMask(rndData);
+  const srcMask = largestComponent(srcMaskRaw, WORK_SIZE, WORK_SIZE);
+  const rndMask = largestComponent(rndMaskRaw, WORK_SIZE, WORK_SIZE);
 
   // 1) Silhouette IoU — re-centre+rescale both masks to their own bbox so
   // we don't penalise the AI for putting the part dead-centre when the
@@ -232,8 +238,8 @@ export async function scoreFidelity(sourceUrl: string, renderUrl: string): Promi
   const silhouette = maskIoU(srcNorm, rndNorm);
 
   // 2) Outline coverage — Sobel on grayscale, restricted to the part bbox
-  // by zeroing edges outside the mask (so background JPEG noise doesn't
-  // dominate).
+  // by zeroing edges outside the (largest-component) mask so neighbours and
+  // background noise don't dominate.
   const srcGray = toGray(srcData);
   const rndGray = toGray(rndData);
   const srcEdges = maskedEdges(srcGray, srcMask, WORK_SIZE, WORK_SIZE);
