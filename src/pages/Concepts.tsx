@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/StatusChip";
 import {
   useBrief, useConcepts, useUpdateConcept, useDeleteConcept,
-  useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, useStylePreset, type Concept,
+  useBuildAeroKit, useAeroKitStatus, useHeroStlForProject, useStylePreset,
+  useIsolateCarbon, useCarbonStatus, type Concept,
 } from "@/lib/repo";
 import { AeroKitProgress, type AeroKitStatus } from "@/components/AeroKitProgress";
 import { useAuth } from "@/hooks/useAuth";
