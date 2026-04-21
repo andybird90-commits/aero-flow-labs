@@ -59,8 +59,8 @@ const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
     not:   "Do NOT draw a door, rocker panel, wheels, fenders, or any car body. Just the standalone skirt blade, like a parts-catalogue product photo.",
   },
   wide_arch: {
-    what:  "a single bolt-on wheel arch flare (one piece, like an over-fender)",
-    shape: "a curved arc-shaped strip that follows roughly half a wheel-well opening, about 800-1000mm long along the curve, 80-150mm wide, 30-50mm thick. Looks like a thick rainbow / horseshoe shape with mounting tabs",
+    what:  "a single wheel arch flare (one piece, like an over-fender)",
+    shape: "a curved arc-shaped strip that follows roughly half a wheel-well opening, about 800-1000mm long along the curve, 80-150mm wide, 30-50mm thick. Looks like a thick rainbow / horseshoe shape",
     not:   "Do NOT draw a fender, bumper, door, headlights, wheel, tyre, or any car body. Just the standalone arc-shaped flare on a white shop background. NO wheel, NO tyre, NO door.",
   },
   diffuser: {
@@ -79,13 +79,13 @@ const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
     not:   "Do NOT draw a trunk, rear window, taillights, bumper, or any car body. Just the standalone wing + stands + end plates floating, like a GT-wing product photo.",
   },
   bonnet_vent: {
-    what:  "a single bolt-on bonnet (hood) vent insert",
-    shape: "one rectangular louvred vent panel about 240mm long, 120mm wide, 18mm thick, with 4-6 angled parallel louvre slats and a thin mounting flange around the perimeter. Looks like a flat letterbox grill",
+    what:  "a single bonnet (hood) vent insert",
+    shape: "one rectangular louvred vent panel about 240mm long, 120mm wide, 18mm thick, with 4-6 angled parallel louvre slats. Looks like a flat letterbox grill",
     not:   "Do NOT draw a bonnet, hood, engine bay, fender, or any car body. Just the standalone louvred vent insert on a white background.",
   },
   wing_vent: {
-    what:  "a single bolt-on fender (wing) vent insert",
-    shape: "one elongated louvred vent panel about 180mm long, 90mm wide, 14mm thick, with 3-5 angled parallel louvre slats and a thin mounting flange. Smaller and more oval/teardrop in outline than a bonnet vent",
+    what:  "a single fender (wing) vent insert",
+    shape: "one elongated louvred vent panel about 180mm long, 90mm wide, 14mm thick, with 3-5 angled parallel louvre slats. Smaller and more oval/teardrop in outline than a bonnet vent",
     not:   "Do NOT draw a fender, wing panel, door, wheel, or any car body. Just the standalone louvred vent insert on a white background.",
   },
 };
