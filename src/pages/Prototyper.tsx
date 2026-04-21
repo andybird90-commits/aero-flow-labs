@@ -750,16 +750,16 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onClose}><X className="h-4 w-4 mr-1" /> Close</Button>
           <Button variant="outline" onClick={startRender} disabled={isRendering || isMeshing || isFitting || sources.length === 0}>
-            {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length ? (revisionNote.trim() ? "Re-render with note" : "Re-render views") : "Render views"}</>}
+            {isRendering ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Rendering…</> : <><Wand2 className="h-4 w-4 mr-1" /> {renders.length || fitUrl ? (revisionNote.trim() ? "Re-render with note" : "Re-render preview") : "Render preview"}</>}
           </Button>
-          {garageCarId && renders.length > 0 && (
+          {garageCarId && (fitUrl || renders.length > 0) && (
             <Button
               variant="outline"
               onClick={startFit}
               disabled={isRendering || isMeshing || isFitting}
-              title="Composite the part onto your garage car in carbon"
+              title="Re-roll just the on-car carbon composite (keeps clay views)"
             >
-              {isFitting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Fitting…</> : <><Car className="h-4 w-4 mr-1" /> {fitUrl ? "Re-fit on car" : "Show on car"}</>}
+              {isFitting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Fitting…</> : <><Car className="h-4 w-4 mr-1" /> Re-fit on car</>}
             </Button>
           )}
           <Button onClick={startMesh} disabled={isMeshing || isRendering || isFitting || renders.length === 0}>
