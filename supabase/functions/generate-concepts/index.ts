@@ -1,17 +1,25 @@
 /**
  * generate-concepts
  *
- * Given a project + design brief (and optionally a viewer screenshot of the
- * uploaded car), generate 3 styling concept variations using Lovable AI's
- * image model. Each generated image is uploaded to the `concept-renders`
- * bucket and inserted as a `concepts` row tied to the project.
+ * Brief-first concept generator.
+ *
+ * Order of authority for the prompt:
+ *   1. Discipline (time attack / drift / stance / GT / rally / show / street)
+ *   2. Aggression (subtle / moderate / aggressive / extreme)
+ *   3. User free-text brief + must_include / must_avoid
+ *   4. Variation flavour (only used to differentiate the 4 tiles)
+ *   5. Car identity (keep same model + colour)
+ *
+ * Variation labels are generated dynamically from the brief so an aggressive
+ * time-attack brief never gets an "OEM+ refined" tile back.
  *
  * Body shape:
- *   { project_id: string; brief_id: string; snapshot_data_url?: string }
+ *   { project_id; brief_id; snapshot_data_url?; snapshots?;
+ *     variation_index?; extra_modifier?; variation_seed? }
  *
- * Returns either:
- *   { ok: true, queued: true } when the batch is queued in the background
- *   { count: number, concept_ids: string[] } for an internal single-variation run
+ * Returns:
+ *   { ok: true, queued: true } when batched in the background
+ *   { count, concept_ids, variation_index } for an internal single run
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -41,6 +49,10 @@ interface Body {
   snapshot_data_url?: string | null;
   snapshots?: Partial<Record<AngleKey, string | null>>;
   variation_index?: number | null;
+  /** Optional "make this one different" steer for a single regenerated tile. */
+  extra_modifier?: string | null;
+  /** Optional explicit variation spec when regenerating one tile. */
+  variation_seed?: Variation | null;
 }
 
 type Variation = {
@@ -50,31 +62,130 @@ type Variation = {
   emphasis: string;
 };
 
+type Discipline =
+  | "time_attack" | "drift" | "stance" | "gt" | "rally" | "show" | "street" | "auto";
+type Aggression = "subtle" | "moderate" | "aggressive" | "extreme" | "auto";
+
 type GenerationContext = {
   conceptSetId: string | null;
   stylePrompt: string;
   variations: Variation[];
   snaps: Record<AngleKey, string | null>;
+  discipline: Discipline;
+  aggression: Aggression;
+  mustInclude: string[];
+  mustAvoid: string[];
+  vehicleLabel: string;
+  briefText: string;
+  presetMode: boolean;
 };
 
-const VARIATIONS: Variation[] = [
+/* ─── Discipline & aggression baselines ─────────────────────── */
+
+const DISCIPLINE_AERO: Record<Exclude<Discipline, "auto">, string[]> = {
+  time_attack: [
+    "large freestanding rear wing on swan-neck mounts",
+    "deep front splitter with multiple canards/dive planes",
+    "hood vents or louvers",
+    "wide overfenders or fender flares",
+    "side skirts with strakes",
+    "aggressive low stance with the wheels filling the arches",
+  ],
+  drift: [
+    "wide overfenders with rivet detail",
+    "front lip splitter and side skirt extensions",
+    "ducktail or low-mount wing",
+    "low stance with significant negative camber on the rear wheels",
+    "exposed tow hooks",
+  ],
+  stance: [
+    "no big wing — clean rear",
+    "very low ride height, hellaflush wheel fitment",
+    "subtle lip splitter and side skirts",
+    "stretched tyres on wide wheels with aggressive camber",
+  ],
+  gt: [
+    "GT3-style widebody arches front and rear",
+    "deep splitter with end-plates",
+    "tall freestanding rear wing on swan-neck mounts",
+    "full rear diffuser with vertical strakes",
+    "side skirts with motorsport detailing",
+  ],
+  rally: [
+    "wide plastic-look overfenders",
+    "raised ride height with longer-travel suspension",
+    "mud flaps and skid plate",
+    "roof scoop or vents",
+    "auxiliary lights on the front bumper",
+  ],
+  show: [
+    "smoothed body lines, shaved details",
+    "custom widebody or subtle widebody",
+    "show-finish paint or wrap",
+    "deep dished wheels",
+  ],
+  street: [
+    "tasteful lip splitter",
+    "subtle side skirts",
+    "mild ducktail or no wing",
+    "moderate drop on stock-style wheels",
+  ],
+};
+
+const AGGRESSION_TONE: Record<Exclude<Aggression, "auto">, string> = {
+  subtle:
+    "Keep the factory identity intact — restrained OEM+ enhancements, road-friendly, no oversized aero, no flared arches.",
+  moderate:
+    "Noticeably modified but still street-legal — clear lip splitter, mild arches, subtle wing or ducktail.",
+  aggressive:
+    "Heavily modified track-oriented build. Factory identity is secondary to function. Big aero is expected.",
+  extreme:
+    "Full silhouette / wide-body / time-attack build. The OEM car is only a starting point — go all-in on aero, arches and stance.",
+};
+
+/* ─── Heuristic discipline/aggression sniffing ──────────────── */
+
+function sniffDiscipline(text: string, buildType: string | null): Discipline {
+  const t = `${text} ${buildType ?? ""}`.toLowerCase();
+  if (/time[-\s]?attack/.test(t)) return "time_attack";
+  if (/\bdrift/.test(t)) return "drift";
+  if (/\bstance|hellaflush|fitment/.test(t)) return "stance";
+  if (/\bgt[-\s]?(race|3|car)?\b/.test(t)) return "gt";
+  if (/\brally|gravel|tarmac\b/.test(t)) return "rally";
+  if (/\bshow[-\s]?car|sema\b/.test(t)) return "show";
+  if (/\b(daily|street|road)\b/.test(t)) return "street";
+  return "auto";
+}
+
+function sniffAggression(text: string, styleTags: string[]): Aggression {
+  const t = `${text} ${styleTags.join(" ")}`.toLowerCase();
+  if (/\b(extreme|silhouette|max(imal|imum)?|full[-\s]?send|insane|bonkers)\b/.test(t)) return "extreme";
+  if (/\b(aggressive|aggro|wild|hardcore|race|track|time[-\s]?attack|gt[-\s]?3)\b/.test(t)) return "aggressive";
+  if (/\b(subtle|oem\+?|restrained|tasteful|minimal|clean)\b/.test(t)) return "subtle";
+  if (/\b(moderate|noticeable|mild|street usable)\b/.test(t)) return "moderate";
+  return "auto";
+}
+
+/* ─── Static fallback variations (used only when AI variation gen fails) ── */
+
+const FALLBACK_VARIATIONS: Variation[] = [
   {
-    title: "OEM+ refined",
-    direction: "Subtle, road-friendly enhancements that keep the factory identity. Clean splitter, modest skirts, restrained ducktail. No giant wing, no flared arches.",
-    modifier: "OEM+ subtle styling, factory-respectful body kit, clean lines, premium street look, minimal aero",
-    emphasis: "Restraint. The car must still read as a tasteful factory-plus build. Absolutely NO oversized rear wing, NO widebody arches, NO exposed canards.",
+    title: "Hero direction",
+    direction: "Strongest interpretation of the brief — every signature feature is present and dialled in.",
+    modifier: "primary direction body kit, definitive proportions, signature aero",
+    emphasis: "Hit the brief. No restraint unless the brief asks for it.",
   },
   {
-    title: "Track-focused aggression",
-    direction: "Aggressive aero kit with deep front splitter, multiple canards, prominent freestanding rear wing on swan-neck mounts, full rear diffuser. Function over form.",
-    modifier: "aggressive track build, deep front splitter, large freestanding swan-neck rear wing, multiple exposed canards, dive planes, full diffuser, race-inspired bodywork, hood vents",
-    emphasis: "Maximum motorsport aero. The rear wing MUST be large and freestanding (not a ducktail). Visible canards and dive planes on the front bumper are required.",
+    title: "Alternate direction",
+    direction: "Same intent as the hero direction but with a different stylistic flavour (e.g. JDM vs Euro vs GT3).",
+    modifier: "alternative styling vocabulary, same intensity, different cultural reference",
+    emphasis: "Same aggression level as the hero, different visual language.",
   },
   {
-    title: "Widebody GT",
-    direction: "Widebody flared arches front and rear, GT-style splitter, integrated side skirts, motorsport-grade rear wing, aggressive fitment with the wheels filling the new arches.",
-    modifier: "widebody GT aero kit, heavily flared front and rear arches, motorsport rear wing, GT3-inspired bodywork, fitment-focused stance, wide track, lowered ride height",
-    emphasis: "Width. The arches MUST be visibly flared/bolted-on, the track MUST be wider than stock, the wheels MUST fill the new arches. This is a wide car.",
+    title: "Wider / arch-focused",
+    direction: "Lean into width — flared arches front and rear, fitment-focused stance.",
+    modifier: "widebody arches, wide track, fitment-focused stance, lowered ride height",
+    emphasis: "The car must visibly read as wide. Same brief otherwise.",
   },
 ];
 
@@ -198,28 +309,73 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   }
 
   const presetMode = !!preset;
-  const styleTags = presetMode
+  const styleTags: string[] = presetMode
     ? (Array.isArray(preset?.style_tags) ? preset.style_tags : [])
     : (Array.isArray(brief.style_tags) ? brief.style_tags : []);
-  const styleConstraints = presetMode
+  const styleConstraints: string[] = presetMode
     ? (Array.isArray(preset?.constraints) ? preset.constraints : [])
     : (Array.isArray(brief.constraints) ? brief.constraints : []);
-  const buildType = presetMode
+  const buildType: string | null = presetMode
     ? (preset?.build_type || null)
     : (brief.build_type || null);
 
+  // New explicit fields (with sniff fallback for old briefs).
+  const briefText = String(brief.prompt ?? "");
+  let discipline: Discipline = ((brief as any).discipline as Discipline) || "auto";
+  let aggression: Aggression = ((brief as any).aggression as Aggression) || "auto";
+  if (discipline === "auto") discipline = sniffDiscipline(briefText, buildType);
+  if (aggression === "auto") aggression = sniffAggression(briefText, styleTags);
+
+  const mustInclude: string[] = Array.isArray((brief as any).must_include) ? (brief as any).must_include : [];
+  const mustAvoid: string[] = Array.isArray((brief as any).must_avoid) ? (brief as any).must_avoid : [];
+
+  // Build the master style prompt with discipline/aggression up front.
+  const disciplineLine =
+    discipline !== "auto"
+      ? `BUILD DISCIPLINE (highest priority): ${disciplineHumanLabel(discipline)}. Baseline aero/styling expected for this discipline: ${DISCIPLINE_AERO[discipline].join("; ")}.`
+      : "";
+  const aggressionLine =
+    aggression !== "auto"
+      ? `AGGRESSION LEVEL: ${aggression}. ${AGGRESSION_TONE[aggression]}`
+      : "";
+  const includeLine = mustInclude.length ? `MUST INCLUDE: ${mustInclude.join(", ")}.` : "";
+  const avoidLine = mustAvoid.length ? `MUST AVOID: ${mustAvoid.join(", ")}.` : "";
+
   const stylePrompt = [
     vehicleLabel
-      ? `SUBJECT VEHICLE (highest priority — the result MUST be this exact car, no other model): ${vehicleLabel}.`
+      ? `SUBJECT VEHICLE (the result MUST be this exact car, no other model): ${vehicleLabel}.`
       : "",
-    preset?.prompt ? `Style DNA — ${preset.name} (this is the signature kit, apply it to the subject vehicle above): ${preset.prompt}` : "",
-    brief.prompt ? (presetMode ? `Car-specific notes (do not override the style DNA): ${brief.prompt}` : `Project brief: ${brief.prompt}`) : "",
+    disciplineLine,
+    aggressionLine,
+    preset?.prompt ? `Style DNA — ${preset.name}: ${preset.prompt}` : "",
+    briefText
+      ? (presetMode ? `Car-specific notes: ${briefText}` : `User brief: ${briefText}`)
+      : "",
+    includeLine,
+    avoidLine,
     buildType ? `Build type: ${buildType}.` : "",
     styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
     styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
   ].filter(Boolean).join(" ");
 
-  const variations = presetMode ? presetVariations(preset) : VARIATIONS;
+  // If a per-tile seed was supplied (regenerate flow), use just that single
+  // variation. Otherwise build dynamic variations from the brief.
+  let variations: Variation[];
+  if (body.variation_seed) {
+    variations = [body.variation_seed];
+  } else if (presetMode) {
+    variations = presetVariations(preset);
+  } else {
+    variations = await generateDynamicVariations({
+      vehicleLabel,
+      discipline,
+      aggression,
+      briefText,
+      mustInclude,
+      mustAvoid,
+      styleTags,
+    });
+  }
 
   const garageRefs: Partial<Record<AngleKey, string>> = {};
   {
@@ -256,15 +412,106 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
     rear: garageRefs.rear ?? body.snapshots?.rear ?? body.snapshots?.rear_three_quarter ?? null,
   };
 
-  console.log("generate-concepts: snapshots present =",
-    Object.fromEntries(Object.entries(snaps).map(([k, v]) => [k, !!v])));
+  console.log("generate-concepts: discipline=", discipline, "aggression=", aggression,
+    "variations=", variations.map(v => v.title));
 
   return {
     conceptSetId: cs?.id ?? null,
     stylePrompt,
     variations,
     snaps,
+    discipline,
+    aggression,
+    mustInclude,
+    mustAvoid,
+    vehicleLabel,
+    briefText,
+    presetMode,
   };
+}
+
+function disciplineHumanLabel(d: Exclude<Discipline, "auto">): string {
+  return ({
+    time_attack: "Time attack",
+    drift: "Drift",
+    stance: "Stance / fitment",
+    gt: "GT race",
+    rally: "Rally",
+    show: "Show car",
+    street: "Street / daily",
+  } as const)[d];
+}
+
+/* ─── Dynamic variation generation via text model ──────────── */
+
+async function generateDynamicVariations(args: {
+  vehicleLabel: string;
+  discipline: Discipline;
+  aggression: Aggression;
+  briefText: string;
+  mustInclude: string[];
+  mustAvoid: string[];
+  styleTags: string[];
+}): Promise<Variation[]> {
+  const sys =
+    "You are an automotive concept director. Given a build brief, propose 3 distinct " +
+    "styling DIRECTIONS for the same car. Each direction must respect the discipline and " +
+    "aggression — they must NOT differ in aggression. They differ in cultural/stylistic " +
+    "vocabulary (e.g. JDM time attack vs Euro touring vs GT3). Output strict JSON only.";
+
+  const user =
+    `Subject: ${args.vehicleLabel || "(unspecified car)"}\n` +
+    `Discipline: ${args.discipline}\n` +
+    `Aggression: ${args.aggression}\n` +
+    `Brief: ${args.briefText || "(none)"}\n` +
+    (args.mustInclude.length ? `Must include: ${args.mustInclude.join(", ")}\n` : "") +
+    (args.mustAvoid.length ? `Must avoid: ${args.mustAvoid.join(", ")}\n` : "") +
+    (args.styleTags.length ? `Style tags: ${args.styleTags.join(", ")}\n` : "") +
+    `\nReturn JSON: { "variations": [ { "title": string (≤4 words), ` +
+    `"direction": string (1 sentence describing the visual approach), ` +
+    `"modifier": string (concrete aero parts list, comma-separated), ` +
+    `"emphasis": string (1 sentence — what MUST be visible) } x3 ] }`;
+
+  try {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: sys },
+          { role: "user", content: user },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!resp.ok) {
+      console.warn("dynamic variations failed:", resp.status, (await resp.text()).slice(0, 200));
+      return FALLBACK_VARIATIONS;
+    }
+    const data = await resp.json();
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) return FALLBACK_VARIATIONS;
+    const parsed = JSON.parse(content);
+    const out = Array.isArray(parsed?.variations) ? parsed.variations : [];
+    const cleaned = out
+      .filter((v: any) => v?.title && v?.direction && v?.modifier && v?.emphasis)
+      .slice(0, 4)
+      .map((v: any) => ({
+        title: String(v.title).slice(0, 60),
+        direction: String(v.direction).slice(0, 400),
+        modifier: String(v.modifier).slice(0, 400),
+        emphasis: String(v.emphasis).slice(0, 400),
+      })) as Variation[];
+    if (cleaned.length === 0) return FALLBACK_VARIATIONS;
+    return cleaned;
+  } catch (e) {
+    console.warn("dynamic variations exception:", e);
+    return FALLBACK_VARIATIONS;
+  }
 }
 
 async function runSingleVariation({
@@ -295,6 +542,9 @@ async function runSingleVariation({
     referenceImages: frontRefs,
     mode: "from_user_car",
     stylePrompt: context.stylePrompt,
+    aggression: context.aggression,
+    discipline: context.discipline,
+    extraModifier: body.extra_modifier ?? null,
   });
   if (!frontResult) {
     console.warn("Front 3/4 render failed for variation:", v.title);
@@ -314,6 +564,9 @@ async function runSingleVariation({
       referenceImages: refs,
       mode: "from_concept_front",
       stylePrompt: context.stylePrompt,
+      aggression: context.aggression,
+      discipline: context.discipline,
+      extraModifier: body.extra_modifier ?? null,
     });
     return { key: a.key, result };
   }));
@@ -345,6 +598,9 @@ async function runSingleVariation({
       render_rear34_url: byKey.rear_three_quarter ?? null,
       render_rear_url: byKey.rear ?? null,
       ai_notes: context.stylePrompt.slice(0, 500),
+      prompt_used: frontResult.promptUsed,
+      variation_label: v.title,
+      variation_seed: v as any,
     })
     .select("id")
     .single();
@@ -365,6 +621,9 @@ async function renderAngle({
   referenceImages,
   mode,
   stylePrompt,
+  aggression,
+  discipline,
+  extraModifier,
 }: {
   admin: any;
   userId: string;
@@ -374,32 +633,40 @@ async function renderAngle({
   referenceImages: string[];
   mode: "from_user_car" | "from_concept_front";
   stylePrompt: string;
-}): Promise<{ publicUrl: string; dataUrl: string } | null> {
+  aggression: Aggression;
+  discipline: Discipline;
+  extraModifier: string | null;
+}): Promise<{ publicUrl: string; dataUrl: string; promptUsed: string } | null> {
   const hasRef = referenceImages.length > 0;
 
   const carbonFinish =
-    `MATERIAL FINISH (critical): every added/modified aero or styling part — splitter, ` +
+    `MATERIAL FINISH: every added/modified aero or styling part — splitter, ` +
     `lip, canards, side skirts, arch flares, diffuser, ducktail, wing, hood/wing vents — ` +
-    `MUST be finished in glossy 2x2 twill carbon fibre with a clearly visible black weave ` +
-    `pattern and crisp clearcoat reflections. The carbon weave must be obvious at this ` +
-    `viewing distance. The OEM body panels (doors, roof, fenders, bumpers above the splitter) ` +
-    `MUST stay in their original factory paint colour — do NOT paint the whole car carbon, ` +
-    `do NOT paint the whole car black. The carbon parts should visually pop against the ` +
-    `painted body so it is unmistakable which parts are bolt-ons.`;
+    `MUST be finished in glossy 2x2 twill carbon fibre with a clearly visible black weave. ` +
+    `OEM body panels (doors, roof, fenders above the splitter) MUST stay in their original ` +
+    `factory paint colour. The carbon parts should visually pop against the painted body.`;
+
+  // For aggressive/extreme builds we explicitly relax the "preserve identity" rule.
+  const identityRule = aggression === "aggressive" || aggression === "extreme"
+    ? `IDENTITY: keep the same make/model/silhouette so it is still recognisable as the ` +
+      `subject car, but factory identity is SECONDARY to the brief. You ARE allowed to ` +
+      `flare the arches, add a large rear wing, deepen the splitter, vent the hood, and ` +
+      `aggressively lower the stance.`
+    : `IDENTITY: preserve the original car's identity — same make and model, same body shape, ` +
+      `same silhouette, same greenhouse, same headlight/taillight design, same wheelbase, ` +
+      `same overall proportions. Do NOT replace the car with a different model.`;
+
+  const steerLine = extraModifier ? `\nADDITIONAL STEER (apply on top): ${extraModifier}` : "";
 
   const fromUserPrompt =
     `Re-render THE EXACT CAR shown in the reference image with an added ${variation.modifier} body kit, ` +
     `framed as a ${angle.framing}. ` +
-    `CRITICAL: Preserve the original car's identity — same make and model, same body shape, ` +
-    `same silhouette, same greenhouse, same headlight and taillight design, same wheelbase, ` +
-    `same door and window lines, same overall proportions. Do NOT replace the car with a ` +
-    `different model. ` +
-    `Only add or modify bolt-on aero/styling parts (front splitter, side skirts, arches, rear ` +
-    `diffuser, wing, canards) consistent with the styling brief. ` +
+    `${identityRule} ` +
     `\n\nDESIGN DIRECTION (this variation): ${variation.direction} ` +
-    `\nKEY EMPHASIS: ${variation.emphasis} ` +
+    `\nKEY EMPHASIS: ${variation.emphasis}` +
+    steerLine +
     `\n\n${carbonFinish}` +
-    `\n\nUSER BRIEF (highest priority — must be reflected in the result): ${stylePrompt} ` +
+    `\n\nBRIEF (highest priority — every render must reflect this): ${stylePrompt} ` +
     `\n\nStudio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
     `no text, no watermark, no UI overlays.`;
 
@@ -409,20 +676,20 @@ async function renderAngle({
     `silhouette, paint colour, wheels, and body kit details (splitter, skirts, arches, wing, ` +
     `diffuser, canards) — but viewed from a different camera angle: ${angle.framing}. ` +
     `CRITICAL: This must look like the same physical car as the reference, just photographed ` +
-    `from another side. Do NOT change the colour, do NOT change the wheels, do NOT change the ` +
-    `aero kit shapes. The carbon-fibre aero parts in the reference MUST stay carbon-fibre ` +
-    `(glossy 2x2 twill weave) and the OEM painted panels MUST stay their original colour. ` +
-    `Match the reference's lighting style, backdrop, and overall mood. ` +
+    `from another side. Do NOT change colour, wheels, or aero kit shapes. ` +
+    `${carbonFinish} ` +
     `Studio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
     `no text, no watermark, no UI overlays.`;
 
   const textPrompt =
-    `Premium automotive concept render of a custom car body kit, ${angle.framing}. ` +
+    `Premium automotive concept render, ${angle.framing}. ` +
     `${variation.modifier}. ` +
+    `${identityRule} ` +
     `\n\nDESIGN DIRECTION: ${variation.direction} ` +
-    `\nKEY EMPHASIS: ${variation.emphasis} ` +
+    `\nKEY EMPHASIS: ${variation.emphasis}` +
+    steerLine +
     `\n\n${carbonFinish}` +
-    `\n\nUSER BRIEF (highest priority — must be reflected in the result): ${stylePrompt} ` +
+    `\n\nBRIEF (highest priority): ${stylePrompt} ` +
     `\n\nStudio lighting, dark dramatic backdrop, photorealistic, concept design quality, ` +
     `sharp focus, clean reflections, no text, no watermark.`;
 
@@ -495,7 +762,7 @@ async function renderAngle({
   }
 
   const publicUrl = admin.storage.from("concept-renders").getPublicUrl(path).data.publicUrl;
-  return { publicUrl, dataUrl: imgUrl };
+  return { publicUrl, dataUrl: imgUrl, promptUsed: promptText };
 }
 
 async function queueAllVariations({

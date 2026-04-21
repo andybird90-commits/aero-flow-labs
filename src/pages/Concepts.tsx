@@ -14,12 +14,96 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sparkles, Check, X, RefreshCw, Star, Wand2, AlertCircle, MousePointer2, Maximize2, Layers, Download, ChevronLeft, ChevronRight, Boxes,
+  Sparkles, Check, X, RefreshCw, Star, Wand2, AlertCircle, MousePointer2, Maximize2, Layers, Download, ChevronLeft, ChevronRight, Boxes, Flame, FileText,
 } from "lucide-react";
+import { useToast as useToastHook } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { PartHotspotOverlay, type ViewKey } from "@/components/PartHotspotOverlay";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+
+function ConceptRegenAndPrompt({ concept, projectId }: { concept: Concept; projectId: string }) {
+  const { toast } = useToastHook();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<null | "more" | "different">(null);
+
+  const regen = async (mode: "more" | "different") => {
+    const brief = await supabase.from("design_briefs")
+      .select("id").eq("project_id", projectId).limit(1).maybeSingle();
+    if (!brief.data?.id) {
+      toast({ title: "No brief found", variant: "destructive" });
+      return;
+    }
+    const seed = (concept as any).variation_seed && Object.keys((concept as any).variation_seed).length
+      ? (concept as any).variation_seed
+      : {
+          title: concept.title,
+          direction: concept.direction ?? "",
+          modifier: concept.title,
+          emphasis: concept.direction ?? "",
+        };
+    const extra = mode === "more"
+      ? "Push significantly more aggressive: bigger wing, deeper splitter, wider arches, lower stance. Do not tone down."
+      : "Take this in a different stylistic direction (different cultural reference) but keep the same aggression level.";
+    setBusy(mode);
+    try {
+      const { error } = await supabase.functions.invoke("generate-concepts", {
+        body: {
+          project_id: projectId,
+          brief_id: brief.data.id,
+          variation_index: 0,
+          variation_seed: seed,
+          extra_modifier: extra,
+        },
+      });
+      if (error) throw error;
+      toast({ title: "Regenerating tile…", description: "A new concept will appear shortly." });
+    } catch (e: any) {
+      toast({ title: "Regenerate failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const promptUsed = (concept as any).prompt_used as string | null;
+
+  return (
+    <div className="pt-2 border-t border-border space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => regen("more")}
+          disabled={!!busy}
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-1 px-2 py-1 text-[10px] text-mono uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60"
+        >
+          {busy === "more" ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Flame className="h-3 w-3" />} More aggressive
+        </button>
+        <button
+          type="button"
+          onClick={() => regen("different")}
+          disabled={!!busy}
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-1 px-2 py-1 text-[10px] text-mono uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60"
+        >
+          {busy === "different" ? <RefreshCw className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Different direction
+        </button>
+        {promptUsed && (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-1 px-2 py-1 text-[10px] text-mono uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <FileText className="h-3 w-3" /> {open ? "Hide prompt" : "View prompt"}
+          </button>
+        )}
+      </div>
+      {open && promptUsed && (
+        <pre className="text-[10px] text-muted-foreground bg-surface-1 border border-border rounded-md p-2 max-h-40 overflow-auto whitespace-pre-wrap">
+          {promptUsed}
+        </pre>
+      )}
+    </div>
+  );
+}
 
 export default function Concepts() {
   return (
@@ -542,6 +626,8 @@ function ConceptCard({
             Click any highlighted part → downloads as STL
           </div>
         )}
+
+        <ConceptRegenAndPrompt concept={concept} projectId={projectId} />
 
         {/* Boolean aero-kit trigger — only when project has a manifold hero STL. */}
         {(concept.status === "approved" || concept.status === "favourited") && (

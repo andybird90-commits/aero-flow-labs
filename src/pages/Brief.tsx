@@ -9,7 +9,7 @@ import { useBrief, useUpsertBrief, useStylePresets, type DesignBrief } from "@/l
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette, Upload, X, Loader2 } from "lucide-react";
+import { ArrowRight, Save, Tag, Wrench, RefreshCw, Palette, Upload, X, Loader2, Flame, Target } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,30 @@ const STYLE_TAGS = [
 ];
 
 const BUILD_TYPES = ["Daily/street", "Track day", "Time attack", "GT race", "Show car"];
+
+const DISCIPLINES = [
+  { value: "auto",        label: "Auto-detect" },
+  { value: "time_attack", label: "Time attack" },
+  { value: "drift",       label: "Drift" },
+  { value: "stance",      label: "Stance" },
+  { value: "gt",          label: "GT race" },
+  { value: "rally",       label: "Rally" },
+  { value: "show",        label: "Show car" },
+  { value: "street",      label: "Street" },
+];
+
+const AGGRESSIONS = [
+  { value: "auto",       label: "Auto" },
+  { value: "subtle",     label: "Subtle" },
+  { value: "moderate",   label: "Moderate" },
+  { value: "aggressive", label: "Aggressive" },
+  { value: "extreme",    label: "Extreme" },
+];
+
+const AERO_FEATURES = [
+  "Big rear wing", "Wide body", "Front splitter", "Canards",
+  "Diffuser", "Hood vents", "Roof scoop", "Side skirts", "Ducktail",
+];
 
 const CONSTRAINTS = [
   "Keep factory headlights",
@@ -56,6 +80,10 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [referencePaths, setReferencePaths] = useState<string[]>([]);
   const [refUrls, setRefUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
+  const [discipline, setDiscipline] = useState<string>("auto");
+  const [aggression, setAggression] = useState<string>("auto");
+  const [mustInclude, setMustInclude] = useState<string[]>([]);
+  const [mustAvoid, setMustAvoid] = useState<string[]>([]);
 
   const MAX_REFS = 5;
   const activePreset = presets.find((p) => p.id === stylePresetId) ?? null;
@@ -69,6 +97,10 @@ function BriefInner({ projectId }: { projectId: string }) {
       setRights(brief.rights_confirmed ?? false);
       setStylePresetId((brief as any).style_preset_id ?? null);
       setReferencePaths(brief.reference_image_paths ?? []);
+      setDiscipline(((brief as any).discipline as string) || "auto");
+      setAggression(((brief as any).aggression as string) || "auto");
+      setMustInclude(((brief as any).must_include as string[]) ?? []);
+      setMustAvoid(((brief as any).must_avoid as string[]) ?? []);
     }
   }, [brief]);
 
@@ -166,6 +198,10 @@ function BriefInner({ projectId }: { projectId: string }) {
         rights_confirmed: rights,
         style_preset_id: stylePresetId,
         reference_image_paths: referencePaths,
+        discipline: discipline === "auto" ? null : discipline,
+        aggression: aggression === "auto" ? null : aggression,
+        must_include: mustInclude,
+        must_avoid: mustAvoid,
       } as any,
     });
     setCustomConstraint("");
@@ -266,6 +302,116 @@ function BriefInner({ projectId }: { projectId: string }) {
           rows={activePreset ? 4 : 6}
           className="bg-surface-1 border-border"
         />
+      </div>
+
+      <div className="glass rounded-xl p-5 space-y-4">
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <Target className="h-3 w-3" /> Discipline
+            </label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {DISCIPLINES.map((d) => {
+                const on = discipline === d.value;
+                return (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => setDiscipline(d.value)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs transition-colors",
+                      on
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-surface-1 text-muted-foreground hover:text-foreground hover:border-border/80",
+                    )}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <Flame className="h-3 w-3" /> Aggression
+            </label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {AGGRESSIONS.map((a) => {
+                const on = aggression === a.value;
+                return (
+                  <button
+                    key={a.value}
+                    type="button"
+                    onClick={() => setAggression(a.value)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs transition-colors",
+                      on
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-surface-1 text-muted-foreground hover:text-foreground hover:border-border/80",
+                    )}
+                  >
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-border">
+          <div>
+            <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Must include</label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {AERO_FEATURES.map((f) => {
+                const on = mustInclude.includes(f);
+                const blocked = mustAvoid.includes(f);
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    disabled={blocked}
+                    onClick={() => toggle(mustInclude, f, setMustInclude)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs transition-colors",
+                      on
+                        ? "border-success bg-success/10 text-success"
+                        : "border-border bg-surface-1 text-muted-foreground hover:text-foreground hover:border-border/80",
+                      blocked && "opacity-30 cursor-not-allowed",
+                    )}
+                  >
+                    {f}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Must avoid</label>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {AERO_FEATURES.map((f) => {
+                const on = mustAvoid.includes(f);
+                const blocked = mustInclude.includes(f);
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    disabled={blocked}
+                    onClick={() => toggle(mustAvoid, f, setMustAvoid)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs transition-colors",
+                      on
+                        ? "border-destructive bg-destructive/10 text-destructive"
+                        : "border-border bg-surface-1 text-muted-foreground hover:text-foreground hover:border-border/80",
+                      blocked && "opacity-30 cursor-not-allowed",
+                    )}
+                  >
+                    {f}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="glass rounded-xl p-5 space-y-4">
