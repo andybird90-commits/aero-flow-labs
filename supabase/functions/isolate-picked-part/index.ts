@@ -59,50 +59,53 @@ const BODY_INTEGRATED_PARTS = new Set<string>([
 ]);
 
 /**
- * Per-kind erasure prompts. Same structure: describe the part, tell the
- * model exactly what to *remove* (bodywork, wheels, ground), tell it to
- * keep the part's silhouette unchanged. Backdrop is the same neutral
- * studio grey as our concept renders so downstream stages see a familiar
- * input distribution.
+ * Per-kind erasure prompts.
+ *
+ * IMPORTANT — what the model must NOT do:
+ *   1. Do NOT invent a back surface, interior, or any geometry that wasn't
+ *      visible in the source. The output is a flat cutout from one viewing
+ *      angle, like a sticker. Downstream Rodin handles the 3D inference.
+ *   2. Do NOT delete pieces of the target part that are partially OVERLAPPED
+ *      by other parts (e.g. canards covering an arch). Treat the overlapped
+ *      region as part of the target — fill in the implied curve/edge so the
+ *      target's silhouette stays continuous.
+ *   3. Do NOT rotate, mirror, restyle, smooth or "clean up" the part. Pixels
+ *      stay where they were; only the surrounding bodywork changes.
+ *
+ * Backdrop matches our concept renders (neutral light grey) so downstream
+ * stages see a familiar input distribution.
  */
+const ERASE_RULES =
+  "STRICT RULES:\n" +
+  "• Output a FLAT 2D CUTOUT from the SAME viewing angle as the source. Do NOT add a back side, interior, underside, or any new angle of the part.\n" +
+  "• If another part (e.g. a canard, mirror, badge) overlaps the target, RECONSTRUCT the missing edge of the target so its silhouette is unbroken — do NOT punch a hole where the overlap was.\n" +
+  "• Pixels of the target part stay in their original position, scale and orientation. No rotation, no mirroring, no perspective change.\n" +
+  "• Do NOT smooth, simplify, symmetrise, restyle or re-light the part. Keep its exact surface detail, shadows and material.\n" +
+  "• Replace ONLY the surrounding car body, wheels, tyres, ground and background with a clean neutral light-grey studio backdrop (#E5E5E5, smooth, faint contact shadow under the part only).\n" +
+  "• No logos, watermarks, text, additional lights or reflections.";
+
 const ERASURE_PROMPT: Record<string, string> = {
   splitter:
-    "Isolate the FRONT SPLITTER (the flat horizontal aero blade under the bumper). " +
-    "Erase the front bumper, headlights, grille, wheels, tyres, ground and any background. " +
-    "Keep the splitter's exact silhouette, depth and surface detail unchanged.",
+    "Target part: FRONT SPLITTER — the flat horizontal aero blade under the bumper.",
   lip:
-    "Isolate the FRONT LIP (the thin lip protruding under the bumper). " +
-    "Erase the bumper, grille, headlights, wheels, ground and background. " +
-    "Keep the lip's exact silhouette and curvature.",
+    "Target part: FRONT LIP — the thin curved lip protruding under the front bumper.",
   canard:
-    "Isolate the CANARDS (small angled aero fins on the bumper corner). " +
-    "Erase the bumper, headlights, wheel and any other car body. " +
-    "Keep the canards' exact shape, angle and stack count.",
+    "Target part: CANARDS — small angled aero fins on the front bumper corner.",
   side_skirt:
-    "Isolate the SIDE SKIRT (the aero panel running along the bottom of the doors). " +
-    "Erase the doors, sills, wheels, tyres, ground and background. " +
-    "Keep the skirt's full length, depth profile and any winglets/end caps unchanged.",
+    "Target part: SIDE SKIRT — the aero panel running along the bottom of the doors.",
   wide_arch:
-    "Isolate ONLY the FENDER FLARE / WIDE ARCH (the bulged arch lip that surrounds the wheel). " +
-    "Erase the wheel, tyre, door, fender panel inboard of the flare, ground and background. " +
-    "Keep the arch's curvature, flare width and any rivets or trim unchanged. " +
-    "The result must look like a single arch lip floating on a neutral backdrop.",
+    "Target part: FENDER FLARE / WIDE ARCH — the bulged arch lip that surrounds the wheel. " +
+    "Keep the FULL arch, including any section that other parts (e.g. canards, side skirts, mirrors) sit in front of.",
   front_arch:
-    "Isolate ONLY the FRONT FENDER FLARE (the bulged arch lip around the front wheel). " +
-    "Erase the wheel, tyre, door, fender panel inboard of the flare, ground and background. " +
-    "Keep the arch's curvature, flare width and rivets unchanged.",
+    "Target part: FRONT FENDER FLARE — the bulged arch lip around the front wheel. " +
+    "Keep the FULL arch even if canards, side skirts or mirrors overlap it — reconstruct the implied edge.",
   rear_arch:
-    "Isolate ONLY the REAR FENDER FLARE (the bulged arch lip around the rear wheel). " +
-    "Erase the wheel, tyre, quarter panel inboard of the flare, ground and background. " +
-    "Keep the arch's curvature, flare width and rivets unchanged.",
+    "Target part: REAR FENDER FLARE — the bulged arch lip around the rear wheel. " +
+    "Keep the FULL arch even if side skirts, ducktails or exhaust tips overlap it — reconstruct the implied edge.",
   bonnet_vent:
-    "Isolate the BONNET VENT (the louvred opening or scoop cut into the hood). " +
-    "Erase the surrounding hood panel, windscreen, headlights and background. " +
-    "Keep the vent's louvre count, shape and depth.",
+    "Target part: BONNET VENT — the louvred opening or scoop cut into the hood.",
   wing_vent:
-    "Isolate the WING VENT (the louvred vent on the front fender behind the wheel). " +
-    "Erase the fender panel, wheel, door and background. " +
-    "Keep the vent's louvre count and outline.",
+    "Target part: WING VENT — the louvred vent on the front fender behind the wheel.",
 };
 
 Deno.serve(async (req) => {
@@ -209,15 +212,13 @@ Deno.serve(async (req) => {
       const partLabel = body.part_label || body.part_kind.replace(/[_-]+/g, " ");
 
       const prompt =
-        `Edit this image to ISOLATE just one car body part for use as a 3D-meshing reference.\n\n` +
+        `Edit this image to ISOLATE one car body part on a clean backdrop. ` +
+        `The output is a SINGLE-VIEW reference image — downstream 3D software handles depth and back-side inference, ` +
+        `so you MUST NOT invent a back surface, interior, underside, or any new angle of the part. ` +
+        `Treat your output like a flat sticker cut from the source photo.\n\n` +
         `${ERASURE_PROMPT[body.part_kind]}\n\n` +
-        `Output requirements:\n` +
-        `• Keep the part's silhouette, scale, position and surface detail PIXEL-IDENTICAL.\n` +
-        `• Replace everything that is NOT the ${partLabel} with a clean, neutral light-grey ` +
-        `studio backdrop (#E5E5E5, smooth, no gradient, no shadows beyond a faint contact shadow).\n` +
-        `• Do not stylise, smooth, simplify, mirror or symmetrise the part.\n` +
-        `• Do not add new geometry, lights, logos, watermarks, text or reflections.\n` +
-        `• Keep the part centred and the same orientation it had in the source image.`;
+        `${ERASE_RULES}\n\n` +
+        `(Target part name for reference: ${partLabel}.)`;
 
       const erase = await lovableGenerateImageWithFallback({
         apiKey: LOVABLE_API_KEY,
