@@ -418,6 +418,7 @@ function PrototypeWorkspace({ prototype, onClose }: { prototype: Prototype | nul
   const { toast } = useToast();
   const [meshProgress, setMeshProgress] = useState(0);
   const [busy, setBusy] = useState<"render" | "mesh" | null>(null);
+  const [revisionNote, setRevisionNote] = useState("");
   const mountRef = useRef<HTMLDivElement>(null);
 
   const sources = useMemo(() => ((prototype?.source_image_urls as string[]) ?? []), [prototype]);
