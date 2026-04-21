@@ -205,7 +205,11 @@ export function ExtractedPartPreview({
         const url = (data as any)?.isolated_url as string | undefined;
         if (!url) throw new Error("No isolated URL returned");
         setIsolatedUrl(url);
-        runRender(signal, true, url);
+        // IMPORTANT: do NOT pass the isolating effect's cancellation signal into
+        // runRender. Switching stage to "rendering" causes this effect to
+        // clean up immediately, which was cancelling a successful 200 response
+        // before the extracted image ever reached React state.
+        void runRender(undefined, true, url);
       } catch (e: any) {
         if (signal.cancelled) return;
         const msg = String(e.message ?? e);
