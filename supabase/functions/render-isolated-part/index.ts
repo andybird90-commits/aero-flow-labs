@@ -269,7 +269,11 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-3-pro-image-preview",
+            // Flash-image-preview is ~5-10s vs Pro's 60-150s, with comparable
+            // quality for clay-style product shots. Pro was timing out the
+            // edge function (150s wall clock) and leaving the UI stuck on
+            // "Drawing…" forever.
+            model: "google/gemini-3.1-flash-image-preview",
             messages: [{ role: "user", content: userContent }],
             modalities: ["image", "text"],
           }),
