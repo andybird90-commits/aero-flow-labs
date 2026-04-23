@@ -52,24 +52,10 @@ Deno.serve(async (req) => {
       return json({ error: "concept_id and part_kind required" }, 400);
     }
 
-    // Server-side guard: body-conforming kinds must go through the Blender
-    // geometry worker, not Rodin. Keep this list in sync with
-    // src/lib/part-classification.ts.
-    const BODY_CONFORMING = new Set([
-      "side_scoop", "scoop",
-      "front_arch", "rear_arch", "fender_flare", "arch",
-      "side_skirt", "skirt",
-      "bonnet_vent",
-      "front_lip", "lip",
-    ]);
-    const k = part_kind.toLowerCase().trim();
-    const isBodyConforming = BODY_CONFORMING.has(k) ||
-      [...BODY_CONFORMING].some((bc) => k.includes(bc));
-    if (action === "start" && isBodyConforming) {
-      return json({
-        error: `Part kind "${part_kind}" is body-conforming and must be fitted via the geometry worker (dispatch-geometry-job), not image-to-3D.`,
-      }, 422);
-    }
+    // NOTE: Body-conforming parts (arches, skirts, scoops, lips) used to be
+    // blocked here and routed straight to the Blender worker. We now mesh them
+    // with Rodin first to produce a 3D template, then hand THAT template to
+    // Blender for fitting. Order: Isolated → Extracted → 3D modelled → Blendered.
 
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {

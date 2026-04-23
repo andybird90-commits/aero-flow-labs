@@ -707,9 +707,11 @@ export function ExtractedPartPreview({
             {stage === "isolating" && "Isolating the picked part — erasing the rest of the car so the AI only sees what you chose…"}
             {stage === "pretrim"   && "Optional: lasso the part on the original image so the AI only sees that crop. Or skip and render the full view."}
             {stage === "rendering" && "Drawing the part on a clean white background…"}
-            {stage === "review"    && "Review the render. Regenerate if it looks generic, or turn it into a 3D model."}
+            {stage === "review"    && "Review the extracted render. Regenerate if it looks generic, or turn it into a 3D model."}
             {stage === "meshing"   && "Building 3D mesh — usually 1-3 minutes."}
-            {stage === "ready"     && "Mesh ready. Spin it around, then download."}
+            {stage === "ready"     && (bodyConforming
+              ? "3D template ready. Spin it around, download it, or fit it to the car body in Blender."
+              : "Mesh ready. Spin it around, then download.")}
             {stage === "error"     && "Something went wrong. See details below."}
           </DialogDescription>
         </DialogHeader>
@@ -1034,12 +1036,10 @@ export function ExtractedPartPreview({
                   <Undo2 className="h-4 w-4 mr-1" /> Use original
                 </Button>
               )}
-              {/* Body-conforming kinds bypass image-to-3D entirely. */}
-              {bodyConforming ? (
-                <Button onClick={() => setGeometryDialogOpen(true)}>
-                  <Send className="h-4 w-4 mr-1" /> Send to geometry worker
-                </Button>
-              ) : fidelity?.status === "mismatch" && !overrideFidelity ? (
+              {/* All parts (including body-conforming) go through Rodin first
+                  to get a 3D template. Body-conforming parts then get an extra
+                  "Fit to body" step in the ready stage. */}
+              {fidelity?.status === "mismatch" && !overrideFidelity ? (
                 <Button
                   variant="outline"
                   onClick={() => setOverrideFidelity(true)}
@@ -1068,9 +1068,15 @@ export function ExtractedPartPreview({
               <Button variant="outline" onClick={() => { const u = glbUrl; setGlbUrl(null); setTimeout(() => setGlbUrl(u), 50); }}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Reload viewer
               </Button>
-              <Button onClick={onDownload}>
+              <Button variant="outline" onClick={onDownload}>
                 <Download className="h-4 w-4 mr-1" /> Download STL
               </Button>
+              {/* Body-conforming parts: fit the freshly-meshed template to the car body in Blender. */}
+              {bodyConforming && (
+                <Button onClick={() => setGeometryDialogOpen(true)}>
+                  <Send className="h-4 w-4 mr-1" /> Fit to body in Blender
+                </Button>
+              )}
             </>
           )}
 
