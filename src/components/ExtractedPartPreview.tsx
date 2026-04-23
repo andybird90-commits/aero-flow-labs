@@ -106,6 +106,8 @@ export function ExtractedPartPreview({
         .maybeSingle();
       if (cancelled || !cp?.project_id) return;
       setProjectId(cp.project_id);
+
+      // 1) Prefer a per-project geometry if one exists.
       const { data: geo } = await supabase
         .from("geometries")
         .select("stl_path")
@@ -113,10 +115,34 @@ export function ExtractedPartPreview({
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (cancelled || !geo?.stl_path) return;
+      if (geo?.stl_path) {
+        const { data: signed } = await supabase.storage
+          .from("geometries")
+          .createSignedUrl(geo.stl_path, 60 * 60);
+        if (!cancelled && signed?.signedUrl) {
+          setBaseMeshUrl(signed.signedUrl);
+          return;
+        }
+      }
+
+      // 2) Fall back to the car template's saved STL (Settings → Car STLs).
+      const { data: proj } = await supabase
+        .from("projects")
+        .select("car_id, cars(template_id)")
+        .eq("id", cp.project_id)
+        .maybeSingle();
+      const templateId = (proj as any)?.cars?.template_id as string | undefined;
+      if (cancelled || !templateId) return;
+      const { data: cs } = await supabase
+        .from("car_stls")
+        .select("repaired_stl_path, stl_path")
+        .eq("car_template_id", templateId)
+        .maybeSingle();
+      const path = cs?.repaired_stl_path ?? cs?.stl_path;
+      if (cancelled || !path) return;
       const { data: signed } = await supabase.storage
-        .from("geometries")
-        .createSignedUrl(geo.stl_path, 60 * 60);
+        .from("car-stls")
+        .createSignedUrl(path, 60 * 60);
       if (!cancelled && signed?.signedUrl) setBaseMeshUrl(signed.signedUrl);
     })();
     return () => { cancelled = true; };
