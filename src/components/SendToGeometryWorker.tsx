@@ -10,7 +10,7 @@
  * download links. The fitted result also lands in `/library` automatically
  * via the `sync_geometry_job_library_items` trigger.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Send, Download, AlertTriangle, CheckCircle2, ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useDispatchGeometryJob, useGeometryJob } from "@/lib/geometry-jobs";
+import { useDispatchGeometryJob, useGeometryJob, useRefreshGeometryJob } from "@/lib/geometry-jobs";
 import { MOUNT_ZONES } from "@/lib/prototyper/mount-zones";
 import { FIT_CLASS_DESCRIPTION } from "@/lib/part-classification";
 
@@ -44,18 +44,57 @@ export function SendToGeometryWorker({
 }: Props) {
   const { toast } = useToast();
   const dispatch = useDispatchGeometryJob();
+  const refresh = useRefreshGeometryJob();
+  const refreshErrorRef = useRef<string | null>(null);
   const [zone, setZone] = useState<string>("front_quarter");
   const [side, setSide] = useState<"left" | "right" | "center">("left");
   const [wallThickness, setWallThickness] = useState("2.0");
   const [offset, setOffset] = useState("1.5");
   const [jobId, setJobId] = useState<string | null>(null);
   const job = useGeometryJob(jobId);
+  const status = job.data?.status;
 
   useEffect(() => {
     if (!open) {
       setJobId(null);
+      refreshErrorRef.current = null;
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!jobId || status === "succeeded" || status === "failed") return;
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    const poll = async () => {
+      try {
+        await refresh.mutateAsync(jobId);
+        refreshErrorRef.current = null;
+      } catch (e: any) {
+        const message = String(e?.message ?? e);
+        if (refreshErrorRef.current !== message) {
+          refreshErrorRef.current = message;
+          toast({
+            title: "Status refresh failed",
+            description: message,
+            variant: "destructive",
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(poll, 4000);
+        }
+      }
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [jobId, refresh, status, toast]);
 
   const onSubmit = async () => {
     if (!baseMeshUrl) {
@@ -96,7 +135,6 @@ export function SendToGeometryWorker({
     }
   };
 
-  const status = job.data?.status;
   const outputs = job.data?.outputs ?? {};
   const stlUrl = (outputs.fitted_stl_url ?? outputs.stl_url) as string | undefined;
   const glbUrl = outputs.glb_url as string | undefined;
