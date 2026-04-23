@@ -136,40 +136,58 @@ export function SendToGeometryWorker({
     };
   }, [open, conceptId, partKind, partTemplateUrl]);
 
+  // Keep a stable ref to the mutation so the effect doesn't re-subscribe on every render.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+
   useEffect(() => {
-    if (!jobId || status === "succeeded" || status === "failed") return;
+    if (!jobId) return;
+    if (status === "succeeded" || status === "failed") return;
 
     let cancelled = false;
     let timeoutId: number | null = null;
+    let consecutiveErrors = 0;
 
     const poll = async () => {
+      if (cancelled) return;
+      let nextDelay = 5000;
       try {
-        await refresh.mutateAsync(jobId);
+        await refreshRef.current.mutateAsync(jobId);
         refreshErrorRef.current = null;
+        consecutiveErrors = 0;
       } catch (e: any) {
+        consecutiveErrors += 1;
         const message = String(e?.message ?? e);
         if (refreshErrorRef.current !== message) {
           refreshErrorRef.current = message;
-          toast({
+          toastRef.current({
             title: "Status refresh failed",
             description: message,
             variant: "destructive",
           });
         }
-      } finally {
-        if (!cancelled) {
-          timeoutId = window.setTimeout(poll, 4000);
+        // Back off on errors; stop entirely after 5 in a row to avoid spamming.
+        if (consecutiveErrors >= 5) {
+          return;
         }
+        nextDelay = Math.min(60000, 5000 * 2 ** (consecutiveErrors - 1));
+      }
+      if (!cancelled) {
+        timeoutId = window.setTimeout(poll, nextDelay);
       }
     };
 
-    void poll();
+    // First poke after a short delay so we don't double-fire with the
+    // useGeometryJob refetchInterval that just ran.
+    timeoutId = window.setTimeout(poll, 1000);
 
     return () => {
       cancelled = true;
       if (timeoutId) window.clearTimeout(timeoutId);
     };
-  }, [jobId, refresh, status, toast]);
+  }, [jobId, status]);
 
   const onSubmit = async () => {
     if (!baseMeshUrl) {
