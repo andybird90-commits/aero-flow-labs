@@ -1,5 +1,5 @@
-"""
-BodyKit Studio — local Blender worker.
+r"""
+BodyKit Studio - local Blender worker.
 
 Outputs are POSTed back to the Lovable Cloud edge function
 `upload-blender-output`, which holds the service-role key and stores files
