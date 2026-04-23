@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Send, Download, AlertTriangle, CheckCircle2, ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { useDispatchGeometryJob, useGeometryJob, useRefreshGeometryJob } from "@/lib/geometry-jobs";
 import { MOUNT_ZONES } from "@/lib/prototyper/mount-zones";
 import { FIT_CLASS_DESCRIPTION } from "@/lib/part-classification";
@@ -39,6 +40,8 @@ interface Props {
   partTemplateUrl?: string | null;
 }
 
+type TemplateLookupState = "idle" | "loading" | "ready" | "missing";
+
 export function SendToGeometryWorker({
   open, onClose, conceptId, projectId, partKind, partLabel, baseMeshUrl, partTemplateUrl,
 }: Props) {
@@ -51,6 +54,10 @@ export function SendToGeometryWorker({
   const [wallThickness, setWallThickness] = useState("2.0");
   const [offset, setOffset] = useState("1.5");
   const [jobId, setJobId] = useState<string | null>(null);
+  const [resolvedTemplateUrl, setResolvedTemplateUrl] = useState<string | null>(partTemplateUrl ?? null);
+  const [templateLookupState, setTemplateLookupState] = useState<TemplateLookupState>(
+    partTemplateUrl ? "ready" : "idle",
+  );
   const job = useGeometryJob(jobId);
   const status = job.data?.status;
 
@@ -60,6 +67,74 @@ export function SendToGeometryWorker({
       refreshErrorRef.current = null;
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    if (partTemplateUrl) {
+      setResolvedTemplateUrl(partTemplateUrl);
+      setTemplateLookupState("ready");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadFallbackTemplate = async () => {
+      setTemplateLookupState("loading");
+      setResolvedTemplateUrl(null);
+
+      try {
+        if (conceptId) {
+          const { data: currentPart } = await supabase
+            .from("concept_parts")
+            .select("glb_url")
+            .eq("concept_id", conceptId)
+            .eq("kind", partKind)
+            .maybeSingle();
+
+          if (!cancelled && currentPart?.glb_url) {
+            setResolvedTemplateUrl(currentPart.glb_url);
+            setTemplateLookupState("ready");
+            return;
+          }
+        }
+
+        const { data: libraryItems, error } = await (supabase as any)
+          .from("library_items")
+          .select("asset_url, asset_mime, updated_at")
+          .eq("kind", "concept_part_mesh")
+          .contains("metadata", { kind: partKind })
+          .not("asset_url", "is", null)
+          .order("updated_at", { ascending: false })
+          .limit(10);
+
+        if (error) throw error;
+        if (cancelled) return;
+
+        const candidates = (libraryItems ?? []) as Array<{ asset_url: string; asset_mime?: string | null }>;
+        const preferred = candidates.find((item) => item.asset_mime === "model/stl") ?? candidates[0];
+
+        if (preferred?.asset_url) {
+          setResolvedTemplateUrl(preferred.asset_url);
+          setTemplateLookupState("ready");
+          return;
+        }
+
+        setTemplateLookupState("missing");
+      } catch (e) {
+        console.error("Template lookup failed", e);
+        if (!cancelled) {
+          setTemplateLookupState("missing");
+        }
+      }
+    };
+
+    void loadFallbackTemplate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, conceptId, partKind, partTemplateUrl]);
 
   useEffect(() => {
     if (!jobId || status === "succeeded" || status === "failed") return;
@@ -105,6 +180,16 @@ export function SendToGeometryWorker({
       });
       return;
     }
+
+    if (!resolvedTemplateUrl) {
+      toast({
+        title: "No part template",
+        description: `No saved ${partLabel.toLowerCase()} template mesh was found yet, so the worker has nothing to fit to the car body.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       const id = await dispatch.mutateAsync({
         concept_id: conceptId,
@@ -115,7 +200,7 @@ export function SendToGeometryWorker({
         job_type: "fit_part_to_zone",
         inputs: {
           base_mesh_url: baseMeshUrl,
-          part_template_url: partTemplateUrl ?? null,
+          part_template_url: resolvedTemplateUrl,
           zone,
           side,
           params: {
@@ -139,6 +224,9 @@ export function SendToGeometryWorker({
   const stlUrl = (outputs.fitted_stl_url ?? outputs.stl_url) as string | undefined;
   const glbUrl = outputs.glb_url as string | undefined;
   const previewUrl = outputs.preview_png_url as string | undefined;
+  const missingBaseMesh = !baseMeshUrl;
+  const missingTemplate = !resolvedTemplateUrl;
+  const isDispatchDisabled = dispatch.isPending || missingBaseMesh || missingTemplate || templateLookupState === "loading";
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -157,13 +245,37 @@ export function SendToGeometryWorker({
 
         {!jobId ? (
           <div className="space-y-4 text-sm">
-            {!baseMeshUrl && (
+            {missingBaseMesh && (
               <div className="rounded-md border border-warning/40 bg-warning/10 text-warning text-xs p-3 inline-flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <div>
                   No base car mesh saved on this project. Add one in Garage → Hero-car STL
                   before fitting body-conforming parts.
                 </div>
+              </div>
+            )}
+
+            {templateLookupState === "loading" && (
+              <div className="rounded-md border border-border bg-surface-0 text-muted-foreground text-xs p-3 inline-flex items-start gap-2">
+                <Loader2 className="h-4 w-4 mt-0.5 shrink-0 animate-spin text-primary" />
+                <div>Looking for a saved template mesh to fit against the body…</div>
+              </div>
+            )}
+
+            {templateLookupState === "missing" && (
+              <div className="rounded-md border border-warning/40 bg-warning/10 text-warning text-xs p-3 inline-flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div>
+                  No saved {partLabel.toLowerCase()} template mesh was found yet. The worker needs a starter
+                  STL/GLB template for this part kind before it can fit it to the car.
+                </div>
+              </div>
+            )}
+
+            {templateLookupState === "ready" && !partTemplateUrl && resolvedTemplateUrl && (
+              <div className="rounded-md border border-border bg-surface-0 text-muted-foreground text-xs p-3 inline-flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-success" />
+                <div>Using the latest saved template mesh for this part kind as the fitting starting point.</div>
               </div>
             )}
 
@@ -278,9 +390,9 @@ export function SendToGeometryWorker({
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Close</Button>
           {!jobId && (
-            <Button onClick={onSubmit} disabled={dispatch.isPending || !baseMeshUrl}>
-              {dispatch.isPending
-                ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Dispatching…</>
+            <Button onClick={onSubmit} disabled={isDispatchDisabled}>
+              {dispatch.isPending || templateLookupState === "loading"
+                ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> {templateLookupState === "loading" ? "Finding template…" : "Dispatching…"}</>
                 : <><Send className="h-4 w-4 mr-1" /> Send to geometry worker</>}
             </Button>
           )}
