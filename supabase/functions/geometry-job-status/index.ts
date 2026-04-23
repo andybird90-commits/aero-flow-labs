@@ -87,6 +87,28 @@ Deno.serve(async (req) => {
 
     if (wStatus === "succeeded" || wStatus === "completed" || wStatus === "done") {
       const out = (w?.outputs ?? {}) as Record<string, string | undefined>;
+
+      // Guard: refuse worker outputs that point at localhost / 127.0.0.1 /
+      // private hosts. Edge functions run in Supabase's cloud and can't reach
+      // them, so we'd silently store a broken URL and the UI would look
+      // "Fitted ✓" with broken downloads & previews.
+      const unreachable = Object.entries(out)
+        .filter(([, url]) => !!url)
+        .filter(([, url]) => /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:|\/)/i.test(url!))
+        .map(([k]) => k);
+      if (unreachable.length > 0) {
+        const msg =
+          `Worker returned non-public URL(s) for: ${unreachable.join(", ")}. ` +
+          `The Blender worker must upload outputs to a publicly fetchable host ` +
+          `(Supabase Storage, S3, Cloudflare tunnel, deployed worker, etc.) — ` +
+          `localhost URLs are unreachable from the Lovable Cloud edge runtime.`;
+        await admin
+          .from("geometry_jobs")
+          .update({ status: "failed", error: msg.slice(0, 500) })
+          .eq("id", job_id);
+        return json({ status: "failed", error: msg });
+      }
+
       const rehosted: Record<string, string> = {};
       // Re-host any output URL into the geometries bucket so we don't leak
       // worker-side credentials and so the client can rely on a stable host.

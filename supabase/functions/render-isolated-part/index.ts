@@ -109,15 +109,11 @@ const SHELL_TREATMENT =
   "Only the visible EDGES (the open-backed inner side / cut edge) should read as thin sheet material — like looking at the rim of a fibreglass moulding. The exterior surface is full-form. Think 'hollow GRP body panel,' NOT 'flat sheet metal cut-out.' " +
   "FIXING METHOD IS NOT YOUR PROBLEM: do NOT add bolt holes, screw holes, fastener heads, threaded inserts, rivets, mounting tabs, mounting flanges, brackets, clips, or any visible attachment hardware. The part will be bonded or bolted on AFTER printing — render only the clean aerodynamic shell, with smooth continuous edges where it would meet the car.";
 
-// Multi-view renders give the 3D stage enough information to preserve thin
-// shell construction, reverse faces, mounting flanges, and end thickness.
-// We keep the first frame as the hero shot, then derive the rest from it so
-// Gemini stays consistent across views.
+// Single hero render only — extra angles were causing Gemini to invent
+// inconsistent variants of the part. The 3D mesher works fine off one
+// clean front-3/4 clay shot, so we keep just that.
 const ANGLES = [
   { key: "front34", label: "front 3/4 view, slightly above, hero product shot" },
-  { key: "rear34", label: "rear 3/4 view, clearly showing the reverse / back side and mounting face" },
-  { key: "side", label: "clean side profile view, perfectly side-on, showing the full length and section" },
-  { key: "top", label: "top-down 3/4 view, showing plan shape, returns, and thin-shell edge transitions" },
 ] as const;
 
 Deno.serve(async (req) => {
