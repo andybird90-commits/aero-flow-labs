@@ -1034,12 +1034,10 @@ export function ExtractedPartPreview({
                   <Undo2 className="h-4 w-4 mr-1" /> Use original
                 </Button>
               )}
-              {/* Body-conforming kinds bypass image-to-3D entirely. */}
-              {bodyConforming ? (
-                <Button onClick={() => setGeometryDialogOpen(true)}>
-                  <Send className="h-4 w-4 mr-1" /> Send to geometry worker
-                </Button>
-              ) : fidelity?.status === "mismatch" && !overrideFidelity ? (
+              {/* All parts (including body-conforming) go through Rodin first
+                  to get a 3D template. Body-conforming parts then get an extra
+                  "Fit to body" step in the ready stage. */}
+              {fidelity?.status === "mismatch" && !overrideFidelity ? (
                 <Button
                   variant="outline"
                   onClick={() => setOverrideFidelity(true)}
@@ -1068,9 +1066,15 @@ export function ExtractedPartPreview({
               <Button variant="outline" onClick={() => { const u = glbUrl; setGlbUrl(null); setTimeout(() => setGlbUrl(u), 50); }}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Reload viewer
               </Button>
-              <Button onClick={onDownload}>
+              <Button variant="outline" onClick={onDownload}>
                 <Download className="h-4 w-4 mr-1" /> Download STL
               </Button>
+              {/* Body-conforming parts: fit the freshly-meshed template to the car body in Blender. */}
+              {bodyConforming && (
+                <Button onClick={() => setGeometryDialogOpen(true)}>
+                  <Send className="h-4 w-4 mr-1" /> Fit to body in Blender
+                </Button>
+              )}
             </>
           )}
 
