@@ -135,7 +135,6 @@ export function SendToGeometryWorker({
     }
   };
 
-  const status = job.data?.status;
   const outputs = job.data?.outputs ?? {};
   const stlUrl = (outputs.fitted_stl_url ?? outputs.stl_url) as string | undefined;
   const glbUrl = outputs.glb_url as string | undefined;
