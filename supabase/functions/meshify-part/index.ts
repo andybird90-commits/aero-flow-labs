@@ -30,7 +30,7 @@ const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const MESH_MODEL = "ndreca/hunyuan3d-2";
+const MESH_MODEL_VERSION = "0602bae6db1ce420f2690339bf2feb47e18c0c722a1f02e9db9abd774abaff5d";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -85,13 +85,14 @@ Deno.serve(async (req) => {
       const isMulti = image_urls.length > 1;
       const primaryImage = image_urls[0];
 
-      const createResp = await fetch(`https://api.replicate.com/v1/models/${MESH_MODEL}/predictions`, {
+      const createResp = await fetch(`https://api.replicate.com/v1/predictions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          version: MESH_MODEL_VERSION,
           input: {
             image: primaryImage,
             steps: 50,
