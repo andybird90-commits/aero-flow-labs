@@ -1,143 +1,93 @@
+## Multi-engine "Build" pipeline
 
+Stop using part classification as a hard gate. Instead, every picked part shows three engine choices and the user picks. Classification becomes a *recommendation* badge, not a fork.
 
-## Strategic pivot: split the geometry path in two
+```text
+Pick a part →  ┌─ Build with CAD       (Onshape — parametric, clean B-rep)
+               ├─ Generate 3D mesh     (Rodin — image-to-3D, fast, lumpy)
+               └─ Fit to body          (Blender — surface-conform to car STL)
+```
 
-You've validated that mounted-part picking on a render is a dead end. This plan locks that learning into the product by **removing the Prototyper workflow as the primary path**, **gating the existing image-to-3D flow to free-standing parts only**, and **adding a Blender-based external worker** for body-conforming parts (arches, scoops, skirts, side-skirts) that fits geometry against the saved base car mesh.
-
-Three things ship:
-
-1. Remove Prototyper from primary nav and stop investing in it
-2. Gate `meshify-part` so it only runs on free-standing part kinds
-3. Stand up a Blender worker with 4 jobs: `prepare_base_mesh`, `fit_part_to_zone`, `mirror_part`, `export_stl`
+All three are available for every part kind. The UI suggests the best one, but never blocks the others.
 
 ---
 
-### 1. Retire the Prototyper as the main flow
+### 1. Replace the binary CTA with an engine picker
 
-- Remove the **Prototyper** sidebar entry from `src/components/AppSidebar.tsx`
-- Keep `/prototyper` route alive but only reachable from `/library` for existing prototypes (no new entry point)
-- Add a one-line banner on `/prototyper` explaining the workflow is paused and pointing users to Concepts → isolated parts
-- No data deletion. Existing `prototypes` and `frozen_parts` rows remain queryable
+In `ExtractedPartPreview.tsx`, after the user approves the AI render of an isolated part, replace the single "Make 3D model" button with a small chooser:
 
-### 2. Classify parts as free-standing vs body-conforming
+- **Build with CAD** (recommended for: wings, splitters, diffusers, canards, vents)
+- **Generate mesh** (recommended for: organic / one-off shapes; warning shown for body-conforming kinds about lumpy results)
+- **Fit to body** (recommended for: arches, scoops, skirts, lips; greyed out if no base car STL is saved)
 
-Add a single source-of-truth classifier in `src/lib/part-classification.ts`:
+The "recommended" pill is driven by the existing `classifyPartKind` — but no engine is disabled based on it. Each engine button shows: ETA estimate, output formats (STEP / GLB / STL), and a one-line "what this is good at" hint.
 
-```text
-FREE_STANDING:    diffuser, wing, splitter_section, vent_insert, canard,
-                  rear_wing, front_splitter, gurney_flap
-BODY_CONFORMING:  side_scoop, front_arch, rear_arch, side_skirt,
-                  bonnet_vent, fender_flare, front_lip
-```
+### 2. Drop the server-side classification gate
 
-Wire this into:
+`supabase/functions/meshify-part/index.ts` currently 422s on body-conforming kinds. Remove that guard so Rodin meshing works for any part the user explicitly chose. Keep the existing single-shell prompt fix.
 
-- **`ExtractedPartPreview.tsx`** — when the user clicks "Make 3D model", branch:
-  - free-standing → existing `meshify-part` (Rodin) flow, unchanged
-  - body-conforming → show "Send to geometry worker" CTA instead, queues a `geometry_jobs` row
-- **`meshify-part/index.ts`** edge function — server-side guard: reject body-conforming kinds with a 422 and a clear message, so we can't accidentally regress
+`src/lib/part-classification.ts` keeps its classify functions but their role is purely advisory (drives the "recommended" badge). Rename `FIT_CLASS_DESCRIPTION` copy so it no longer says "image-to-3D fails" — instead it says "Best fitted via Blender, but you can still try mesh AI or CAD."
 
-### 3. External Blender worker (new)
+### 3. Add the CAD engine (Onshape)
 
-A small Python service (run as a separate container/Modal/Replicate cog — chosen at deploy time) exposing 4 jobs. We'll integrate via a new `geometry_jobs` table + edge function dispatcher; the worker itself is **not deployed by Lovable** (it lives in your geometry repo) but we wire the contract end-to-end.
+New table `cad_jobs` and two edge functions, mirroring the existing `geometry_jobs` worker contract so the UX is symmetric:
 
-**New table `geometry_jobs`:**
+- **`cad_jobs`** — id, user_id, concept_id, project_id, part_kind, status, recipe (jsonb), inputs, outputs (step/stl/glb/preview), worker_task_id, error
+- **`generate-cad-recipe`** — Gemini-2.5-pro emits a strict JSON feature recipe (sketches, extrudes, lofts, fillets) for the chosen part. For body-conforming kinds the recipe references the saved car STL as a mesh import.
+- **`dispatch-cad-job`** — validates the recipe, inserts a `cad_jobs` row, POSTs to the external Onshape worker, returns the job id.
+- **`cad-job-status`** — polls the worker, re-hosts artifacts in `geometries` bucket, marks succeeded/failed.
+- DB trigger `sync_cad_job_library_items` mirrors successful jobs into `library_items` as `cad_part_mesh`.
 
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | pk |
-| user_id | uuid | RLS owner |
-| concept_id | uuid | FK |
-| part_kind | text | body-conforming kind |
-| mount_zone | text | front_quarter, rear_quarter, sill, etc. |
-| side | text | left / right / center |
-| job_type | text | `prepare_base_mesh` / `fit_part_to_zone` / `mirror_part` / `export_stl` |
-| status | text | queued / running / succeeded / failed |
-| inputs | jsonb | { base_mesh_url, part_template_url, zone_bbox, params } |
-| outputs | jsonb | { fitted_stl_url, glb_url, preview_png_url } |
-| worker_task_id | text | external job id |
-| error | text | nullable |
-| created_at, updated_at | timestamptz | |
+New UI component `SendToCadWorker.tsx` (modelled on `SendToGeometryWorker.tsx`) with form fields per part type (chord, span, NACA profile, flare, etc.) and a status panel that polls and shows STEP / STL / GLB download buttons.
 
-RLS: owner-only CRUD. Add to library trigger so successful jobs surface in `/library`.
+Worker contract is documented in a new `docs/onshape-worker.md`. The worker itself is hosted outside Lovable.
 
-**New edge function `dispatch-geometry-job`:**
+### 4. Keep Rodin and Blender unchanged
 
-- Accepts `{ concept_id, part_kind, mount_zone, side, job_type, inputs }`
-- Validates user owns the concept and the base car mesh
-- Inserts a `geometry_jobs` row (status=queued)
-- POSTs to the worker URL stored in a new secret `BLENDER_WORKER_URL` with auth header `BLENDER_WORKER_TOKEN`
-- Returns the `geometry_jobs.id` so the client can poll
+- **Rodin path** stays the existing `meshify-part` flow. Now reachable for every part.
+- **Blender path** stays the existing `SendToGeometryWorker` + `dispatch-geometry-job` flow. Now reachable for every part (not just body-conforming).
+- After any engine succeeds, surface a "Refine in Blender" follow-up that takes the produced mesh and chains a `fit_part_to_zone` job — so users can CAD a wing then Blender-fit the mounting tabs to the body, or Rodin a scoop then Blender-conform the back face.
 
-**New edge function `geometry-job-status`:**
+### 5. Library + history
 
-- Polls the worker for a given `worker_task_id`
-- On success: downloads the artifacts, re-hosts in `geometries` bucket, updates `geometry_jobs.outputs`, sets status to `succeeded`
-- On failure: writes `error`, sets status to `failed`
-
-**Worker contract (documented in `docs/blender-worker.md`):**
-
-```text
-POST /jobs
-  body: { job_type, inputs: { base_mesh_url, part_template_url?, zone, params } }
-  returns: { task_id }
-
-GET  /jobs/:task_id
-  returns: { status, progress, outputs?: { fitted_stl_url, ... }, error? }
-```
-
-For each `job_type`:
-
-- **prepare_base_mesh** — load car STL, decimate to 100k tris, weld, orient, output canonical OBJ
-- **fit_part_to_zone** — load base mesh + part template, crop to zone bbox, project rear face to body surface, offset 2mm, trim overlaps, optionally thicken to wall thickness, save fitted STL
-- **mirror_part** — mirror across vehicle Y axis with optional perspective correction, weld seam
-- **export_stl** — final clean STL + slicer-ready GLB preview
-
-### 4. UI: "Send to geometry worker" surface
-
-- New dialog component `src/components/SendToGeometryWorker.tsx` opened from `ExtractedPartPreview` for body-conforming kinds
-- Form fields: mount zone (dropdown from `mount-zones.ts`), side (left/right/center), wall thickness (mm), offset (mm)
-- Calls `dispatch-geometry-job` then polls `geometry-job-status` every 4s
-- On success: shows fitted STL in the existing 3D viewer + "Mirror" and "Download STL" buttons that fire follow-up jobs
-
-### 5. Library + Marketplace integration
-
-- Add `geometry_part_mesh` to `LibraryItemKind` so fitted parts appear alongside concept parts and aero kits
-- Trigger `sync_geometry_job_library_items` mirrors successful `geometry_jobs` into `library_items` so they're sellable
+Library gets two new kinds: `cad_part_mesh` and (already exists) `geometry_part_mesh`. Each library card shows which engine produced it (CAD / Mesh AI / Blender) and a "Send to <other engine>" action so users can pivot without re-picking the part.
 
 ---
 
 ## Technical details
 
 **New files**
-- `src/lib/part-classification.ts` — kind → `free_standing | body_conforming`
-- `src/components/SendToGeometryWorker.tsx` — dispatch UI
-- `src/lib/geometry-jobs.ts` — react-query hooks for `geometry_jobs`
-- `supabase/functions/dispatch-geometry-job/index.ts`
-- `supabase/functions/geometry-job-status/index.ts`
-- `supabase/migrations/<ts>_geometry_jobs.sql`
-- `docs/blender-worker.md` — worker HTTP contract spec
+- `supabase/migrations/<ts>_cad_jobs.sql` — table, RLS, library trigger
+- `supabase/functions/generate-cad-recipe/index.ts`
+- `supabase/functions/dispatch-cad-job/index.ts`
+- `supabase/functions/cad-job-status/index.ts`
+- `src/lib/cad-jobs.ts` — react-query hooks (mirrors `geometry-jobs.ts`)
+- `src/lib/cad-recipe.ts` — recipe TypeScript types + zod schema
+- `src/components/SendToCadWorker.tsx` — dispatch + polling UI
+- `src/components/EngineChooser.tsx` — three-button picker with recommended badge
+- `docs/onshape-worker.md` — HTTP contract
 
 **Edited files**
-- `src/components/AppSidebar.tsx` — drop Prototyper entry
-- `src/pages/Prototyper.tsx` — paused banner, deprioritise
-- `src/components/ExtractedPartPreview.tsx` — branch on classification
-- `supabase/functions/meshify-part/index.ts` — server-side reject body-conforming kinds
-- `src/lib/repo.ts` — add `geometry_part_mesh` to `LibraryItemKind`
+- `src/components/ExtractedPartPreview.tsx` — replace single CTA with `EngineChooser`; wire all three dispatch dialogs; remove `bodyConforming` branching gate
+- `src/lib/part-classification.ts` — soften copy so it's advisory only
+- `supabase/functions/meshify-part/index.ts` — remove the 422 guard for body-conforming kinds (keep single-shell prompt)
+- `src/components/SendToGeometryWorker.tsx` — accept *any* `partKind`, no kind-based gating
+- `src/lib/repo.ts` — add `cad_part_mesh` to `LibraryItemKind`
+- `src/pages/Library.tsx` — show engine badge + "Send to other engine" action
 
-**Secrets needed** (asked at implementation time)
-- `BLENDER_WORKER_URL` — your hosted worker base URL
-- `BLENDER_WORKER_TOKEN` — bearer token
+**Secrets needed at implementation time**
+- `ONSHAPE_WORKER_URL` — base URL of your Onshape worker
+- `ONSHAPE_WORKER_TOKEN` — bearer token
+- (`BLENDER_WORKER_URL` / `BLENDER_WORKER_TOKEN` already configured)
 
-**Out of scope** (per your bottom line)
-- Building the Blender worker code itself — that lives outside Lovable
-- Deleting old `prototypes` / `frozen_parts` data
-- Replacing the Concepts page or isolated-part renders (those work)
+**Out of scope**
+- Building the Onshape worker code (lives in your geometry repo)
+- Removing Rodin or Meshy (kept as the "fast & lumpy" option on purpose)
+- Auto-routing — every dispatch is an explicit user choice
 
-**Acceptance criteria**
-1. Prototyper not in sidebar; old prototypes still openable from Library
-2. `meshify-part` returns 422 for body-conforming kinds
-3. New "Send to geometry worker" CTA appears on body-conforming hotspots in Concepts
-4. `geometry_jobs` row + worker POST happens on dispatch
-5. Successful worker output appears in `/library` as `geometry_part_mesh`
-
+**Acceptance**
+1. Every picked part shows three engine buttons; "recommended" is a badge, not a constraint
+2. `meshify-part` accepts any kind (no 422)
+3. Choosing "Build with CAD" dispatches a `cad_jobs` row and polls status; success surfaces STEP/STL/GLB downloads
+4. Library shows engine provenance and lets you re-dispatch to a different engine
+5. After CAD or Rodin success, a "Refine in Blender" CTA chains a fit job

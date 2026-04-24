@@ -29,6 +29,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ShieldCheck, ShieldAlert, ShieldX, Eye, EyeOff, Send } from "lucide-react";
 import { isBodyConforming, FIT_CLASS_DESCRIPTION } from "@/lib/part-classification";
 import { SendToGeometryWorker } from "@/components/SendToGeometryWorker";
+import { SendToCadWorker } from "@/components/SendToCadWorker";
+import { EngineChooser, type BuildEngine } from "@/components/EngineChooser";
 
 interface Props {
   open: boolean;
@@ -89,13 +91,15 @@ export function ExtractedPartPreview({
   const [maskedUrl, setMaskedUrl] = useState<string | null>(null);
   const [snapping, setSnapping] = useState(false);
   const [geometryDialogOpen, setGeometryDialogOpen] = useState(false);
+  const [cadDialogOpen, setCadDialogOpen] = useState(false);
   const [baseMeshUrl, setBaseMeshUrl] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const bodyConforming = isBodyConforming(kind);
 
-  // Look up base car STL + project for the geometry worker dispatcher.
+  // Look up base car STL + project for the build-engine dispatchers.
+  // Runs for all parts now (any engine may need projectId; Blender + CAD body-conforming need the base mesh).
   useEffect(() => {
-    if (!open || !bodyConforming) return;
+    if (!open) return;
     let cancelled = false;
     (async () => {
       const { data: cp } = await supabase
@@ -1036,24 +1040,16 @@ export function ExtractedPartPreview({
                   <Undo2 className="h-4 w-4 mr-1" /> Use original
                 </Button>
               )}
-              {/* All parts (including body-conforming) go through Rodin first
-                  to get a 3D template. Body-conforming parts then get an extra
-                  "Fit to body" step in the ready stage. */}
-              {fidelity?.status === "mismatch" && !overrideFidelity ? (
+              {fidelity?.status === "mismatch" && !overrideFidelity && (
                 <Button
                   variant="outline"
                   onClick={() => setOverrideFidelity(true)}
                   className="border-destructive/40 text-destructive hover:bg-destructive/10"
                   title={`Score ${fidelity.score}/100 — render doesn't match the source. Re-draw recommended.`}
                 >
-                  <ShieldX className="h-4 w-4 mr-1" /> Mesh anyway
-                </Button>
-              ) : (
-                <Button onClick={onMakeMesh}>
-                  <Wand2 className="h-4 w-4 mr-1" /> Make 3D model
+                  <ShieldX className="h-4 w-4 mr-1" /> Build anyway
                 </Button>
               )}
-
             </>
           )}
 
@@ -1071,12 +1067,15 @@ export function ExtractedPartPreview({
               <Button variant="outline" onClick={onDownload}>
                 <Download className="h-4 w-4 mr-1" /> Download STL
               </Button>
-              {/* Body-conforming parts: fit the freshly-meshed template to the car body in Blender. */}
-              {bodyConforming && (
-                <Button onClick={() => setGeometryDialogOpen(true)}>
-                  <Send className="h-4 w-4 mr-1" /> Fit to body in Blender
+              {/* Refine in Blender — fit the freshly-meshed template to the car body. */}
+              {baseMeshUrl && (
+                <Button variant="outline" onClick={() => setGeometryDialogOpen(true)}>
+                  <Send className="h-4 w-4 mr-1" /> Refine in Blender
                 </Button>
               )}
+              <Button variant="outline" onClick={() => setCadDialogOpen(true)}>
+                <Wand2 className="h-4 w-4 mr-1" /> Rebuild as CAD
+              </Button>
             </>
           )}
 
@@ -1095,20 +1094,49 @@ export function ExtractedPartPreview({
             </Button>
           )}
         </DialogFooter>
+
+        {/* Engine chooser shown above the footer in the review stage so the user
+            picks how to build the approved part: CAD, Mesh AI (Rodin), or Blender. */}
+        {stage === "review" && !(fidelity?.status === "mismatch" && !overrideFidelity) && (
+          <div className="px-6 pb-4 -mt-2">
+            <div className="text-[10px] uppercase tracking-widest font-mono text-muted-foreground mb-2">
+              Choose a build engine
+            </div>
+            <EngineChooser
+              partKind={kind}
+              hasBaseMesh={!!baseMeshUrl}
+              onPick={(engine: BuildEngine) => {
+                if (engine === "mesh") onMakeMesh();
+                else if (engine === "cad") setCadDialogOpen(true);
+                else if (engine === "blender") setGeometryDialogOpen(true);
+              }}
+            />
+          </div>
+        )}
       </DialogContent>
 
-      {bodyConforming && (
-        <SendToGeometryWorker
-          open={geometryDialogOpen}
-          onClose={() => setGeometryDialogOpen(false)}
-          conceptId={conceptId}
-          projectId={projectId}
-          partKind={kind}
-          partLabel={label}
-          baseMeshUrl={baseMeshUrl}
-          partTemplateUrl={glbUrl}
-        />
-      )}
+      <SendToGeometryWorker
+        open={geometryDialogOpen}
+        onClose={() => setGeometryDialogOpen(false)}
+        conceptId={conceptId}
+        projectId={projectId}
+        partKind={kind}
+        partLabel={label}
+        baseMeshUrl={baseMeshUrl}
+        partTemplateUrl={glbUrl}
+      />
+
+      <SendToCadWorker
+        open={cadDialogOpen}
+        onClose={() => setCadDialogOpen(false)}
+        conceptId={conceptId}
+        projectId={projectId}
+        partKind={kind}
+        partLabel={label}
+        referenceImageUrls={images.map((i) => i.url)}
+        baseMeshUrl={baseMeshUrl}
+      />
+
     </Dialog>
   );
 }

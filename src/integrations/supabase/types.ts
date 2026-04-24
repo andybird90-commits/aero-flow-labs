@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      cad_jobs: {
+        Row: {
+          concept_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          inputs: Json
+          outputs: Json
+          part_kind: string
+          part_label: string | null
+          project_id: string | null
+          recipe: Json
+          status: string
+          updated_at: string
+          user_id: string
+          worker_task_id: string | null
+        }
+        Insert: {
+          concept_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          inputs?: Json
+          outputs?: Json
+          part_kind: string
+          part_label?: string | null
+          project_id?: string | null
+          recipe?: Json
+          status?: string
+          updated_at?: string
+          user_id: string
+          worker_task_id?: string | null
+        }
+        Update: {
+          concept_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          inputs?: Json
+          outputs?: Json
+          part_kind?: string
+          part_label?: string | null
+          project_id?: string | null
+          recipe?: Json
+          status?: string
+          updated_at?: string
+          user_id?: string
+          worker_task_id?: string | null
+        }
+        Relationships: []
+      }
       car_stls: {
         Row: {
           bbox_max_mm: Json | null
@@ -1325,6 +1376,7 @@ export type Database = {
         | "concept_part_mesh"
         | "prototype_part_mesh"
         | "geometry_part_mesh"
+        | "cad_part_mesh"
       library_visibility: "private" | "public"
       marketplace_listing_status: "draft" | "active" | "paused"
       parts_job_state:
@@ -1501,6 +1553,7 @@ export const Constants = {
         "concept_part_mesh",
         "prototype_part_mesh",
         "geometry_part_mesh",
+        "cad_part_mesh",
       ],
       library_visibility: ["private", "public"],
       marketplace_listing_status: ["draft", "active", "paused"],
