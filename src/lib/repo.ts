@@ -785,7 +785,26 @@ export function useActiveConceptSet(projectId: string | undefined) {
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return data as ConceptSet | null;
+      const set = data as ConceptSet | null;
+      // Self-heal stuck sets: if the set has been "generating" for >4 min and at
+      // least one concept has rendered, flip it to "ready" so the UI unblocks.
+      // Body-swap mode is heavy and can time out 1-2 of the variations.
+      if (set && set.status === "generating") {
+        const ageMs = Date.now() - new Date(set.created_at as any).getTime();
+        if (ageMs > 4 * 60 * 1000) {
+          const { count } = await supabase
+            .from("concepts")
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", projectId!)
+            .not("render_front_url", "is", null);
+          if ((count ?? 0) > 0) {
+            await supabase.from("concept_sets")
+              .update({ status: "ready" }).eq("id", set.id);
+            return { ...set, status: "ready" } as ConceptSet;
+          }
+        }
+      }
+      return set;
     },
   });
 }
