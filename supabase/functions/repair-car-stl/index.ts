@@ -11,7 +11,7 @@
  * The boolean aero-kit pipeline refuses to run on non-manifold inputs, so
  * `manifold_clean` is the gate the rest of the system reads.
  */
-import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { repairObj } from "../_shared/obj-repair.ts";
 import { repairStl } from "../_shared/stl-repair.ts";
 

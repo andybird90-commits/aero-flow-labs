@@ -13,7 +13,7 @@
  * positions/scales. Asking the model directly is the only reliable way to
  * place pickable hotspots on the actual car.
  */
-import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

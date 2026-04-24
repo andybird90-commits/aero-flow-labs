@@ -11,7 +11,7 @@
  * Returns 202 immediately; the actual generation runs in the background and
  * the UI polls `concepts.carbon_status`.
  */
-import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as decodeImg, Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 
 declare const EdgeRuntime: {

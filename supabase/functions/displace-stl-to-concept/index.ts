@@ -20,7 +20,7 @@
  *
  * Body: { concept_id: string }
  */
-import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { parseStl, writeBinaryStl, type Mesh } from "../_shared/stl-io.ts";
 import {
   ANGLE_KEYS, renderAngle, reorientMesh, projectPoint, meshBbox,
