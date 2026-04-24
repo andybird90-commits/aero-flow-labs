@@ -247,6 +247,17 @@ export default function BuildStudio() {
                   <Grid3x3 className="h-3.5 w-3.5" />
                 </Toggle>
 
+                <Toggle
+                  pressed={showSnapZones}
+                  onPressedChange={setShowSnapZones}
+                  size="sm"
+                  className="h-7 px-2"
+                  aria-label="Toggle snap zones"
+                  disabled={!carTemplateId}
+                >
+                  <Magnet className="h-3.5 w-3.5" />
+                </Toggle>
+
                 <Select value={preset} onValueChange={(v) => setPreset(v as CameraPreset)}>
                   <SelectTrigger className="h-7 w-[140px] text-xs">
                     <Camera className="mr-1 h-3 w-3" />
@@ -286,6 +297,9 @@ export default function BuildStudio() {
                     template={template}
                     heroStlUrl={heroStlUrl}
                     parts={parts}
+                    libraryItemsById={libraryItemsById}
+                    snapZones={snapZones}
+                    showSnapZones={showSnapZones}
                     selectedId={selectedId}
                     onSelect={setSelectedId}
                     transformMode={mode}
