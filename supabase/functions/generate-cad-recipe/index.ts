@@ -410,7 +410,7 @@ Deno.serve(async (req) => {
 
     // For body panels, swap to a known-good fallback recipe instead of failing.
     if (issues.length && isBodyPanel) {
-      const fallback = fallbackRecipeForBodyPanel(part_kind, part_label);
+      const fallback = fallbackRecipeForBodyPanel(part_kind, part_label, base_mesh_url);
       const fbIssues = collectRecipeIssues(fallback, validatorOpts);
       if (fbIssues.length === 0) {
         return json({
