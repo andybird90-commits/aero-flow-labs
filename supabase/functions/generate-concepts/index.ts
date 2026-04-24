@@ -770,6 +770,8 @@ async function renderAngle({
   userCarRefAttached,
   bodySwapMode,
   bodySwapKitFirst,
+  surgicalMode,
+  briefText,
 }: {
   admin: any;
   userId: string;
@@ -790,19 +792,27 @@ async function renderAngle({
   bodySwapMode: boolean;
   /** When true, the first N images are kit refs and the donor car (if any) is at the end. */
   bodySwapKitFirst?: boolean;
+  /** Surgical mode — apply ONLY the literal change in the brief. */
+  surgicalMode?: boolean;
+  /** Raw user brief text (used by surgical-mode prompt). */
+  briefText?: string;
 }): Promise<{ publicUrl: string; dataUrl: string; promptUsed: string } | null> {
   const hasRef = referenceImages.length > 0;
   const hasBriefRefs = briefReferenceCount > 0;
 
-  const carbonFinish =
-    `MATERIAL FINISH: every added/modified aero or styling part — splitter, ` +
-    `lip, canards, side skirts, arch flares, diffuser, ducktail, wing, hood/wing vents — ` +
-    `MUST be finished in glossy 2x2 twill carbon fibre with a clearly visible black weave. ` +
-    `OEM body panels (doors, roof, fenders above the splitter) MUST stay in their original ` +
-    `factory paint colour. The carbon parts should visually pop against the painted body.`;
+  const carbonFinish = surgicalMode
+    // In surgical mode we don't force a carbon finish — the user only asked
+    // for a small change and shouldn't get random carbon panels added.
+    ? ``
+    : `MATERIAL FINISH: every added/modified aero or styling part — splitter, ` +
+      `lip, canards, side skirts, arch flares, diffuser, ducktail, wing, hood/wing vents — ` +
+      `MUST be finished in glossy 2x2 twill carbon fibre with a clearly visible black weave. ` +
+      `OEM body panels (doors, roof, fenders above the splitter) MUST stay in their original ` +
+      `factory paint colour. The carbon parts should visually pop against the painted body.`;
 
   // For aggressive/extreme builds we explicitly relax the "preserve identity" rule.
-  const identityRule = aggression === "aggressive" || aggression === "extreme"
+  // Surgical mode ALWAYS uses the strict identity rule.
+  const identityRule = (!surgicalMode && (aggression === "aggressive" || aggression === "extreme"))
     ? `IDENTITY: keep the same make/model/silhouette so it is still recognisable as the ` +
       `subject car, but factory identity is SECONDARY to the brief. You ARE allowed to ` +
       `flare the arches, add a large rear wing, deepen the splitter, vent the hood, and ` +
@@ -812,12 +822,58 @@ async function renderAngle({
       `same overall proportions. Do NOT replace the car with a different model.`;
 
   const disciplineMusts = discipline !== "auto" ? DISCIPLINE_AERO[discipline] : [];
-  const intensityRule = aggression === "aggressive" || aggression === "extreme"
+  const intensityRule = (!surgicalMode && (aggression === "aggressive" || aggression === "extreme"))
     ? `\nNON-NEGOTIABLE INTENSITY: this must NOT look OEM, OEM+, stock, mild, clean street, or subtly modified. ` +
       `It must read as a heavily modified motorsport build at thumbnail size. Required visible features: ${disciplineMusts.join(", ") || variation.modifier}. ` +
       `If the reference image is stock, transform it aggressively rather than preserving stock bumpers, arches or ride height.`
     : "";
   const steerLine = extraModifier ? `\nADDITIONAL STEER (apply on top): ${extraModifier}` : "";
+
+  // ─── SURGICAL MODE: minimal-change prompt override ───────────────────────
+  // Take the user's car photo and apply ONLY the literal change in the brief.
+  // Skip variation flavour, discipline baselines, intensity, carbon finish.
+  if (surgicalMode && mode === "from_user_car" && hasRef) {
+    const change = (briefText && briefText.trim()) || variation.modifier;
+    const surgicalPrompt =
+      `PRECISE PHOTO EDIT — ${angle.framing}.\n\n` +
+      `Take the EXACT car shown in the first reference image and apply ONLY ` +
+      `this single change: ${change}.\n\n` +
+      `STRICT PRESERVATION — every one of these must remain pixel-faithful to the reference:\n` +
+      `• Same make, model, year, trim, silhouette, greenhouse, A/B/C-pillars\n` +
+      `• Same paint colour and finish\n` +
+      `• Same wheels, wheel design, tyre profile and ride height (unless the brief asks otherwise)\n` +
+      `• Same front bumper, splitter, hood, headlights, grille, badges\n` +
+      `• Same side skirts, mirrors, door handles, glass tint\n` +
+      `• Same rear bumper, taillights, exhaust, diffuser, wing/spoiler\n\n` +
+      `DO NOT ADD any of these unless the brief explicitly says so:\n` +
+      `• No new wing, splitter, canards, dive planes, diffuser, side skirts\n` +
+      `• No hood vents, fender vents, roof scoops\n` +
+      `• No ducktail, no swan-neck wing, no GT3 / time-attack styling\n` +
+      `• No carbon-fibre panels, no colour change, no wheel swap\n` +
+      `• No ride-height change, no stance/camber change\n\n` +
+      `The output should look like the same photograph of the same car, ` +
+      `with ONLY the requested change visible. Treat this as a precise edit, ` +
+      `NOT a redesign or styling exploration.\n\n` +
+      `Studio lighting and backdrop should match the reference photo. ` +
+      `Photorealistic, sharp focus, no text, no watermark.`;
+
+    const messages: any[] = [{
+      role: "user",
+      content: [{ type: "text", text: surgicalPrompt }],
+    }];
+    for (const ref of referenceImages) {
+      messages[0].content.push({ type: "image_url", image_url: { url: ref } });
+    }
+
+    return await callImageModel({
+      admin, userId, projectId, variation, angle,
+      messages, promptText: surgicalPrompt,
+      // Pro image model is more obedient to "change only X" instructions.
+      model: "google/gemini-3-pro-image-preview",
+    });
+  }
+  // ─── END SURGICAL MODE ───────────────────────────────────────────────────
+
 
   // ─── BODY-SWAP MODE: full prompt override ────────────────────────────────
   // The kit reference photos are the AUTHORITY. Brief flavour, variation
