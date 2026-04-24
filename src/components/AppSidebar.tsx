@@ -25,6 +25,7 @@ import {
   Wand2,
   Hammer,
   Hexagon,
+  Magnet,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/lib/repo";
