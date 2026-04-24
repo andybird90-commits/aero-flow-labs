@@ -137,6 +137,27 @@ Deno.serve(async (req) => {
       return json({ error: "Recipe missing features[]", recipe }, 422);
     }
 
+    // Hard guarantee: at least one feature that actually produces a 3D body.
+    // Without this the CAD worker returns IndexError on `bodies[-1]`.
+    const BODY_PRODUCING = new Set([
+      "extrude", "loft", "revolve", "sweep", "boolean",
+      "shell", "fillet", "chamfer", "mirror",
+    ]);
+    const hasBody = recipe.features.some(
+      (f: any) => f && typeof f.type === "string" && BODY_PRODUCING.has(f.type),
+    );
+    if (!hasBody) {
+      return json(
+        {
+          error:
+            "Recipe has no body-producing feature (need at least one extrude / loft / revolve / sweep). " +
+            "Try regenerating with more specific designer notes.",
+          recipe,
+        },
+        422,
+      );
+    }
+
     return json({ recipe });
   } catch (e) {
     console.error("generate-cad-recipe error:", e);
