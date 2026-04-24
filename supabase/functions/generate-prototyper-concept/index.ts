@@ -91,13 +91,14 @@ Deno.serve(async (req) => {
     }
 
     // Get the source car view URL
-    const { data: car, error: carErr } = await supabase
+    const { data: carRow, error: carErr } = await (supabase as any)
       .from("garage_cars")
       .select(`id, make, model, year, color, ${VIEW_FIELD[body.view_angle]}`)
       .eq("id", body.garage_car_id)
       .single();
+    const car = carRow as Record<string, any> | null;
     if (carErr || !car) throw new Error("Garage car not found");
-    const sourceUrl = (car as any)[VIEW_FIELD[body.view_angle]];
+    const sourceUrl = car[VIEW_FIELD[body.view_angle]];
     if (!sourceUrl) throw new Error(`No ${body.view_angle} view available for this car`);
 
     const styleText = STYLE_PROMPT[body.style_preset] ?? body.style_preset;
