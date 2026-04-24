@@ -85,6 +85,7 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [mustInclude, setMustInclude] = useState<string[]>([]);
   const [mustAvoid, setMustAvoid] = useState<string[]>([]);
   const [variationCount, setVariationCount] = useState<number>(4);
+  const [bodySwapMode, setBodySwapMode] = useState<boolean>(false);
 
   const MAX_REFS = 5;
   const activePreset = presets.find((p) => p.id === stylePresetId) ?? null;
@@ -104,6 +105,7 @@ function BriefInner({ projectId }: { projectId: string }) {
       setMustAvoid(((brief as any).must_avoid as string[]) ?? []);
       const vc = Number((brief as any).variation_count);
       setVariationCount(Number.isFinite(vc) && vc >= 1 && vc <= 5 ? vc : 4);
+      setBodySwapMode(!!(brief as any).body_swap_mode);
     }
   }, [brief]);
 
@@ -206,6 +208,7 @@ function BriefInner({ projectId }: { projectId: string }) {
         must_include: mustInclude,
         must_avoid: mustAvoid,
         variation_count: variationCount,
+        body_swap_mode: bodySwapMode,
       } as any,
     });
     setCustomConstraint("");
