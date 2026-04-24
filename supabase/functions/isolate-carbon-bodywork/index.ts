@@ -239,7 +239,7 @@ async function runIsolation(args: {
   }
 }
 
-async function isolateOne(sourceUrl: string): Promise<{ bytes: Uint8Array; mime: string; ext: string } | null> {
+async function isolateOne(sourceUrl: string, prompt: string): Promise<{ bytes: Uint8Array; mime: string; ext: string } | null> {
   const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -252,7 +252,7 @@ async function isolateOne(sourceUrl: string): Promise<{ bytes: Uint8Array; mime:
       messages: [{
         role: "user",
         content: [
-          { type: "text", text: ISOLATION_PROMPT },
+          { type: "text", text: prompt },
           { type: "image_url", image_url: { url: sourceUrl } },
         ],
       }],
