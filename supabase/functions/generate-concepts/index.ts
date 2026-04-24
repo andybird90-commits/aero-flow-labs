@@ -707,6 +707,7 @@ async function renderAngle({
   briefReferenceCount,
   userCarRefAttached,
   bodySwapMode,
+  bodySwapKitFirst,
 }: {
   admin: any;
   userId: string;
@@ -725,6 +726,8 @@ async function renderAngle({
   userCarRefAttached: boolean;
   /** Body-swap kit mode — refs ARE the new bodywork, not just style cues. */
   bodySwapMode: boolean;
+  /** When true, the first N images are kit refs and the donor car (if any) is at the end. */
+  bodySwapKitFirst?: boolean;
 }): Promise<{ publicUrl: string; dataUrl: string; promptUsed: string } | null> {
   const hasRef = referenceImages.length > 0;
   const hasBriefRefs = briefReferenceCount > 0;
