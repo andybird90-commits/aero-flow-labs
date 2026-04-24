@@ -259,6 +259,17 @@ export function SendToCadWorker({
               </div>
             </div>
 
+            {(status === "failed" || status === "succeeded") && recipe && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  Inspect recipe JSON sent to worker
+                </summary>
+                <pre className="mt-2 max-h-48 overflow-auto rounded bg-surface-0 border border-border p-2 font-mono text-[10px] leading-tight">
+                  {JSON.stringify(recipe, null, 2)}
+                </pre>
+              </details>
+            )}
+
             {previewUrl && (
               <div className="rounded-md border border-border bg-surface-0 overflow-hidden">
                 <img src={previewUrl} alt="CAD preview" className="w-full h-48 object-contain" />
