@@ -11,7 +11,7 @@
  * move and the corner/edge handles to resize for a tighter crop before
  * extracting via the "Use this crop" confirm button.
  */
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Loader2, Wand2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExtractedPartPreview } from "@/components/ExtractedPartPreview";
