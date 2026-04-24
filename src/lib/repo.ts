@@ -306,15 +306,29 @@ export function useHeroStlForProject(projectId: string | undefined | null) {
       if (projectError) throw projectError;
 
       const templateId = (project as { car?: { template_id?: string | null } | null } | null)?.car?.template_id;
-      if (!templateId) return null;
 
-      const { data, error } = await supabase
+      // Preferred path: project → car → template → car_stl
+      if (templateId) {
+        const { data, error } = await supabase
+          .from("car_stls")
+          .select("*")
+          .eq("car_template_id", templateId)
+          .maybeSingle();
+        if (error) throw error;
+        if (data) return data as CarStl;
+      }
+
+      // Fallback: project's car has no template (or no STL for that template).
+      // Use the first available admin-uploaded hero STL so the Build Studio
+      // viewport still has something to show instead of the box placeholder.
+      const { data: anyStl, error: anyErr } = await supabase
         .from("car_stls")
         .select("*")
-        .eq("car_template_id", templateId)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
-      if (error) throw error;
-      return data as CarStl | null;
+      if (anyErr) throw anyErr;
+      return (anyStl as CarStl | null) ?? null;
     },
   });
 }
