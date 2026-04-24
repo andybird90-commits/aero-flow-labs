@@ -65,6 +65,11 @@ Rules:
 - Default wall thickness 2mm via shell on hollow aero parts.
 - Use mirror across "YZ" for any part that has a left/right pair (canards, side skirts) — sketch one side, mirror the other.
 - Keep the recipe under 25 features. Prefer simplicity over cleverness.
+- Worker-safe mode is preferred: use only named planes ("XY", "YZ", "XZ"), not custom {origin, normal} planes.
+- Prefer one closed sketch + extrude over loft / sweep whenever possible.
+- Never use negative extrude depths.
+- Never draw a full circle with one arc from 0 to 360 degrees.
+- For body panels like fenders / arches, return a conservative manufacturable solid rather than a sculpted multi-plane loft.
 - Return ONLY the JSON object.`;
 
 Deno.serve(async (req) => {
