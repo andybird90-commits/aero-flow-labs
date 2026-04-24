@@ -19,6 +19,7 @@ import {
   GizmoViewcube,
 } from "@react-three/drei";
 import * as THREE from "three";
+import { STLLoader } from "three-stdlib";
 import type { CarTemplate } from "@/lib/repo";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 
@@ -27,6 +28,8 @@ export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" 
 
 interface ViewportProps {
   template?: CarTemplate | null;
+  /** Signed URL for the project's hero STL (preferred over the box placeholder). */
+  heroStlUrl?: string | null;
   parts: PlacedPart[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -36,7 +39,70 @@ interface ViewportProps {
   onCommit: (id: string, patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale">>) => void;
 }
 
-/* ─── Procedural car placeholder ─── */
+/* ─── Real hero STL car (preferred) ─── */
+function HeroStlCar({ url, template }: { url: string; template?: CarTemplate | null }) {
+  const [object, setObject] = useState<THREE.Object3D | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const targetLength = ((template?.wheelbase_mm ?? 2575) / 1000) + 1.45;
+
+    const loader = new STLLoader();
+    loader.load(
+      url,
+      (geo) => {
+        if (cancelled) return;
+        geo.computeVertexNormals();
+        const mat = new THREE.MeshPhysicalMaterial({
+          color: "#0a1622",
+          metalness: 0.85,
+          roughness: 0.32,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.18,
+          envMapIntensity: 1.4,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        // Most automotive STLs are Z-up; rotate to Y-up.
+        const wrapper = new THREE.Group();
+        mesh.rotation.x = -Math.PI / 2;
+        wrapper.add(mesh);
+
+        // Fit to expected car length and ground it.
+        const box = new THREE.Box3().setFromObject(wrapper);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const longest = Math.max(size.x, size.y, size.z);
+        if (isFinite(longest) && longest > 0) {
+          wrapper.scale.setScalar(targetLength / longest);
+        }
+        const box2 = new THREE.Box3().setFromObject(wrapper);
+        const center = new THREE.Vector3();
+        box2.getCenter(center);
+        wrapper.position.sub(center);
+        const box3 = new THREE.Box3().setFromObject(wrapper);
+        wrapper.position.y -= box3.min.y;
+
+        setObject(wrapper);
+      },
+      undefined,
+      () => {
+        if (!cancelled) setObject(null);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url, template?.wheelbase_mm]);
+
+  if (!object) return null;
+  return <primitive object={object} />;
+}
+
+/* ─── Procedural car placeholder (fallback) ─── */
 function CarPlaceholder({ template }: { template?: CarTemplate | null }) {
   const wb = (template?.wheelbase_mm ?? 2575) / 1000;
   const tr = (template?.track_front_mm ?? 1520) / 1000;
@@ -133,6 +199,7 @@ function CameraRig({ preset, template }: { preset: CameraPreset; template?: CarT
 
 export function BuildStudioViewport({
   template,
+  heroStlUrl,
   parts,
   selectedId,
   onSelect,
@@ -188,7 +255,13 @@ export function BuildStudioViewport({
 
       <ContactShadows position={[0, 0.001, 0]} opacity={0.45} scale={14} blur={2.5} far={4} />
 
-      <CarPlaceholder template={template} />
+      {heroStlUrl ? (
+        <Suspense fallback={<CarPlaceholder template={template} />}>
+          <HeroStlCar url={heroStlUrl} template={template} />
+        </Suspense>
+      ) : (
+        <CarPlaceholder template={template} />
+      )}
 
       <SceneParts
         parts={parts}

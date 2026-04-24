@@ -43,7 +43,7 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProject } from "@/hooks/useCurrentProject";
-import { useCarTemplates, useMyLibrary, type LibraryItem } from "@/lib/repo";
+import { useCarTemplates, useMyLibrary, useHeroStlForProject, useSignedCarStlUrl, type LibraryItem } from "@/lib/repo";
 import {
   usePlacedParts,
   useAddPlacedPart,
@@ -64,6 +64,8 @@ export default function BuildStudio() {
   const { data: templates = [] } = useCarTemplates();
   const { data: library, isLoading: libLoading } = useMyLibrary(user?.id);
   const { data: parts = [] } = usePlacedParts(projectId);
+  const { data: heroStl } = useHeroStlForProject(projectId);
+  const { data: heroStlUrl } = useSignedCarStlUrl(heroStl);
 
   const addPart = useAddPlacedPart();
   const updatePart = useUpdatePlacedPart();
@@ -266,6 +268,7 @@ export default function BuildStudio() {
                 <div className="relative min-h-0">
                   <BuildStudioViewport
                     template={template}
+                    heroStlUrl={heroStlUrl}
                     parts={parts}
                     selectedId={selectedId}
                     onSelect={setSelectedId}
