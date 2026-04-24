@@ -25,9 +25,13 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const ALLOWED_KINDS = [
+  // Bolt-on parts
   "splitter", "lip", "canard", "side_skirt",
   "wide_arch", "diffuser", "ducktail", "wing",
   "bonnet_vent", "wing_vent",
+  // Body-swap panels
+  "front_clip", "hood_panel", "fender_panel", "door_skin",
+  "side_skirt_panel", "rear_quarter", "rear_clip", "deck_panel",
 ] as const;
 type Kind = typeof ALLOWED_KINDS[number];
 
