@@ -603,6 +603,8 @@ async function runSingleVariation({
       aggression: context.aggression,
       discipline: context.discipline,
       extraModifier: body.extra_modifier ?? null,
+      briefReferenceCount: 0,
+      userCarRefAttached: isImageRef(userAngleRef),
     });
     return { key: a.key, result };
   }));
