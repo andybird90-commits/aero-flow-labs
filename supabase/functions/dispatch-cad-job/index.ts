@@ -102,16 +102,31 @@ Deno.serve(async (req) => {
     }
 
     try {
+      // The worker still speaks v1 (`recipe.features[]`). Wrap a v2 builder
+      // call as a single `builder` feature so existing workers accept it,
+      // while also forwarding the v2 fields at top-level for newer workers.
       const workerPayload = isBuilderRecipe
         ? {
-            // v2 — trusted builder
+            recipe: {
+              part_type: recipe.part_type ?? part_kind,
+              features: [
+                {
+                  op: "builder",
+                  builder: recipe.builder,
+                  params: recipe.params,
+                },
+              ],
+              builder: recipe.builder,
+              params: recipe.params,
+            },
+            // v2 fields at top-level for builder-aware workers
             builder: recipe.builder,
             part_type: recipe.part_type ?? part_kind,
             params: recipe.params,
             inputs,
             part_kind,
           }
-        : { recipe, inputs, part_kind }; // v1 legacy
+        : { recipe, inputs, part_kind }; // v1 legacy passthrough
       const workerResp = await fetch(`${CAD_WORKER_URL.replace(/\/$/, "")}/jobs`, {
         method: "POST",
         headers: {
