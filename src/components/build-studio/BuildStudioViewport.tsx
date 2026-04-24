@@ -128,16 +128,25 @@ function HeroStlCar({ url, template }: { url: string; template?: CarTemplate | n
 }
 
 /* ─── Body skin overlay (Shell Fit Mode) ─── */
-function BodySkinOverlay({
+const BodySkinOverlay = function BodySkinOverlay({
   url,
   kind,
   template,
+  transform,
+  groupRef,
+  onClick,
+  highlight,
 }: {
   url: string;
   kind: "stl" | "glb";
   template?: CarTemplate | null;
+  transform?: ShellTransform | null;
+  groupRef?: React.MutableRefObject<THREE.Group | null>;
+  onClick?: () => void;
+  highlight?: boolean;
 }) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
+  const localRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,12 +178,14 @@ function BodySkinOverlay({
           m.castShadow = false;
           m.receiveShadow = false;
           m.material = new THREE.MeshPhysicalMaterial({
-            color: "#fb923c",
+            color: highlight ? "#fb923c" : "#fb923c",
             metalness: 0.2,
             roughness: 0.6,
             transparent: true,
-            opacity: 0.45,
+            opacity: highlight ? 0.55 : 0.42,
             clearcoat: 0.3,
+            emissive: highlight ? "#7c2d12" : "#000000",
+            emissiveIntensity: highlight ? 0.15 : 0,
           });
         }
       });
@@ -211,11 +222,38 @@ function BodySkinOverlay({
     return () => {
       cancelled = true;
     };
-  }, [url, kind, template?.wheelbase_mm]);
+  }, [url, kind, template?.wheelbase_mm, highlight]);
+
+  // Apply transform when it changes (without overriding gizmo dragging).
+  useEffect(() => {
+    const g = localRef.current;
+    if (!g || !transform) return;
+    g.position.set(transform.position.x, transform.position.y, transform.position.z);
+    g.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
+    g.scale.set(transform.scale.x, transform.scale.y, transform.scale.z);
+  }, [transform]);
 
   if (!object) return null;
-  return <primitive object={object} />;
-}
+  return (
+    <group
+      ref={(node) => {
+        localRef.current = node;
+        if (groupRef) groupRef.current = node;
+      }}
+      name="shell-overlay"
+      onClick={
+        onClick
+          ? (e) => {
+              e.stopPropagation();
+              onClick();
+            }
+          : undefined
+      }
+    >
+      <primitive object={object} />
+    </group>
+  );
+};
 
 /* ─── Procedural car placeholder (fallback) ─── */
 function CarPlaceholder({ template }: { template?: CarTemplate | null }) {
