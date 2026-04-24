@@ -609,6 +609,43 @@ function BriefInner({ projectId }: { projectId: string }) {
           </label>
         )}
 
+        <button
+          type="button"
+          onClick={() => setBodySwapMode(!bodySwapMode)}
+          className={cn(
+            "w-full text-left rounded-md border p-3 transition-colors",
+            bodySwapMode
+              ? "border-primary bg-primary/10"
+              : "border-border bg-surface-1 hover:border-border/80",
+          )}
+          aria-pressed={bodySwapMode}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={cn(
+                "mt-0.5 h-4 w-4 rounded border flex items-center justify-center shrink-0",
+                bodySwapMode ? "border-primary bg-primary" : "border-border bg-surface-2",
+              )}
+            >
+              {bodySwapMode && (
+                <svg viewBox="0 0 12 12" className="h-3 w-3 text-primary-foreground">
+                  <path d="M2 6l3 3 5-6" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-foreground">Body-swap kit mode</div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Treat the reference photos as the <span className="text-foreground">exact target silhouette</span> (e.g. Vale GT1, Old & New slantnose).
+                The AI replicates the kit shape rather than freestyling, and downstream parts are modelled as bolt-on shells over the donor car.
+                {referencePaths.length === 0 && (
+                  <span className="block mt-1 text-warning">Upload at least one reference photo above for body-swap mode to take effect.</span>
+                )}
+              </p>
+            </div>
+          </div>
+        </button>
+
         <label className="flex items-start gap-2 cursor-pointer text-sm">
           <Checkbox checked={rights} onCheckedChange={(v) => setRights(!!v)} className="mt-0.5" />
           <span className="text-muted-foreground">
