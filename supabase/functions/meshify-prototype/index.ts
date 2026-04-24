@@ -26,7 +26,7 @@ const corsHeaders = {
 const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const RODIN_MODEL = "hyper3d/rodin";
+const MESH_MODEL = "tencent/hunyuan3d-2";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -60,25 +60,31 @@ Deno.serve(async (req) => {
       const renders = ((proto.render_urls as Array<{ angle: string; url: string }>) ?? []).map((r) => r.url);
       if (!renders.length) return json({ error: "No renders yet — run render-prototype-views first" }, 400);
 
-      const createResp = await fetch(`https://api.replicate.com/v1/models/${RODIN_MODEL}/predictions`, {
+      // Hunyuan3D-2 takes a SINGLE image. Use the first render (typically front).
+      const primaryImage = renders[0];
+
+      const createResp = await fetch(`https://api.replicate.com/v1/models/${MESH_MODEL}/predictions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           input: {
-            images: renders,
-            prompt:
-              `A standalone aftermarket automotive part rendered as a HOLLOW THIN-SHELL composite panel — like a fibreglass scoop, vacuum-formed bodykit panel, or moulded plastic cover. ~2mm wall thickness. The back side is an OPEN CONCAVE CAVITY mirroring the outer surface inward, NOT a solid lump. Preserve the full real-world outer shape, depth, curvature, vents and flare from the references. Clean smooth surfaces, matte clay, sharp edges, no surface noise, no logos, no embossed text, no badges, no decals. No bolt holes, no fasteners, no mounting tabs, no flanges, no brackets — bonded or bolted on after printing. Never a solid block, never a paper-thin ribbon — a true hollow shell with visible wall thickness at the rim of the opening.`,
+            image: primaryImage,
+            steps: 50,
+            guidance_scale: 5.5,
+            octree_resolution: 256,
+            remove_background: true,
+            seed: 1234,
           },
         }),
       });
       if (!createResp.ok) {
         const t = await createResp.text();
-        await admin.from("prototypes").update({ mesh_status: "failed", mesh_error: `Rodin ${createResp.status}` }).eq("id", prototype_id);
-        return json({ error: `Rodin ${createResp.status}: ${t.slice(0, 300)}` }, 500);
+        await admin.from("prototypes").update({ mesh_status: "failed", mesh_error: `Hunyuan3D ${createResp.status}` }).eq("id", prototype_id);
+        return json({ error: `Hunyuan3D ${createResp.status}: ${t.slice(0, 300)}` }, 500);
       }
       const pred = await createResp.json();
       const taskId: string | undefined = pred.id;
-      if (!taskId) return json({ error: "Rodin returned no prediction id" }, 500);
+      if (!taskId) return json({ error: "Hunyuan3D returned no prediction id" }, 500);
 
       await admin.from("prototypes").update({ mesh_status: "meshing", mesh_task_id: taskId, mesh_error: null }).eq("id", prototype_id);
       return json({ task_id: taskId, status: "IN_PROGRESS", progress: 0 });
@@ -93,13 +99,13 @@ Deno.serve(async (req) => {
     });
     if (!pollResp.ok) {
       const t = await pollResp.text();
-      return json({ error: `Rodin poll ${pollResp.status}: ${t.slice(0, 200)}` }, 500);
+      return json({ error: `Hunyuan3D poll ${pollResp.status}: ${t.slice(0, 200)}` }, 500);
     }
     const pred = await pollResp.json();
     const status: string = pred.status;
 
     if (status === "failed" || status === "canceled") {
-      const msg = String(pred.error ?? `Rodin ${status}`).slice(0, 500);
+      const msg = String(pred.error ?? `Hunyuan3D ${status}`).slice(0, 500);
       await admin.from("prototypes").update({ mesh_status: "failed", mesh_error: msg }).eq("id", prototype_id);
       return json({ status: "FAILED", error: msg });
     }
@@ -109,11 +115,12 @@ Deno.serve(async (req) => {
     }
 
     const out = pred.output;
+    // Hunyuan3D-2 returns a single GLB url string (or array containing one).
     const glbUrl: string | undefined =
       typeof out === "string" ? out :
-      Array.isArray(out) ? (out.find((u: string) => typeof u === "string" && u.endsWith(".glb")) ?? out[0]) :
-      undefined;
-    if (!glbUrl) return json({ error: "Rodin returned no GLB" }, 500);
+      Array.isArray(out) ? (out.find((u: string) => typeof u === "string" && (u.endsWith(".glb") || u.endsWith(".obj"))) ?? out[0]) :
+      (out?.mesh ?? out?.glb ?? undefined);
+    if (!glbUrl) return json({ error: "Hunyuan3D returned no mesh" }, 500);
 
     const glbResp = await fetch(glbUrl);
     if (!glbResp.ok) return json({ error: `Failed to fetch GLB: ${glbResp.status}` }, 500);
