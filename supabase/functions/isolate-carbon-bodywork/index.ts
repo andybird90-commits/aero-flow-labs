@@ -137,6 +137,23 @@ Deno.serve(async (req) => {
     if (!concept) return json({ error: "concept not found" }, 404);
     if (concept.user_id !== userRes.user.id) return json({ error: "Forbidden" }, 403);
 
+    // Detect body-swap mode from the project's design brief. When ON, the
+    // "carbon" view becomes a full swap-shell extraction instead of a
+    // bolt-on parts isolation.
+    let bodySwapMode = false;
+    try {
+      const { data: brief } = await admin
+        .from("design_briefs")
+        .select("body_swap_mode")
+        .eq("project_id", concept.project_id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      bodySwapMode = !!brief?.body_swap_mode;
+    } catch (e) {
+      console.warn("could not read body_swap_mode, defaulting to bolt-on:", e);
+    }
+
     const angleSources: Array<{ key: AngleKey; url: string | null; col: string }> = [
       { key: "front",  url: concept.render_front_url,   col: "render_front_carbon_url" },
       { key: "side",   url: concept.render_side_url,    col: "render_side_carbon_url" },
@@ -157,9 +174,10 @@ Deno.serve(async (req) => {
       conceptId: concept.id,
       userId: userRes.user.id,
       todo,
+      bodySwapMode,
     }));
 
-    return json({ started: true, concept_id: concept.id, status: "generating" }, 202);
+    return json({ started: true, concept_id: concept.id, status: "generating", body_swap_mode: bodySwapMode }, 202);
   } catch (e) {
     return json({ error: String((e as Error).message ?? e) }, 500);
   }
