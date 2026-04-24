@@ -14,6 +14,160 @@ export type Database = {
   }
   public: {
     Tables: {
+      blender_jobs: {
+        Row: {
+          body_skin_id: string | null
+          completed_at: string | null
+          created_at: string
+          donor_car_template_id: string | null
+          error_log: string | null
+          id: string
+          input_mesh_urls: Json
+          operation_type: Database["public"]["Enums"]["blender_job_type"]
+          output_file_urls: Json
+          parameters: Json
+          preview_file_url: string | null
+          project_id: string | null
+          selected_part_ids: Json
+          started_at: string | null
+          status: Database["public"]["Enums"]["blender_job_status"]
+          updated_at: string
+          user_id: string
+          worker_task_id: string | null
+        }
+        Insert: {
+          body_skin_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          donor_car_template_id?: string | null
+          error_log?: string | null
+          id?: string
+          input_mesh_urls?: Json
+          operation_type: Database["public"]["Enums"]["blender_job_type"]
+          output_file_urls?: Json
+          parameters?: Json
+          preview_file_url?: string | null
+          project_id?: string | null
+          selected_part_ids?: Json
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["blender_job_status"]
+          updated_at?: string
+          user_id: string
+          worker_task_id?: string | null
+        }
+        Update: {
+          body_skin_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          donor_car_template_id?: string | null
+          error_log?: string | null
+          id?: string
+          input_mesh_urls?: Json
+          operation_type?: Database["public"]["Enums"]["blender_job_type"]
+          output_file_urls?: Json
+          parameters?: Json
+          preview_file_url?: string | null
+          project_id?: string | null
+          selected_part_ids?: Json
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["blender_job_status"]
+          updated_at?: string
+          user_id?: string
+          worker_task_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blender_jobs_body_skin_id_fkey"
+            columns: ["body_skin_id"]
+            isOneToOne: false
+            referencedRelation: "body_skins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blender_jobs_donor_car_template_id_fkey"
+            columns: ["donor_car_template_id"]
+            isOneToOne: false
+            referencedRelation: "car_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blender_jobs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      body_skins: {
+        Row: {
+          concept_project_id: string | null
+          created_at: string
+          donor_car_template_id: string | null
+          file_url_glb: string | null
+          file_url_stl: string | null
+          fit_status: Database["public"]["Enums"]["body_skin_fit_status"]
+          generation_prompt: string | null
+          id: string
+          name: string
+          notes: string | null
+          preview_url: string | null
+          source_image_urls: Json
+          style_tags: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          concept_project_id?: string | null
+          created_at?: string
+          donor_car_template_id?: string | null
+          file_url_glb?: string | null
+          file_url_stl?: string | null
+          fit_status?: Database["public"]["Enums"]["body_skin_fit_status"]
+          generation_prompt?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          preview_url?: string | null
+          source_image_urls?: Json
+          style_tags?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          concept_project_id?: string | null
+          created_at?: string
+          donor_car_template_id?: string | null
+          file_url_glb?: string | null
+          file_url_stl?: string | null
+          fit_status?: Database["public"]["Enums"]["body_skin_fit_status"]
+          generation_prompt?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          preview_url?: string | null
+          source_image_urls?: Json
+          style_tags?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "body_skins_concept_project_id_fkey"
+            columns: ["concept_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "body_skins_donor_car_template_id_fkey"
+            columns: ["donor_car_template_id"]
+            isOneToOne: false
+            referencedRelation: "car_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cad_jobs: {
         Row: {
           concept_id: string | null
@@ -64,6 +218,50 @@ export type Database = {
           worker_task_id?: string | null
         }
         Relationships: []
+      }
+      car_hardpoints: {
+        Row: {
+          car_template_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string | null
+          notes: string | null
+          point_type: Database["public"]["Enums"]["car_hardpoint_type"]
+          position: Json
+          updated_at: string
+        }
+        Insert: {
+          car_template_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          notes?: string | null
+          point_type: Database["public"]["Enums"]["car_hardpoint_type"]
+          position?: Json
+          updated_at?: string
+        }
+        Update: {
+          car_template_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          notes?: string | null
+          point_type?: Database["public"]["Enums"]["car_hardpoint_type"]
+          position?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "car_hardpoints_car_template_id_fkey"
+            columns: ["car_template_id"]
+            isOneToOne: false
+            referencedRelation: "car_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       car_stls: {
         Row: {
@@ -1014,6 +1212,88 @@ export type Database = {
           },
         ]
       }
+      meshy_generations: {
+        Row: {
+          created_at: string
+          donor_car_template_id: string | null
+          error: string | null
+          generation_type: Database["public"]["Enums"]["meshy_generation_type"]
+          id: string
+          meshy_task_id: string | null
+          output_glb_url: string | null
+          output_stl_url: string | null
+          parameters: Json
+          preview_url: string | null
+          prompt: string
+          reference_image_urls: Json
+          saved_body_skin_id: string | null
+          saved_library_item_id: string | null
+          status: Database["public"]["Enums"]["meshy_generation_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          donor_car_template_id?: string | null
+          error?: string | null
+          generation_type: Database["public"]["Enums"]["meshy_generation_type"]
+          id?: string
+          meshy_task_id?: string | null
+          output_glb_url?: string | null
+          output_stl_url?: string | null
+          parameters?: Json
+          preview_url?: string | null
+          prompt?: string
+          reference_image_urls?: Json
+          saved_body_skin_id?: string | null
+          saved_library_item_id?: string | null
+          status?: Database["public"]["Enums"]["meshy_generation_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          donor_car_template_id?: string | null
+          error?: string | null
+          generation_type?: Database["public"]["Enums"]["meshy_generation_type"]
+          id?: string
+          meshy_task_id?: string | null
+          output_glb_url?: string | null
+          output_stl_url?: string | null
+          parameters?: Json
+          preview_url?: string | null
+          prompt?: string
+          reference_image_urls?: Json
+          saved_body_skin_id?: string | null
+          saved_library_item_id?: string | null
+          status?: Database["public"]["Enums"]["meshy_generation_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meshy_generations_donor_car_template_id_fkey"
+            columns: ["donor_car_template_id"]
+            isOneToOne: false
+            referencedRelation: "car_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meshy_generations_saved_body_skin_id_fkey"
+            columns: ["saved_body_skin_id"]
+            isOneToOne: false
+            referencedRelation: "body_skins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meshy_generations_saved_library_item_id_fkey"
+            columns: ["saved_library_item_id"]
+            isOneToOne: false
+            referencedRelation: "library_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parts_generation_jobs: {
         Row: {
           completed_at: string | null
@@ -1070,6 +1350,82 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      placed_parts: {
+        Row: {
+          created_at: string
+          hidden: boolean
+          id: string
+          library_item_id: string | null
+          locked: boolean
+          metadata: Json
+          mirrored: boolean
+          part_name: string | null
+          position: Json
+          project_id: string
+          rotation: Json
+          scale: Json
+          snap_zone_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          hidden?: boolean
+          id?: string
+          library_item_id?: string | null
+          locked?: boolean
+          metadata?: Json
+          mirrored?: boolean
+          part_name?: string | null
+          position?: Json
+          project_id: string
+          rotation?: Json
+          scale?: Json
+          snap_zone_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          hidden?: boolean
+          id?: string
+          library_item_id?: string | null
+          locked?: boolean
+          metadata?: Json
+          mirrored?: boolean
+          part_name?: string | null
+          position?: Json
+          project_id?: string
+          rotation?: Json
+          scale?: Json
+          snap_zone_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "placed_parts_library_item_id_fkey"
+            columns: ["library_item_id"]
+            isOneToOne: false
+            referencedRelation: "library_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placed_parts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placed_parts_snap_zone_id_fkey"
+            columns: ["snap_zone_id"]
+            isOneToOne: false
+            referencedRelation: "snap_zones"
             referencedColumns: ["id"]
           },
         ]
@@ -1262,6 +1618,129 @@ export type Database = {
           },
         ]
       }
+      shell_alignments: {
+        Row: {
+          body_skin_id: string
+          created_at: string
+          id: string
+          locked_hardpoints: Json
+          notes: string | null
+          position: Json
+          project_id: string
+          rotation: Json
+          scale: Json
+          scale_to_wheelbase: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          body_skin_id: string
+          created_at?: string
+          id?: string
+          locked_hardpoints?: Json
+          notes?: string | null
+          position?: Json
+          project_id: string
+          rotation?: Json
+          scale?: Json
+          scale_to_wheelbase?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          body_skin_id?: string
+          created_at?: string
+          id?: string
+          locked_hardpoints?: Json
+          notes?: string | null
+          position?: Json
+          project_id?: string
+          rotation?: Json
+          scale?: Json
+          scale_to_wheelbase?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shell_alignments_body_skin_id_fkey"
+            columns: ["body_skin_id"]
+            isOneToOne: false
+            referencedRelation: "body_skins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shell_alignments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      snap_zones: {
+        Row: {
+          car_template_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string | null
+          mirror_zone_id: string | null
+          normal: Json
+          notes: string | null
+          position: Json
+          rotation: Json
+          scale: Json
+          updated_at: string
+          zone_type: Database["public"]["Enums"]["snap_zone_type"]
+        }
+        Insert: {
+          car_template_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          mirror_zone_id?: string | null
+          normal?: Json
+          notes?: string | null
+          position?: Json
+          rotation?: Json
+          scale?: Json
+          updated_at?: string
+          zone_type: Database["public"]["Enums"]["snap_zone_type"]
+        }
+        Update: {
+          car_template_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          mirror_zone_id?: string | null
+          normal?: Json
+          notes?: string | null
+          position?: Json
+          rotation?: Json
+          scale?: Json
+          updated_at?: string
+          zone_type?: Database["public"]["Enums"]["snap_zone_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "snap_zones_car_template_id_fkey"
+            columns: ["car_template_id"]
+            isOneToOne: false
+            referencedRelation: "car_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "snap_zones_mirror_zone_id_fkey"
+            columns: ["mirror_zone_id"]
+            isOneToOne: false
+            referencedRelation: "snap_zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       style_presets: {
         Row: {
           build_type: string | null
@@ -1348,6 +1827,32 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "engineer" | "viewer"
+      blender_job_status: "queued" | "running" | "complete" | "failed"
+      blender_job_type:
+        | "trim_part_to_car"
+        | "conform_edge_to_body"
+        | "thicken_shell"
+        | "add_return_lip"
+        | "add_mounting_tabs"
+        | "mirror_part"
+        | "split_for_print_bed"
+        | "repair_watertight"
+        | "decimate_mesh"
+        | "cut_wheel_arches"
+        | "cut_window_openings"
+        | "panelise_body_skin"
+        | "export_stl"
+        | "export_glb_preview"
+      body_skin_fit_status: "raw" | "aligned" | "panelised" | "printable"
+      car_hardpoint_type:
+        | "front_wheel_centre"
+        | "rear_wheel_centre"
+        | "centreline"
+        | "sill_line"
+        | "windscreen_base"
+        | "windscreen_top"
+        | "roof_peak"
+        | "door_corner"
       concept_set_status:
         | "draft"
         | "generating"
@@ -1379,6 +1884,8 @@ export type Database = {
         | "cad_part_mesh"
       library_visibility: "private" | "public"
       marketplace_listing_status: "draft" | "active" | "paused"
+      meshy_generation_status: "queued" | "running" | "complete" | "failed"
+      meshy_generation_type: "part" | "body_skin"
       parts_job_state:
         | "queued"
         | "analyzing"
@@ -1394,6 +1901,22 @@ export type Database = {
         | "parts"
         | "exported"
         | "archived"
+      snap_zone_type:
+        | "front_left_arch"
+        | "front_right_arch"
+        | "rear_left_arch"
+        | "rear_right_arch"
+        | "front_splitter"
+        | "left_sill"
+        | "right_sill"
+        | "rear_diffuser"
+        | "rear_wing"
+        | "roof"
+        | "bonnet"
+        | "left_door"
+        | "right_door"
+        | "left_quarter"
+        | "right_quarter"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1522,6 +2045,34 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "engineer", "viewer"],
+      blender_job_status: ["queued", "running", "complete", "failed"],
+      blender_job_type: [
+        "trim_part_to_car",
+        "conform_edge_to_body",
+        "thicken_shell",
+        "add_return_lip",
+        "add_mounting_tabs",
+        "mirror_part",
+        "split_for_print_bed",
+        "repair_watertight",
+        "decimate_mesh",
+        "cut_wheel_arches",
+        "cut_window_openings",
+        "panelise_body_skin",
+        "export_stl",
+        "export_glb_preview",
+      ],
+      body_skin_fit_status: ["raw", "aligned", "panelised", "printable"],
+      car_hardpoint_type: [
+        "front_wheel_centre",
+        "rear_wheel_centre",
+        "centreline",
+        "sill_line",
+        "windscreen_base",
+        "windscreen_top",
+        "roof_peak",
+        "door_corner",
+      ],
       concept_set_status: [
         "draft",
         "generating",
@@ -1557,6 +2108,8 @@ export const Constants = {
       ],
       library_visibility: ["private", "public"],
       marketplace_listing_status: ["draft", "active", "paused"],
+      meshy_generation_status: ["queued", "running", "complete", "failed"],
+      meshy_generation_type: ["part", "body_skin"],
       parts_job_state: [
         "queued",
         "analyzing",
@@ -1573,6 +2126,23 @@ export const Constants = {
         "parts",
         "exported",
         "archived",
+      ],
+      snap_zone_type: [
+        "front_left_arch",
+        "front_right_arch",
+        "rear_left_arch",
+        "rear_right_arch",
+        "front_splitter",
+        "left_sill",
+        "right_sill",
+        "rear_diffuser",
+        "rear_wing",
+        "roof",
+        "bonnet",
+        "left_door",
+        "right_door",
+        "left_quarter",
+        "right_quarter",
       ],
     },
   },
