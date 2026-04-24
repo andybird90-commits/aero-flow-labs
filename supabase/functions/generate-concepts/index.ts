@@ -168,6 +168,30 @@ function sniffDiscipline(text: string, buildType: string | null): Discipline {
   return "auto";
 }
 
+/**
+ * Surgical mode = the brief is a small, focused, literal change request.
+ * Example triggers: "25mm wider arches all around", "add a ducktail",
+ * "lower 20mm", "tint the windows".
+ *
+ * We deliberately keep this conservative — only flip on if the brief is
+ * short AND looks like a parametric tweak rather than a build description.
+ */
+function sniffSurgical(text: string, mustInclude: string[], mustAvoid: string[]): boolean {
+  const t = (text || "").trim().toLowerCase();
+  if (!t) return false;
+  if (t.length > 200) return false;
+  // If the user described a build discipline, it's not surgical.
+  if (/\b(time[-\s]?attack|drift|stance|gt[-\s]?3|rally|show car|sema|silhouette|widebody|wide[-\s]?body|track build|race build)\b/.test(t)) return false;
+  // Multiple distinct asks via " and " / commas → still surgical only if short.
+  const looksParametric =
+    /\b\d+\s?(mm|cm|in|"|inch|degree|deg|°)\b/.test(t) ||                                // has a measurement
+    /\b(add|fit|install|swap|tint|lower|raise|widen|wider|narrower|extend|shorten|paint|wrap|change|recolour|recolor)\b/.test(t);
+  if (!looksParametric) return false;
+  // Long must-include lists imply a full kit, not a surgical tweak.
+  if (mustInclude.length + mustAvoid.length > 4) return false;
+  return true;
+}
+
 function sniffAggression(text: string, styleTags: string[]): Aggression {
   const t = `${text} ${styleTags.join(" ")}`.toLowerCase();
   if (/\b(extreme|silhouette|max(imal|imum)?|full[-\s]?send|insane|bonkers)\b/.test(t)) return "extreme";
