@@ -65,20 +65,45 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Probe /health on the worker. Treat 401/403 as token problem; non-2xx as
-  // unhealthy; network errors as unreachable.
+  // Probe the worker. Try /health first, then fall back to / so workers that
+  // don't expose a dedicated health route still pass. Treat 401/403 as a
+  // token problem; network errors as unreachable; anything else (including
+  // 404 on /health when / responds) as ok.
   const base = CAD_WORKER_URL!.replace(/\/$/, "");
-  const probeUrl = `${base}/health`;
 
-  try {
+  async function probe(path: string) {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
-    const resp = await fetch(probeUrl, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${CAD_WORKER_TOKEN}` },
-      signal: ctrl.signal,
-    });
-    clearTimeout(t);
+    try {
+      const resp = await fetch(`${base}${path}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${CAD_WORKER_TOKEN}` },
+        signal: ctrl.signal,
+      });
+      return { resp, error: null as string | null };
+    } catch (e) {
+      return { resp: null, error: e instanceof Error ? e.message : String(e) };
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  try {
+    let { resp, error } = await probe("/health");
+    // Fall back to root if /health is missing on this worker.
+    if (resp && resp.status === 404) {
+      ({ resp, error } = await probe("/"));
+    }
+
+    if (!resp) {
+      return json({
+        state: "unreachable",
+        has_url,
+        has_token,
+        worker_url,
+        detail: `Could not reach worker: ${error}`,
+      });
+    }
 
     if (resp.status === 401 || resp.status === 403) {
       return json({
@@ -90,7 +115,10 @@ Deno.serve(async (req) => {
         detail: "Worker rejected the token. Check CAD_WORKER_TOKEN matches the value set in the worker.",
       });
     }
-    if (!resp.ok) {
+
+    // Anything else (2xx, 3xx, 404, 405, 5xx) means the host is up and the
+    // token wasn't rejected. Treat 5xx as unhealthy; otherwise ok.
+    if (resp.status >= 500) {
       const text = await resp.text().catch(() => "");
       return json({
         state: "unhealthy",
@@ -98,9 +126,10 @@ Deno.serve(async (req) => {
         has_token,
         worker_url,
         http_status: resp.status,
-        detail: `Worker /health returned ${resp.status}: ${text.slice(0, 200)}`,
+        detail: `Worker returned ${resp.status}: ${text.slice(0, 200)}`,
       });
     }
+
     return json({
       state: "ok",
       has_url,
