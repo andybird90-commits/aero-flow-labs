@@ -127,8 +127,10 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
         if (fnErr) throw fnErr;
         if ((data as any)?.error) throw new Error((data as any).error);
         const got: Box[] = Array.isArray((data as any)?.boxes) ? (data as any).boxes : [];
+        const analyzed = (data as any)?.analyzed_url as string | undefined;
         cacheRef.current.set(cacheKey, got);
         originalRef.current.set(cacheKey, got.map((b) => ({ ...b })));
+        if (analyzed) analyzedUrlRef.current.set(cacheKey, analyzed);
         setBoxes(got);
       } catch (e: any) {
         if (cancelled) return;
