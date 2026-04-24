@@ -84,6 +84,11 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
   /** Original AI-detected boxes per cache key — used so users can reset their
    *  manual edits back to what the model proposed. */
   const originalRef = useRef<Map<string, Box[]>>(new Map());
+  /** The exact image URL the AI analyzed when producing these boxes. We pin
+   *  it so extraction crops from the same pixels — carbon-shell vs regular
+   *  renders are independently generated and aren't pixel-aligned, so using
+   *  the on-screen URL would cause boxes to land on the wrong part. */
+  const analyzedUrlRef = useRef<Map<string, string>>(new Map());
   const modeKey = bodySwapMode ? "swap" : "bolton";
   const cacheKey = `${conceptId}:${view}:${modeKey}`;
 
