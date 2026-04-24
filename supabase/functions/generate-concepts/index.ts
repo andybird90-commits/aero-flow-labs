@@ -420,8 +420,27 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
     rear: garageRefs.rear ?? body.snapshots?.rear ?? body.snapshots?.rear_three_quarter ?? null,
   };
 
+  // Resolve user-uploaded body kit reference photos from the brief into signed URLs.
+  const briefReferenceUrls: string[] = [];
+  const refPaths: string[] = Array.isArray((brief as any).reference_image_paths)
+    ? (brief as any).reference_image_paths
+    : [];
+  if (refPaths.length > 0) {
+    for (const p of refPaths.slice(0, 4)) {
+      try {
+        const { data } = await admin.storage
+          .from("brief-references")
+          .createSignedUrl(p, 60 * 60);
+        if (data?.signedUrl) briefReferenceUrls.push(data.signedUrl);
+      } catch (e) {
+        console.warn("brief reference signed URL failed for", p, e);
+      }
+    }
+  }
+
   console.log("generate-concepts: discipline=", discipline, "aggression=", aggression,
-    "variations=", variations.map(v => v.title));
+    "variations=", variations.map(v => v.title),
+    "briefRefs=", briefReferenceUrls.length);
 
   return {
     conceptSetId: cs?.id ?? null,
@@ -435,6 +454,7 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
     vehicleLabel,
     briefText,
     presetMode,
+    briefReferenceUrls,
   };
 }
 
