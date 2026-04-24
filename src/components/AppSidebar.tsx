@@ -14,38 +14,46 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
-  LayoutGrid,
-  FileText,
+  LayoutDashboard,
   Sparkles,
-  Settings,
-  Hexagon,
-  FileBox,
-  Palette,
-  Car,
+  Boxes,
   Library as LibraryIcon,
-  Store,
+  Shapes,
+  Car,
+  FolderKanban,
+  Settings,
+  Wand2,
+  Hammer,
+  Hexagon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/lib/repo";
 
-// NOTE: Prototyper was removed from primary nav as part of the strategic
-// pivot to geometry-first fitting for body-conforming parts. The /prototyper
-// route still works for legacy prototypes opened from /library.
-const projectsNav = [
-  { title: "Projects", url: "/projects", icon: LayoutGrid },
-  { title: "Garage", url: "/garage", icon: Car },
-  { title: "Styles", url: "/styles", icon: Palette },
-  { title: "My Library", url: "/library", icon: LibraryIcon },
-  { title: "Marketplace", url: "/marketplace", icon: Store },
-];
-
-const studioNav = [
-  { title: "Design Brief", url: "/brief", icon: FileText },
-  { title: "Concepts", url: "/concepts", icon: Sparkles },
+/**
+ * APEX NEXT — primary navigation.
+ *
+ * Workspace flow (top-down): see overview, design a concept, build it in 3D,
+ * pick parts/skins/cars, manage projects.
+ *
+ * Admin flow: production tools (Meshy generation, Blender job queue) and
+ * legacy maintenance (hero-car STL uploads).
+ */
+const workspaceNav = [
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Concept Studio", url: "/concept-studio", icon: Sparkles },
+  { title: "3D Build Studio", url: "/build-studio", icon: Boxes },
+  { title: "Part Library", url: "/part-library", icon: LibraryIcon },
+  { title: "Body Skin Library", url: "/body-skin-library", icon: Shapes },
+  { title: "Car Library", url: "/car-library", icon: Car },
+  { title: "Projects", url: "/projects", icon: FolderKanban },
 ];
 
 const systemNav = [{ title: "Settings", url: "/settings", icon: Settings }];
-const adminNav = [{ title: "Hero-car STLs", url: "/settings/car-stls", icon: FileBox }];
+
+const adminNav = [
+  { title: "Meshy Admin", url: "/meshy-admin", icon: Wand2 },
+  { title: "Blender Jobs", url: "/blender-jobs", icon: Hammer },
+];
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -57,13 +65,12 @@ export function AppSidebar() {
   const { data: isAdmin } = useIsAdmin(user?.id);
   const isActive = (path: string) => location.pathname === path;
 
-  // Preserve project context across studio navigation
+  // Preserve project context when navigating between concept-studio / build-studio.
+  const projectScoped = new Set(["/concept-studio", "/build-studio"]);
   const withProject = (url: string) =>
-    studioNav.some((s) => s.url === url) && projectId
-      ? `${url}?project=${projectId}`
-      : url;
+    projectScoped.has(url) && projectId ? `${url}?project=${projectId}` : url;
 
-  const renderItems = (items: typeof projectsNav) =>
+  const renderItems = (items: Array<{ title: string; url: string; icon: any }>) =>
     items.map((item) => (
       <SidebarMenuItem key={item.title}>
         <SidebarMenuButton
@@ -97,9 +104,9 @@ export function AppSidebar() {
           </div>
           {!collapsed && (
             <div className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold tracking-tight text-foreground">BodyKit Studio</span>
+              <span className="text-sm font-semibold tracking-tight text-foreground">APEX NEXT</span>
               <span className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                AI aero design
+                Aero design studio
               </span>
             </div>
           )}
@@ -112,16 +119,7 @@ export function AppSidebar() {
             Workspace
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>{renderItems(projectsNav)}</SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-mono text-[10px] uppercase tracking-widest">
-            Studio
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>{renderItems(studioNav)}</SidebarMenu>
+            <SidebarMenu>{renderItems(workspaceNav)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
@@ -149,7 +147,7 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border">
         {!collapsed && (
           <div className="px-2 py-2 text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            v1.0 · Studio
+            APEX NEXT · v0.1
           </div>
         )}
       </SidebarFooter>
