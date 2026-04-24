@@ -707,6 +707,8 @@ async function runSingleVariation({
       userCarRefAttached: isImageRef(userAngleRef),
       bodySwapMode: context.bodySwapMode,
       bodySwapKitFirst: false, // front concept is image #1 here
+      surgicalMode: context.surgicalMode,
+      briefText: context.briefText,
     });
     return { key: a.key, result };
   }));
