@@ -291,14 +291,14 @@ export function SendToCadWorker({
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Close</Button>
           {!jobId && !recipe && (
-            <Button onClick={onGenerate} disabled={generate.isPending}>
+            <Button onClick={onGenerate} disabled={generate.isPending || !ready}>
               {generate.isPending
                 ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Generating recipe…</>
                 : <><Wrench className="h-4 w-4 mr-1" /> Generate CAD recipe</>}
             </Button>
           )}
           {!jobId && recipe && (
-            <Button onClick={onDispatch} disabled={dispatch.isPending}>
+            <Button onClick={onDispatch} disabled={dispatch.isPending || !ready}>
               {dispatch.isPending
                 ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Dispatching…</>
                 : <><Send className="h-4 w-4 mr-1" /> Send to CAD worker</>}
