@@ -31,6 +31,7 @@ import BuildStudio from "./pages/BuildStudio";
 import BodySkinLibrary from "./pages/BodySkinLibrary";
 import MeshyAdmin from "./pages/MeshyAdmin";
 import BlenderJobs from "./pages/BlenderJobs";
+import SnapZonesAdmin from "./pages/SnapZonesAdmin";
 
 function RealtimeBridge() {
   const { user } = useAuth();
