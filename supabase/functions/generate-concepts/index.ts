@@ -514,7 +514,8 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   console.log("generate-concepts: discipline=", discipline, "aggression=", aggression,
     "variations=", variations.map(v => v.title),
     "briefRefs=", briefReferenceUrls.length,
-    "bodySwap=", bodySwapMode);
+    "bodySwap=", bodySwapMode,
+    "surgical=", surgicalMode);
 
   return {
     conceptSetId: cs?.id ?? null,
@@ -530,6 +531,7 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
     presetMode,
     briefReferenceUrls,
     bodySwapMode,
+    surgicalMode,
   };
 }
 
