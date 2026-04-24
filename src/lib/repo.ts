@@ -795,6 +795,15 @@ export function useConcepts(projectId: string | undefined) {
   return useQuery({
     queryKey: ["concepts", projectId],
     enabled: !!projectId,
+    // Poll while generation is in flight so newly-finished tiles appear without a manual refresh.
+    refetchInterval: (query) => {
+      const rows = (query.state.data ?? []) as Concept[];
+      // If we have no rows yet OR any concept is still pending without renders, keep polling.
+      const stillCooking =
+        rows.length === 0 ||
+        rows.some((c) => c.status === "pending" && !(c as any).render_front_url);
+      return stillCooking ? 5000 : false;
+    },
     queryFn: async () => {
       const { data, error } = await supabase.from("concepts")
         .select("*").eq("project_id", projectId!)
