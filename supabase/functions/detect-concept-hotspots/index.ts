@@ -165,7 +165,13 @@ Deno.serve(async (req) => {
     const cacheKey = swapMode ? `${view}__swap` : view;
     const existing = (concept.hotspots ?? {}) as Record<string, any>;
     if (!force && existing[cacheKey]?.boxes) {
-      return json({ boxes: existing[cacheKey].boxes, cached: true });
+      // analyzed_url falls back to current renderUrl for older cached entries
+      // that pre-date this field.
+      return json({
+        boxes: existing[cacheKey].boxes,
+        analyzed_url: existing[cacheKey].analyzed_url ?? renderUrl,
+        cached: true,
+      });
     }
 
     const allowed = (swapMode ? BODY_SWAP_PARTS : ALLOWED_PARTS)[view];
