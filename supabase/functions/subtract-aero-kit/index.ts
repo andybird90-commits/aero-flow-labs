@@ -16,7 +16,7 @@
  *
  * Body: { concept_id: string }
  */
-import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { parseStl, writeBinaryStl, weldMesh, type Mesh } from "../_shared/stl-io.ts";
 import { reorientMesh, type ForwardAxis } from "../_shared/stl-render-server.ts";
 

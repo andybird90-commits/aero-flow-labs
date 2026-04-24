@@ -21,7 +21,7 @@
  *   { ok: true, queued: true } when batched in the background
  *   { count, concept_ids, variation_index } for an internal single run
  */
-import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

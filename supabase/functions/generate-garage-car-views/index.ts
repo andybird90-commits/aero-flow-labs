@@ -11,7 +11,7 @@
  * Body: { garage_car_id: string }
  * Returns: { ok: true } (immediate; status updates land on the row)
  */
-import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { lovableGenerateImageWithFallback } from "../_shared/lovable-image.ts";
 
 const corsHeaders = {
