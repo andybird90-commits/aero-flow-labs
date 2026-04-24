@@ -62,6 +62,7 @@ const App = () => (
             <Route path="/car-library"       element={<ProtectedRoute><Garage /></ProtectedRoute>} />
             <Route path="/meshy-admin"       element={<ProtectedRoute><MeshyAdmin /></ProtectedRoute>} />
             <Route path="/blender-jobs"      element={<ProtectedRoute><BlenderJobs /></ProtectedRoute>} />
+            <Route path="/snap-zones-admin"  element={<ProtectedRoute><SnapZonesAdmin /></ProtectedRoute>} />
             <Route path="/projects"          element={<ProtectedRoute><Projects /></ProtectedRoute>} />
             <Route path="/settings"          element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/settings/car-stls" element={<ProtectedRoute><AdminCarStls /></ProtectedRoute>} />
