@@ -317,11 +317,12 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
 }
 
 function ConceptCard({
-  projectId, concept, heroReady, onApprove, onReject, onFavourite, onDelete, onBuildKit,
+  projectId, concept, heroReady, bodySwapMode, onApprove, onReject, onFavourite, onDelete, onBuildKit,
 }: {
   projectId: string;
   concept: Concept;
   heroReady: boolean;
+  bodySwapMode?: boolean;
   onApprove: () => void;
   onReject: () => void;
   onFavourite: () => void;
