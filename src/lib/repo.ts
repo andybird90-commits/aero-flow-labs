@@ -575,6 +575,31 @@ export function useUpdateProject() {
   });
 }
 
+/**
+ * Update a car (e.g. assign a car_template_id so the hero STL resolves).
+ * Used by the Project car-template picker.
+ */
+export function useUpdateCar() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; patch: Partial<Car> }) => {
+      const { data, error } = await supabase
+        .from("cars")
+        .update(input.patch)
+        .eq("id", input.id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["project"] });
+      qc.invalidateQueries({ queryKey: ["hero_stl"] });
+    },
+  });
+}
+
 export function useDuplicateProject() {
   const qc = useQueryClient();
   return useMutation({

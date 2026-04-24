@@ -10,7 +10,9 @@ import {
   useGarageCars,
 } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Hexagon, Sparkles, Trash2, ArrowRight, Clock, Car as CarIcon } from "lucide-react";
+import { Plus, Hexagon, Sparkles, Trash2, ArrowRight, Clock, Car as CarIcon, Boxes } from "lucide-react";
+import { CarTemplatePickerDialog } from "@/components/CarTemplatePickerDialog";
+import type { Car } from "@/lib/repo";
 import { formatDistanceToNow } from "date-fns";
 import { StatusChip } from "@/components/StatusChip";
 import { useState } from "react";
@@ -39,6 +41,7 @@ export default function Projects() {
   const del = useDeleteProject();
   const update = useUpdateProject();
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [templateCar, setTemplateCar] = useState<Car | null>(null);
 
   const [openNew, setOpenNew] = useState(false);
   const [newName, setNewName] = useState("");
@@ -162,6 +165,25 @@ export default function Projects() {
                       </Select>
                     </div>
 
+                    <div className="mt-3">
+                      <label className="text-mono text-[9px] uppercase tracking-widest text-muted-foreground/80 flex items-center gap-1.5 mb-1">
+                        <Boxes className="h-3 w-3" /> Donor template
+                      </label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-full justify-between text-xs"
+                        onClick={() => setTemplateCar((p.car as Car) ?? null)}
+                      >
+                        <span className="truncate">
+                          {(p.car as any)?.template
+                            ? `${(p.car as any).template.make} ${(p.car as any).template.model}`
+                            : "Not set"}
+                        </span>
+                        <ArrowRight className="h-3 w-3 opacity-60" />
+                      </Button>
+                    </div>
+
                     <div className="mt-3 flex items-center gap-1 text-mono text-[10px] text-muted-foreground">
                       <Clock className="h-3 w-3" />
                       {p.updated_at ? formatDistanceToNow(new Date(p.updated_at), { addSuffix: true }) : "—"}
@@ -273,6 +295,12 @@ export default function Projects() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CarTemplatePickerDialog
+        open={!!templateCar}
+        onOpenChange={(o) => !o && setTemplateCar(null)}
+        car={templateCar}
+      />
     </AppLayout>
   );
 }
