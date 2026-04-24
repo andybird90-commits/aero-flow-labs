@@ -19,7 +19,7 @@ import { decode as decodeImg, Image } from "https://deno.land/x/imagescript@1.2.
  * padded onto an identical NxN canvas so the inter-view scale ratio is
  * preserved when fed into the multi-view mesh reconstructor (Rodin Gen-2).
  */
-const CARBON_CANVAS_PX = 1024;
+const CARBON_CANVAS_PX = 1536;
 const CARBON_BG_GREY = 0xb4b4b4ff; // medium grey, matches isolation prompt
 
 const corsHeaders = {
@@ -37,23 +37,36 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 type AngleKey = "front" | "side" | "rear34" | "rear";
 
 const ISOLATION_PROMPT =
-  `Treat this image as a layered photograph. Keep ONLY the aftermarket carbon-fibre ` +
-  `bodywork visible (front splitter, canards, dive planes, side skirts, flared arches, ` +
-  `rear diffuser, rear wing, hood vents, any bolt-on carbon panels). ` +
-  `Make the painted base car body, wheels, tyres, glass, headlights, tail lights, mirrors, ` +
-  `ground/road and entire background DISAPPEAR — replace them with a clean medium-grey ` +
-  `studio backdrop with soft, even product lighting and a subtle ground shadow. ` +
-  `CRITICAL — do NOT move, rotate, re-position, re-scale, re-arrange or re-compose the ` +
-  `carbon parts in any way. Each carbon part must stay at the EXACT same pixel position, ` +
-  `same size, same camera angle and same perspective foreshortening as in the input image — ` +
-  `as if you simply erased the painted bodywork around them. ` +
-  `If a carbon part was attached to the car, keep it floating in the same place it was ` +
-  `attached, do not drop it, lift it, or pull it toward the centre. ` +
-  `Preserve the EXACT shape, proportion, weave direction, and clearcoat reflections of every ` +
-  `carbon part — do not redesign, restyle, smooth or stylise them. ` +
-  `Output a single clean studio product photograph of the carbon kit only, with the parts ` +
-  `in their original on-car positions. ` +
-  `No car body, no wheels, no background, no text, no watermark.`;
+  `This is a photo of a custom car. Your task is a SURGICAL ERASE — keep the ` +
+  `aftermarket carbon-fibre bodywork visible at the EXACT same pixel coordinates, ` +
+  `same scale, same camera angle and same perspective; remove everything else. ` +
+  `\n\nKEEP (do not move, do not redraw, do not restyle):\n` +
+  `• Front splitter, lip, canards, dive planes\n` +
+  `• Front bumper carbon panels, hood vents/scoops if carbon\n` +
+  `• Carbon fender flares / arch extensions\n` +
+  `• Side skirts, side strakes\n` +
+  `• Rear diffuser, rear bumper carbon panels\n` +
+  `• Rear wing, swan-neck stays, end-plates, gurney\n` +
+  `• Ducktail, rear deck carbon panels\n` +
+  `• Any other carbon-fibre bolt-on parts\n\n` +
+  `ERASE (replace with clean medium-grey studio backdrop):\n` +
+  `• The painted base car body, doors, roof, A/B/C-pillars\n` +
+  `• Wheels, tyres, brake calipers\n` +
+  `• Glass, headlights, tail lights, mirrors, badges\n` +
+  `• Ground, road, shadow on ground, environment, background\n\n` +
+  `CRITICAL POSITIONING RULES:\n` +
+  `• Each carbon part MUST stay at the EXACT same pixel position and pixel size as ` +
+  `  in the input. The kit must look like it is still floating in the air at the ` +
+  `  spot where it was bolted to the car.\n` +
+  `• Do NOT centre, recompose, re-frame, zoom, crop, or rescale.\n` +
+  `• Do NOT collapse the parts toward the middle of the canvas.\n` +
+  `• Camera angle, perspective foreshortening, and lens look stay identical.\n` +
+  `• Preserve the carbon weave direction, twill pattern, and clearcoat reflections ` +
+  `  exactly as they appear in the input.\n\n` +
+  `OUTPUT: a single product photograph of the carbon kit only, parts in their ` +
+  `original on-car positions, on a clean medium-grey studio backdrop with soft ` +
+  `even product lighting and a subtle ground shadow under each part. ` +
+  `No car body, no wheels, no glass, no background, no text, no watermark.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -166,7 +179,7 @@ async function isolateOne(sourceUrl: string): Promise<{ bytes: Uint8Array; mime:
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-3.1-flash-image-preview",
+      model: "google/gemini-3-pro-image-preview",
       modalities: ["image", "text"],
       messages: [{
         role: "user",
