@@ -21,11 +21,36 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const ALLOWED_KINDS = [
+  // Bolt-on parts
   "splitter", "lip", "canard", "side_skirt",
   "wide_arch", "diffuser", "ducktail", "wing",
   "bonnet_vent", "wing_vent",
+  // Body-swap panels — these are crops of the swap shell that the meshify
+  // worker reconstructs as outer-skin + donor-conformed inner.
+  "front_clip", "hood_panel", "fender_panel", "door_skin",
+  "side_skirt_panel", "rear_quarter", "rear_clip", "deck_panel",
 ] as const;
 type Kind = typeof ALLOWED_KINDS[number];
+
+/** Body-swap panel kinds get the same default params bag: a normalised crop
+ *  rectangle (filled in client-side from the hotspot box) and a flag that
+ *  tells meshify-carbon-kit to build an inner skin conformed to the donor
+ *  stock panel instead of just a thin outer shell.
+ *
+ *  conform_to_donor = 1  → meshify worker shrinkwraps the back of the panel
+ *                          to the donor body so the kit bolts straight on.
+ *  panel_thickness_mm    → fallback wall thickness if the donor surface
+ *                          can't be sampled at that point. */
+const PANEL_KINDS = new Set<Kind>([
+  "front_clip", "hood_panel", "fender_panel", "door_skin",
+  "side_skirt_panel", "rear_quarter", "rear_clip", "deck_panel",
+]);
+
+const PANEL_DEFAULT_PARAMS = {
+  conform_to_donor: 1,
+  panel_thickness_mm: 4,
+  flange_width_mm: 18,
+};
 
 const DEFAULT_PARAMS: Record<Kind, Record<string, number>> = {
   splitter:    { depth: 80,  fence_height: 30, fence_inset: 60 },
@@ -38,10 +63,21 @@ const DEFAULT_PARAMS: Record<Kind, Record<string, number>> = {
   wing:        { aoa: 8, chord: 280, gurney: 12, span_pct: 78, stand_height: 220 },
   bonnet_vent: { length: 240, width: 120, louvre_count: 5, depth: 18 },
   wing_vent:   { length: 180, width: 90,  louvre_count: 4, depth: 14 },
+  // Panel kinds — same defaults bag, the per-panel crop is filled by the client.
+  front_clip:        { ...PANEL_DEFAULT_PARAMS },
+  hood_panel:        { ...PANEL_DEFAULT_PARAMS },
+  fender_panel:      { ...PANEL_DEFAULT_PARAMS },
+  door_skin:         { ...PANEL_DEFAULT_PARAMS, panel_thickness_mm: 3 },
+  side_skirt_panel:  { ...PANEL_DEFAULT_PARAMS },
+  rear_quarter:      { ...PANEL_DEFAULT_PARAMS },
+  rear_clip:         { ...PANEL_DEFAULT_PARAMS },
+  deck_panel:        { ...PANEL_DEFAULT_PARAMS, panel_thickness_mm: 3 },
 };
 
-/** Per-part hint about which renders matter most. */
-const PART_VIEW_HINT: Record<Kind, string> = {
+/** Per-part hint about which renders matter most.
+ *  Only populated for bolt-on kinds — body-swap PANEL kinds short-circuit
+ *  before this lookup is used. */
+const PART_VIEW_HINT: Partial<Record<Kind, string>> = {
   splitter:    "Look at the FRONT 3/4 view. The splitter is the flat blade protruding forward at the bottom of the front bumper.",
   lip:         "Look at the FRONT 3/4 view. The lip is a thin extension below the splitter / front bumper.",
   canard:      "Look at the FRONT 3/4 view. Canards are small angled foils on the lower front bumper sides.",
@@ -54,7 +90,7 @@ const PART_VIEW_HINT: Record<Kind, string> = {
   wing_vent:   "Look at the FRONT 3/4 or SIDE view. A wing vent (fender vent) is a louvred opening on the front fender/wing panel behind the wheel arch.",
 };
 
-const PARAM_SCHEMA: Record<Kind, Record<string, { type: "number"; description: string }>> = {
+const PARAM_SCHEMA: Partial<Record<Kind, Record<string, { type: "number"; description: string }>>> = {
   splitter: {
     depth:        { type: "number", description: "Forward protrusion in mm (30-200)" },
     fence_height: { type: "number", description: "Side-fence height in mm (0-80)" },
@@ -121,6 +157,22 @@ Deno.serve(async (req) => {
     }
     const kind = part_kind as Kind;
 
+    // Fast-path for body-swap PANEL kinds: there's no aerodynamic parameter
+    // to measure — the part IS a crop of the swap shell. The hotspot box
+    // already gave us the exact image region; we just stamp the
+    // conform-to-donor flag so meshify-carbon-kit knows to build an inner
+    // skin that hugs the donor stock body.
+    if (PANEL_KINDS.has(kind)) {
+      return json({
+        kind,
+        present: true,
+        reasoning:
+          "Body-swap panel — outer surface taken from the swap-shell render; " +
+          "inner surface will be conformed to the donor stock panel by the meshify worker.",
+        params: { ...DEFAULT_PARAMS[kind] },
+      });
+    }
+
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
@@ -152,7 +204,9 @@ Deno.serve(async (req) => {
     const widthMm  = Number(meta?.bounds?.width_mm  ?? 1780);
     const lengthMm = Number(meta?.bounds?.length_mm ?? 4400);
 
-    const partProps = PARAM_SCHEMA[kind];
+    // Bolt-on path — guarded by the PANEL_KINDS short-circuit above, so this
+    // lookup is always defined for non-panel kinds.
+    const partProps = PARAM_SCHEMA[kind]!;
     const paramSchema = {
       type: "object",
       properties: {

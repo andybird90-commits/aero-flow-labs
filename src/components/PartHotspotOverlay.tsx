@@ -20,9 +20,13 @@ import { useToast } from "@/hooks/use-toast";
 
 type ViewKey = "front" | "side" | "rear34" | "rear";
 type PartKind =
+  // Bolt-on parts (default)
   | "splitter" | "lip" | "canard" | "side_skirt"
   | "wide_arch" | "diffuser" | "ducktail" | "wing"
-  | "bonnet_vent" | "wing_vent";
+  | "bonnet_vent" | "wing_vent"
+  // Body-swap panels (only used when bodySwapMode is on)
+  | "front_clip" | "hood_panel" | "fender_panel" | "door_skin"
+  | "side_skirt_panel" | "rear_quarter" | "rear_clip" | "deck_panel";
 
 interface Box {
   kind: PartKind;
@@ -39,6 +43,10 @@ interface Props {
   /** URL of the currently displayed concept render. Powers the optional
    *  pre-render lasso trim inside the part preview modal. */
   sourceImageUrl?: string;
+  /** When true, the AI will segment the swap shell into body panels
+   *  (front clip, hood, fenders, doors, skirts, rear quarters, rear clip,
+   *  deck, wing) instead of looking for bolt-on aero parts. */
+  bodySwapMode?: boolean;
 }
 
 interface Preview {
@@ -56,7 +64,7 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-export function PartHotspotOverlay({ active, view, projectId, conceptId, conceptTitle, sourceImageUrl }: Props) {
+export function PartHotspotOverlay({ active, view, projectId, conceptId, conceptTitle, sourceImageUrl, bodySwapMode }: Props) {
   const { toast } = useToast();
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -69,12 +77,15 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  // Per-(concept,view) memo so re-toggling pick mode is instant after first detect
+  // Per-(concept,view,mode) memo so re-toggling pick mode is instant after
+  // first detect. Mode is part of the key so swap-panel boxes don't pollute
+  // the bolt-on cache and vice-versa.
   const cacheRef = useRef<Map<string, Box[]>>(new Map());
   /** Original AI-detected boxes per cache key — used so users can reset their
    *  manual edits back to what the model proposed. */
   const originalRef = useRef<Map<string, Box[]>>(new Map());
-  const cacheKey = `${conceptId}:${view}`;
+  const modeKey = bodySwapMode ? "swap" : "bolton";
+  const cacheKey = `${conceptId}:${view}:${modeKey}`;
 
   // Drag state lives in a ref so listeners don't cause rerenders mid-drag.
   const dragRef = useRef<{
@@ -105,7 +116,7 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
     (async () => {
       try {
         const { data, error: fnErr } = await supabase.functions.invoke("detect-concept-hotspots", {
-          body: { concept_id: conceptId, view },
+          body: { concept_id: conceptId, view, body_swap_mode: !!bodySwapMode },
         });
         if (cancelled) return;
         if (fnErr) throw fnErr;
@@ -131,7 +142,7 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
     })();
 
     return () => { cancelled = true; };
-  }, [active, cacheKey, conceptId, view, toast]);
+  }, [active, cacheKey, conceptId, view, bodySwapMode, toast]);
 
   // Reset editing state when the underlying view changes.
   useEffect(() => { setEditingIdx(null); }, [cacheKey]);
