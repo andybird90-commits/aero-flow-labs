@@ -39,6 +39,7 @@ import {
   FolderOpen,
   Boxes,
   Magnet,
+  Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,8 +56,10 @@ import {
 } from "@/lib/build-studio/placed-parts";
 import { useSnapZones } from "@/lib/build-studio/snap-zones";
 import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
+import { useBodySkins, useSignedBodySkinUrl, type BodySkin } from "@/lib/body-skins";
+import { useShellAlignment, useUpsertShellAlignment } from "@/lib/build-studio/shell-alignments";
 
-import { BuildStudioViewport, type CameraPreset, type TransformMode } from "@/components/build-studio/BuildStudioViewport";
+import { BuildStudioViewport, type CameraPreset, type TransformMode, type ShellTransform } from "@/components/build-studio/BuildStudioViewport";
 import { PartLibraryRail } from "@/components/build-studio/PartLibraryRail";
 import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
