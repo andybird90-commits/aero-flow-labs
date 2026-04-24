@@ -260,6 +260,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
                 projectId={projectId}
                 concept={c}
                 heroReady={heroReady}
+                bodySwapMode={!!(brief as any)?.body_swap_mode}
                 onApprove={() => updateConcept.mutate({ id: c.id, patch: { status: "approved" } })}
                 onReject={() => updateConcept.mutate({ id: c.id, patch: { status: "rejected" } })}
                 onFavourite={() => updateConcept.mutate({ id: c.id, patch: { status: "favourited" } })}
@@ -316,11 +317,12 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
 }
 
 function ConceptCard({
-  projectId, concept, heroReady, onApprove, onReject, onFavourite, onDelete, onBuildKit,
+  projectId, concept, heroReady, bodySwapMode, onApprove, onReject, onFavourite, onDelete, onBuildKit,
 }: {
   projectId: string;
   concept: Concept;
   heroReady: boolean;
+  bodySwapMode?: boolean;
   onApprove: () => void;
   onReject: () => void;
   onFavourite: () => void;
@@ -553,14 +555,22 @@ function ConceptCard({
           )}
           title={
             carbonStatus === "failed" && carbonError
-              ? `Carbon isolation failed: ${carbonError}. Click to retry.`
+              ? `${bodySwapMode ? "Swap-shell" : "Carbon"} isolation failed: ${carbonError}. Click to retry.`
               : carbonBusy
-                ? "Generating carbon-only renders…"
-                : "Show only the aftermarket carbon bodywork"
+                ? bodySwapMode
+                  ? "Extracting full swap shell in carbon weave…"
+                  : "Generating carbon-only renders…"
+                : bodySwapMode
+                  ? "Show only the swap-shell bodywork (re-skinned in carbon)"
+                  : "Show only the aftermarket carbon bodywork"
           }
         >
           {carbonBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Boxes className="h-3.5 w-3.5" />}
-          {carbonStatus === "failed" ? "Retry carbon" : carbonMode ? "Carbon on" : "Carbon only"}
+          {carbonStatus === "failed"
+            ? (bodySwapMode ? "Retry shell" : "Retry carbon")
+            : carbonMode
+              ? (bodySwapMode ? "Shell on" : "Carbon on")
+              : (bodySwapMode ? "Swap shell only" : "Carbon only")}
         </button>
         {/* Manual trace — primary recommended path */}
         <button

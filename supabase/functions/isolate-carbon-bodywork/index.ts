@@ -36,7 +36,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 type AngleKey = "front" | "side" | "rear34" | "rear";
 
-const ISOLATION_PROMPT =
+const ISOLATION_PROMPT_BOLTON =
   `This is a photo of a custom car. Your task is a SURGICAL ERASE — keep the ` +
   `aftermarket carbon-fibre bodywork visible at the EXACT same pixel coordinates, ` +
   `same scale, same camera angle and same perspective; remove everything else. ` +
@@ -68,6 +68,54 @@ const ISOLATION_PROMPT =
   `even product lighting and a subtle ground shadow under each part. ` +
   `No car body, no wheels, no glass, no background, no text, no watermark.`;
 
+/**
+ * BODY-SWAP MODE prompt. The kit IS the entire outer shell (front clip,
+ * fenders, doors-skin, side skirts, rear quarters, rear clip, hood, deck,
+ * wing). We re-skin that whole shell in exposed carbon-fibre twill weave
+ * and erase ONLY the donor-preserved bits (glass, wheels, calipers,
+ * interior, ground, background) so what remains is the swap shell ready
+ * to be meshed into a bolt-on body.
+ */
+const ISOLATION_PROMPT_BODYSWAP =
+  `This is a photo of a custom car wearing a full body-swap kit (a complete ` +
+  `aftermarket outer shell that REPLACES the donor's stock outer panels — ` +
+  `think GT1-style wide-body conversion, slantnose conversion, etc.). ` +
+  `Your task is a SURGICAL ERASE that leaves ONLY the swap shell, re-skinned ` +
+  `in exposed carbon-fibre twill weave, at the EXACT same pixel coordinates ` +
+  `as in the input.\n\n` +
+  `KEEP — re-skin the ENTIRE outer painted bodywork in raw carbon-fibre ` +
+  `(2x2 twill weave, semi-gloss clearcoat, subtle directional sheen):\n` +
+  `• Front clip: bumper, splitter, lip, canards, dive planes, hood, hood vents\n` +
+  `• Fenders, fender flares, wide-body arch extensions (front + rear)\n` +
+  `• Door skins (the OUTER painted surface only — not the window cut-out)\n` +
+  `• Side skirts, side strakes, side intakes/scoops\n` +
+  `• Rear quarters, rear clip, rear bumper, diffuser\n` +
+  `• Rear deck, ducktail, swan-neck wing, end-plates, gurney\n` +
+  `• Roof skin (only if the swap kit replaces it; keep stock if it's untouched)\n` +
+  `• Any other body panel that is part of the swap kit\n\n` +
+  `ERASE (replace with clean medium-grey studio backdrop):\n` +
+  `• Glass: windscreen, side windows, rear screen, headlight lenses, tail-light lenses\n` +
+  `• Wheels, tyres, brake calipers, brake discs, lug nuts\n` +
+  `• Mirrors (housings AND glass)\n` +
+  `• Interior (seats, dash, steering wheel, roll cage) visible through windows\n` +
+  `• Door handles, badges, number plates, exhaust tips\n` +
+  `• Ground, road, shadow on ground, environment, background, sky\n\n` +
+  `CRITICAL POSITIONING RULES:\n` +
+  `• The swap shell MUST stay at the EXACT same pixel position, scale, ` +
+  `  perspective and camera angle as the input. It should look like the car ` +
+  `  is still parked in the same spot, just with everything except the ` +
+  `  outer body removed and the body re-finished in raw carbon.\n` +
+  `• Do NOT centre, recompose, re-frame, zoom, crop, or rescale.\n` +
+  `• Preserve every panel line, shut line, vent and crease of the swap shell.\n` +
+  `• The window apertures should appear as clean cut-outs to the grey backdrop ` +
+  `  (no glass, no interior visible behind them).\n` +
+  `• Wheel arches should appear as empty arches (no wheel inside).\n\n` +
+  `OUTPUT: a single product photograph of the FULL swap shell rendered in ` +
+  `raw carbon-fibre twill weave, in its original on-car position, on a clean ` +
+  `medium-grey studio backdrop with soft even product lighting and a subtle ` +
+  `ground shadow. No glass, no wheels, no interior, no background, no text, ` +
+  `no watermark.`;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
@@ -89,6 +137,23 @@ Deno.serve(async (req) => {
     if (!concept) return json({ error: "concept not found" }, 404);
     if (concept.user_id !== userRes.user.id) return json({ error: "Forbidden" }, 403);
 
+    // Detect body-swap mode from the project's design brief. When ON, the
+    // "carbon" view becomes a full swap-shell extraction instead of a
+    // bolt-on parts isolation.
+    let bodySwapMode = false;
+    try {
+      const { data: brief } = await admin
+        .from("design_briefs")
+        .select("body_swap_mode")
+        .eq("project_id", concept.project_id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      bodySwapMode = !!brief?.body_swap_mode;
+    } catch (e) {
+      console.warn("could not read body_swap_mode, defaulting to bolt-on:", e);
+    }
+
     const angleSources: Array<{ key: AngleKey; url: string | null; col: string }> = [
       { key: "front",  url: concept.render_front_url,   col: "render_front_carbon_url" },
       { key: "side",   url: concept.render_side_url,    col: "render_side_carbon_url" },
@@ -109,9 +174,10 @@ Deno.serve(async (req) => {
       conceptId: concept.id,
       userId: userRes.user.id,
       todo,
+      bodySwapMode,
     }));
 
-    return json({ started: true, concept_id: concept.id, status: "generating" }, 202);
+    return json({ started: true, concept_id: concept.id, status: "generating", body_swap_mode: bodySwapMode }, 202);
   } catch (e) {
     return json({ error: String((e as Error).message ?? e) }, 500);
   }
@@ -121,13 +187,15 @@ async function runIsolation(args: {
   conceptId: string;
   userId: string;
   todo: Array<{ key: AngleKey; url: string | null; col: string }>;
+  bodySwapMode: boolean;
 }) {
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   try {
+    const prompt = args.bodySwapMode ? ISOLATION_PROMPT_BODYSWAP : ISOLATION_PROMPT_BOLTON;
     // Fan out all angles in parallel — same pattern that fixed
     // WORKER_RESOURCE_LIMIT in generate-concepts.
     const results = await Promise.all(args.todo.map(async (a) => {
-      const isolated = await isolateOne(a.url!);
+      const isolated = await isolateOne(a.url!, prompt);
       if (!isolated) return { col: a.col, url: null as string | null };
 
       const path = `${args.userId}/${args.conceptId}/carbon_${a.key}_${crypto.randomUUID().slice(0, 8)}.${isolated.ext}`;
@@ -171,7 +239,7 @@ async function runIsolation(args: {
   }
 }
 
-async function isolateOne(sourceUrl: string): Promise<{ bytes: Uint8Array; mime: string; ext: string } | null> {
+async function isolateOne(sourceUrl: string, prompt: string): Promise<{ bytes: Uint8Array; mime: string; ext: string } | null> {
   const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -184,7 +252,7 @@ async function isolateOne(sourceUrl: string): Promise<{ bytes: Uint8Array; mime:
       messages: [{
         role: "user",
         content: [
-          { type: "text", text: ISOLATION_PROMPT },
+          { type: "text", text: prompt },
           { type: "image_url", image_url: { url: sourceUrl } },
         ],
       }],
