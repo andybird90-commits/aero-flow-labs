@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
     const userId = userRes.user.id;
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY) as any;
 
     const { data: proto, error: protoErr } = await admin
       .from("prototypes")
@@ -335,7 +335,7 @@ function base64ToBytes(b64: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
-async function fail(admin: ReturnType<typeof createClient>, id: string, msg: string) {
+async function fail(admin: any, id: string, msg: string) {
   await admin.from("prototypes").update({ reference_status: "failed", reference_error: msg }).eq("id", id);
 }
 function json(body: unknown, status = 200) {
