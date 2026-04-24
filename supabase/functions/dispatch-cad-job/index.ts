@@ -1,0 +1,133 @@
+/**
+ * dispatch-cad-job
+ *
+ * Records a parametric CAD build request in `cad_jobs`, then forwards the
+ * recipe to the external Onshape worker. Returns the inserted row id so the
+ * client can poll `cad-job-status`.
+ *
+ * Body:
+ *   {
+ *     concept_id?, project_id?, part_kind, part_label?,
+ *     recipe: object,            // from generate-cad-recipe (or hand-built)
+ *     inputs?: object             // optional auxiliary context (base_mesh_url etc.)
+ *   }
+ *
+ * Returns: { job_id, worker_task_id?, status }
+ */
+import { createClient } from "jsr:@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const ONSHAPE_WORKER_URL = Deno.env.get("ONSHAPE_WORKER_URL");
+const ONSHAPE_WORKER_TOKEN = Deno.env.get("ONSHAPE_WORKER_TOKEN");
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+
+  try {
+    const body = await req.json();
+    const {
+      concept_id = null,
+      project_id = null,
+      part_kind,
+      part_label = null,
+      recipe,
+      inputs = {},
+    } = body ?? {};
+
+    if (!part_kind || !recipe || typeof recipe !== "object") {
+      return json({ error: "part_kind and recipe required" }, 400);
+    }
+    if (!Array.isArray(recipe.features)) {
+      return json({ error: "recipe.features[] missing" }, 400);
+    }
+
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userRes, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
+    const userId = userRes.user.id;
+
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    const { data: inserted, error: insErr } = await admin
+      .from("cad_jobs")
+      .insert({
+        user_id: userId,
+        concept_id,
+        project_id,
+        part_kind,
+        part_label,
+        recipe,
+        inputs,
+        status: "queued",
+      })
+      .select("id")
+      .single();
+    if (insErr) {
+      console.error("cad_jobs insert failed:", insErr);
+      return json({ error: `DB insert failed: ${insErr.message}` }, 500);
+    }
+    const jobId = inserted.id as string;
+
+    if (!ONSHAPE_WORKER_URL || !ONSHAPE_WORKER_TOKEN) {
+      const msg =
+        "Onshape CAD worker not configured. Set ONSHAPE_WORKER_URL and ONSHAPE_WORKER_TOKEN in Lovable Cloud secrets.";
+      await admin.from("cad_jobs").update({ status: "failed", error: msg }).eq("id", jobId);
+      return json({ job_id: jobId, error: msg }, 503);
+    }
+
+    try {
+      const workerResp = await fetch(`${ONSHAPE_WORKER_URL.replace(/\/$/, "")}/jobs`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ONSHAPE_WORKER_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ recipe, inputs, part_kind }),
+      });
+      if (!workerResp.ok) {
+        const t = await workerResp.text();
+        const msg = `Worker ${workerResp.status}: ${t.slice(0, 300)}`;
+        await admin.from("cad_jobs").update({ status: "failed", error: msg }).eq("id", jobId);
+        return json({ job_id: jobId, error: msg }, 502);
+      }
+      const w = await workerResp.json();
+      const taskId = w?.task_id as string | undefined;
+      if (!taskId) {
+        const msg = "Worker returned no task_id";
+        await admin.from("cad_jobs").update({ status: "failed", error: msg }).eq("id", jobId);
+        return json({ job_id: jobId, error: msg }, 502);
+      }
+      await admin
+        .from("cad_jobs")
+        .update({ status: "running", worker_task_id: taskId })
+        .eq("id", jobId);
+      return json({ job_id: jobId, worker_task_id: taskId, status: "running" });
+    } catch (e) {
+      const msg = `Worker call threw: ${e instanceof Error ? e.message : String(e)}`;
+      await admin.from("cad_jobs").update({ status: "failed", error: msg }).eq("id", jobId);
+      return json({ job_id: jobId, error: msg }, 502);
+    }
+  } catch (e) {
+    console.error("dispatch-cad-job error:", e);
+    return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
+  }
+});
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
