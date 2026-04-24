@@ -260,6 +260,7 @@ function ConceptsInner({ projectId, project }: { projectId: string; project: any
                 projectId={projectId}
                 concept={c}
                 heroReady={heroReady}
+                bodySwapMode={!!(brief as any)?.body_swap_mode}
                 onApprove={() => updateConcept.mutate({ id: c.id, patch: { status: "approved" } })}
                 onReject={() => updateConcept.mutate({ id: c.id, patch: { status: "rejected" } })}
                 onFavourite={() => updateConcept.mutate({ id: c.id, patch: { status: "favourited" } })}
