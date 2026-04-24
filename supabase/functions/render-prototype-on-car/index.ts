@@ -6,7 +6,7 @@
  *
  * Body: { prototype_id: string }
  */
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { lovableGenerateImageWithFallback } from "../_shared/lovable-image.ts";
 
 const corsHeaders = {

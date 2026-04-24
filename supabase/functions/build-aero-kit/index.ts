@@ -12,7 +12,7 @@
  *
  * Body: { concept_id: string }
  */
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 
 declare const EdgeRuntime: {
   waitUntil(promise: Promise<unknown>): void;

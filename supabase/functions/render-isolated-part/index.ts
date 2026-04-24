@@ -12,7 +12,7 @@
  * Body: { concept_id: string; part_kind: string; label?: string }
  * Returns: { renders: { angle: string; url: string }[]; prompt: string }
  */
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

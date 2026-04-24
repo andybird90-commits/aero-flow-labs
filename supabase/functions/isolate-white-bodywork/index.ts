@@ -14,7 +14,7 @@
  * Returns 202; UI does not need to poll — `meshify-carbon-kit` calls this
  * synchronously when it starts.
  */
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { decode as decodeImg, Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 
 const WHITE_CANVAS_PX = 1024;

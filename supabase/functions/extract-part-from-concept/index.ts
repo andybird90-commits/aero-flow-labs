@@ -8,7 +8,7 @@
  * Body: { project_id: string; concept_id: string; part_kind: string }
  * Returns: { kind, params, reasoning }
  */
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

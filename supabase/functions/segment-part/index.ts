@@ -30,7 +30,7 @@
  * Returns:
  *   { masked_url: string }
  */
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 // @ts-ignore - npm specifier resolved at runtime by Deno
 import { decode as decodePng, encode as encodePng } from "https://deno.land/x/pngs@0.1.1/mod.ts";
 
