@@ -36,7 +36,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 type AngleKey = "front" | "side" | "rear34" | "rear";
 
-const ISOLATION_PROMPT =
+const ISOLATION_PROMPT_BOLTON =
   `This is a photo of a custom car. Your task is a SURGICAL ERASE — keep the ` +
   `aftermarket carbon-fibre bodywork visible at the EXACT same pixel coordinates, ` +
   `same scale, same camera angle and same perspective; remove everything else. ` +
@@ -67,6 +67,54 @@ const ISOLATION_PROMPT =
   `original on-car positions, on a clean medium-grey studio backdrop with soft ` +
   `even product lighting and a subtle ground shadow under each part. ` +
   `No car body, no wheels, no glass, no background, no text, no watermark.`;
+
+/**
+ * BODY-SWAP MODE prompt. The kit IS the entire outer shell (front clip,
+ * fenders, doors-skin, side skirts, rear quarters, rear clip, hood, deck,
+ * wing). We re-skin that whole shell in exposed carbon-fibre twill weave
+ * and erase ONLY the donor-preserved bits (glass, wheels, calipers,
+ * interior, ground, background) so what remains is the swap shell ready
+ * to be meshed into a bolt-on body.
+ */
+const ISOLATION_PROMPT_BODYSWAP =
+  `This is a photo of a custom car wearing a full body-swap kit (a complete ` +
+  `aftermarket outer shell that REPLACES the donor's stock outer panels — ` +
+  `think GT1-style wide-body conversion, slantnose conversion, etc.). ` +
+  `Your task is a SURGICAL ERASE that leaves ONLY the swap shell, re-skinned ` +
+  `in exposed carbon-fibre twill weave, at the EXACT same pixel coordinates ` +
+  `as in the input.\n\n` +
+  `KEEP — re-skin the ENTIRE outer painted bodywork in raw carbon-fibre ` +
+  `(2x2 twill weave, semi-gloss clearcoat, subtle directional sheen):\n` +
+  `• Front clip: bumper, splitter, lip, canards, dive planes, hood, hood vents\n` +
+  `• Fenders, fender flares, wide-body arch extensions (front + rear)\n` +
+  `• Door skins (the OUTER painted surface only — not the window cut-out)\n` +
+  `• Side skirts, side strakes, side intakes/scoops\n` +
+  `• Rear quarters, rear clip, rear bumper, diffuser\n` +
+  `• Rear deck, ducktail, swan-neck wing, end-plates, gurney\n` +
+  `• Roof skin (only if the swap kit replaces it; keep stock if it's untouched)\n` +
+  `• Any other body panel that is part of the swap kit\n\n` +
+  `ERASE (replace with clean medium-grey studio backdrop):\n` +
+  `• Glass: windscreen, side windows, rear screen, headlight lenses, tail-light lenses\n` +
+  `• Wheels, tyres, brake calipers, brake discs, lug nuts\n` +
+  `• Mirrors (housings AND glass)\n` +
+  `• Interior (seats, dash, steering wheel, roll cage) visible through windows\n` +
+  `• Door handles, badges, number plates, exhaust tips\n` +
+  `• Ground, road, shadow on ground, environment, background, sky\n\n` +
+  `CRITICAL POSITIONING RULES:\n` +
+  `• The swap shell MUST stay at the EXACT same pixel position, scale, ` +
+  `  perspective and camera angle as the input. It should look like the car ` +
+  `  is still parked in the same spot, just with everything except the ` +
+  `  outer body removed and the body re-finished in raw carbon.\n` +
+  `• Do NOT centre, recompose, re-frame, zoom, crop, or rescale.\n` +
+  `• Preserve every panel line, shut line, vent and crease of the swap shell.\n` +
+  `• The window apertures should appear as clean cut-outs to the grey backdrop ` +
+  `  (no glass, no interior visible behind them).\n` +
+  `• Wheel arches should appear as empty arches (no wheel inside).\n\n` +
+  `OUTPUT: a single product photograph of the FULL swap shell rendered in ` +
+  `raw carbon-fibre twill weave, in its original on-car position, on a clean ` +
+  `medium-grey studio backdrop with soft even product lighting and a subtle ` +
+  `ground shadow. No glass, no wheels, no interior, no background, no text, ` +
+  `no watermark.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
