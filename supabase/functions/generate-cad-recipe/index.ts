@@ -1,11 +1,21 @@
 /**
  * generate-cad-recipe
  *
- * Uses Lovable AI (Gemini) to convert a part kind + label + optional reference
- * image set into a strict-JSON parametric CAD recipe the CadQuery worker can
- * execute. Heavily validates the AI output before returning, and falls back to
- * a known-good template recipe for body-panel parts (arches, fenders) where
- * the AI tends to produce unbuildable freeform geometry.
+ * NEW MODEL — "AI generates parameters, NOT code":
+ *
+ * The AI does NOT generate arbitrary CadQuery operations any more. Instead it
+ * picks ONE trusted builder function (e.g. `build_front_arch`) and produces a
+ * validated `params` object for it. The worker decides which trusted builder
+ * to call. This eliminates the entire class of "the AI hallucinated an
+ * unbuildable sketch" failures.
+ *
+ * Output (still stored in `cad_jobs.recipe` for backward compat):
+ *   {
+ *     "version": 2,
+ *     "builder": "build_front_arch",
+ *     "part_type": "front_arch",
+ *     "params": { ... }
+ *   }
  */
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 
@@ -20,327 +30,169 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
-const SYSTEM = `You are a CAD recipe generator for a CadQuery (OpenCascade) parametric build worker. Output STRICT JSON only — no prose, no markdown fences.
+// ---------------------------------------------------------------------------
+// Trusted builder registry
+// ---------------------------------------------------------------------------
+//
+// Each entry describes ONE builder function the worker is known to implement.
+// The AI is forced to pick from this list. Validation runs server-side against
+// `params` before we ever ship to the worker.
 
-Recipe schema. All dimensions in millimetres. Vehicle-local coords: forward = -Z, up = +Y, right = +X.
+interface ParamSpec {
+  type: "number" | "string" | "enum" | "vector3";
+  min?: number;
+  max?: number;
+  values?: string[];
+  required?: boolean;
+  default?: number | string | number[];
+  description?: string;
+}
 
-{
-  "version": 1,
-  "part": "<part_kind>",
-  "units": "mm",
-  "features": [
-    { "type": "sketch", "id": "s1", "plane": "XY"|"YZ"|"XZ",
-      "curves": [
-        { "type":"line",   "from":[x,y], "to":[x,y] },
-        { "type":"arc",    "center":[x,y], "radius":r, "start_deg":a, "end_deg":b },
-        { "type":"spline", "points":[[x,y],...] },
-        { "type":"naca",   "code":"6412", "chord":120, "origin":[x,y], "rotation_deg":-3 }
-      ]
+interface BuilderSpec {
+  builder: string;
+  part_types: string[];
+  description: string;
+  params: Record<string, ParamSpec>;
+}
+
+const BUILDERS: BuilderSpec[] = [
+  {
+    builder: "build_front_arch",
+    part_types: ["front_arch", "front_fender_flare", "wide_arch", "arch_left", "arch_right", "fender_flare"],
+    description: "Solid wheel arch / fender flare for the front. Curved sweep around the wheel with optional outward flare and an inward lip return.",
+    params: {
+      side:              { type: "enum",   values: ["left", "right"], required: true,  default: "left" },
+      radius:            { type: "number", min: 200, max: 600, required: true,  default: 330, description: "Wheel arch radius (mm)" },
+      arch_width:        { type: "number", min: 30,  max: 250, required: true,  default: 90,  description: "Width of the arch panel along the tyre axis (mm)" },
+      flare_out:         { type: "number", min: 0,   max: 200, required: true,  default: 55,  description: "How far the arch flares outward beyond the body (mm)" },
+      thickness:         { type: "number", min: 1,   max: 20,  required: true,  default: 3,   description: "Panel wall thickness (mm)" },
+      lip_return:        { type: "number", min: 0,   max: 60,  required: true,  default: 18,  description: "Inward return lip depth (mm)" },
+      length_front:      { type: "number", min: 50,  max: 800, required: true,  default: 380, description: "How far forward the arch extends from the wheel centre (mm)" },
+      length_rear:       { type: "number", min: 50,  max: 800, required: true,  default: 480, description: "How far rearward the arch extends from the wheel centre (mm)" },
+      height_above_wheel:{ type: "number", min: 20,  max: 400, required: false, default: 100, description: "How high the arch reaches above the wheel centre (mm)" },
+      wheel_centre:      { type: "vector3", required: false, description: "Optional [x,y,z] wheel-centre in vehicle coords. If omitted the arch is built at the origin." },
     },
-    { "type": "extrude", "id":"e1", "sketch":"s1", "depth_mm": 20, "symmetric": false },
-    { "type": "loft",    "id":"l1", "sketches":["s1","s2"] },
-    { "type": "revolve", "id":"r1", "sketch":"s1", "axis":"Y", "angle_deg": 180 },
-    { "type": "shell",   "id":"sh1","target":"e1", "thickness_mm": 2.0, "open_faces":["+Z"] },
-    { "type": "fillet",  "id":"f1", "target":"e1", "edges":"all", "radius_mm": 3 },
-    { "type": "chamfer", "id":"c1", "target":"e1", "edges":"all", "distance_mm": 1.5 },
-    { "type": "mirror",  "id":"m1", "target":"e1", "plane":"YZ" },
-    { "type": "boolean", "id":"b1", "op":"union"|"cut"|"intersect", "targets":["e1","m1"] },
-    { "type": "import_mesh", "id":"car", "url":"<base_mesh_url>" }
-  ],
-  "outputs": ["step", "stl", "glb"]
+  },
+  // Future builders (rear_arch, splitter_blade, side_skirt, wing_blade…)
+  // get added here. The AI can only pick from this list.
+];
+
+function findBuilderForPartKind(partKind: string): BuilderSpec | null {
+  const k = partKind.toLowerCase();
+  return BUILDERS.find((b) => b.part_types.some((p) => k.includes(p) || p.includes(k))) ?? null;
 }
 
-WORKER-SAFE RULES (the worker WILL crash if any are violated):
-- Always set units to "mm".
-- Every feature MUST have a unique "id". Later features reference earlier ones by id.
-- Sketch "plane" MUST be the literal string "XY", "YZ", or "XZ". Never use {origin, normal} object planes.
-- Never use the "origin" key on extrude features. Position via the sketch's plane instead.
-- Never use "import_mesh" unless a base mesh URL is explicitly provided in the prompt.
-- Every sketch MUST form ONE closed profile. The first curve's start point and the last curve's end point must coincide.
-- Use AT MOST one spline per sketch (long splines are fragile). Combine line + arc + at most one spline.
-- Never draw a full-circle arc (avoid start_deg/end_deg spans of 360 degrees).
-- depth_mm MUST be strictly positive. thickness_mm MUST be strictly positive.
-- Shell with negative thickness is forbidden.
-- Revolve angle_deg MUST be in (0, 360); prefer values <= 180 for body parts.
-- For body panels (fenders, arches, skirts, lips, splitters, diffusers): DO NOT loft between sketches on different planes; instead use ONE closed sketch on YZ or XZ + a single positive extrude + optional fillet. Body-panel recipes MUST stay under 8 features.
-- BODY-CONFORMING RULE: when a base car mesh URL is provided AND the part is a body-conforming panel (arch, fender, skirt, lip, splitter, diffuser), the recipe MUST include an "import_mesh" feature with that exact URL, and the FINAL feature MUST be a boolean "intersect" between the freshly-extruded panel body and the imported car mesh — so the panel is trimmed to the car's actual surface. Without this, the part will not fit the car.
-- For aero parts (wings, canards): NACA airfoil sketch + symmetric extrude is preferred.
-- Use mirror across "YZ" for left/right pairs.
-- Total features MUST be <= 20. Prefer simplicity over cleverness.
-- The LAST body-producing feature is what gets exported, so end with the final composite.
-
-Return ONLY the JSON object.`;
-
-const NAMED_PLANES = new Set(["XY", "YZ", "XZ"]);
-const BODY_PRODUCING = new Set([
-  "extrude", "loft", "revolve", "sweep", "boolean",
-  "shell", "fillet", "chamfer", "mirror",
-]);
-
-const BODY_PANEL_KINDS = new Set([
-  "wide_arch", "front_arch", "rear_arch", "arch",
-  "fender_panel", "fender", "wide_fender",
-  "side_skirt", "skirt", "lip", "front_lip", "rear_lip",
-  "splitter", "diffuser",
-]);
-
-function isClosed(curves: any[]): boolean {
-  if (!Array.isArray(curves) || curves.length === 0) return false;
-  const start = endpointStart(curves[0]);
-  const end = endpointEnd(curves[curves.length - 1]);
-  if (!start || !end) return false;
-  const dx = start[0] - end[0];
-  const dy = start[1] - end[1];
-  return Math.hypot(dx, dy) < 1.0; // 1mm tolerance
+function findBuilderByName(name: string): BuilderSpec | null {
+  return BUILDERS.find((b) => b.builder === name) ?? null;
 }
 
-function endpointStart(curve: any): [number, number] | null {
-  if (!curve || typeof curve !== "object") return null;
-  if (curve.type === "line" && Array.isArray(curve.from)) return [curve.from[0], curve.from[1]];
-  if (curve.type === "arc" && Array.isArray(curve.center) && typeof curve.radius === "number") {
-    const a = (curve.start_deg ?? 0) * Math.PI / 180;
-    return [curve.center[0] + curve.radius * Math.cos(a), curve.center[1] + curve.radius * Math.sin(a)];
-  }
-  if (curve.type === "spline" && Array.isArray(curve.points) && curve.points.length > 0) {
-    const p = curve.points[0];
-    return [p[0], p[1]];
-  }
-  return null;
-}
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
 
-function endpointEnd(curve: any): [number, number] | null {
-  if (!curve || typeof curve !== "object") return null;
-  if (curve.type === "line" && Array.isArray(curve.to)) return [curve.to[0], curve.to[1]];
-  if (curve.type === "arc" && Array.isArray(curve.center) && typeof curve.radius === "number") {
-    const a = (curve.end_deg ?? 0) * Math.PI / 180;
-    return [curve.center[0] + curve.radius * Math.cos(a), curve.center[1] + curve.radius * Math.sin(a)];
-  }
-  if (curve.type === "spline" && Array.isArray(curve.points) && curve.points.length > 0) {
-    const p = curve.points[curve.points.length - 1];
-    return [p[0], p[1]];
-  }
-  return null;
-}
-
-function collectRecipeIssues(recipe: any, opts: { partKind: string; hasBaseMesh: boolean }): string[] {
-  if (!recipe || typeof recipe !== "object") return ["Recipe must be a JSON object."];
-  if (!Array.isArray(recipe.features) || recipe.features.length === 0) {
-    return ["Recipe must include a non-empty features array."];
-  }
-
+function validateParams(spec: BuilderSpec, params: Record<string, unknown>): { ok: true; params: Record<string, unknown> } | { ok: false; issues: string[] } {
   const issues: string[] = [];
-  const ids = new Set<string>();
-  const isBodyPanel = BODY_PANEL_KINDS.has(opts.partKind);
+  const out: Record<string, unknown> = {};
 
-  if (recipe.features.length > 20) {
-    issues.push(`Recipe has ${recipe.features.length} features; max is 20.`);
-  }
-  if (isBodyPanel && recipe.features.length > 8) {
-    issues.push(`Body-panel recipes must stay under 8 features (got ${recipe.features.length}).`);
-  }
-
-  for (const feature of recipe.features) {
-    if (!feature || typeof feature !== "object") {
-      issues.push("Every feature must be an object.");
-      continue;
-    }
-
-    const id = typeof feature.id === "string" ? feature.id : "(missing id)";
-    const type = typeof feature.type === "string" ? feature.type : "(missing type)";
-
-    if (typeof feature.id !== "string" || !feature.id) {
-      issues.push(`Feature ${id} is missing a string id.`);
-    } else if (ids.has(feature.id)) {
-      issues.push(`Feature ${feature.id} is duplicated.`);
-    } else {
-      ids.add(feature.id);
-    }
-
-    if (typeof feature.type !== "string" || !feature.type) {
-      issues.push(`Feature ${id} is missing a string type.`);
-      continue;
-    }
-
-    if (type === "import_mesh" && !opts.hasBaseMesh) {
-      issues.push(`import_mesh feature ${id} is not allowed without a base mesh URL.`);
-    }
-
-    if (type === "sketch") {
-      if (!NAMED_PLANES.has(feature.plane)) {
-        issues.push(`Sketch ${id} must use plane "XY", "YZ", or "XZ" (got ${JSON.stringify(feature.plane)}).`);
-      }
-      const curves = Array.isArray(feature.curves) ? feature.curves : [];
-      if (curves.length === 0) {
-        issues.push(`Sketch ${id} has no curves.`);
-      }
-      let splines = 0;
-      for (const curve of curves) {
-        if (curve?.type === "spline") splines++;
-        if (
-          curve?.type === "arc" &&
-          typeof curve.start_deg === "number" &&
-          typeof curve.end_deg === "number" &&
-          Math.abs(curve.end_deg - curve.start_deg) >= 360
-        ) {
-          issues.push(`Sketch ${id} contains a full-circle arc; use two half-arcs instead.`);
+  for (const [key, ps] of Object.entries(spec.params)) {
+    let v = params[key];
+    if (v === undefined || v === null) {
+      if (ps.required) {
+        if (ps.default !== undefined) {
+          v = ps.default;
+        } else {
+          issues.push(`Missing required param "${key}"`);
+          continue;
         }
-      }
-      if (splines > 1) {
-        issues.push(`Sketch ${id} has ${splines} splines; use at most one spline per sketch.`);
-      }
-      if (curves.length > 0 && !isClosed(curves)) {
-        issues.push(`Sketch ${id} is not a closed profile (start and end points must coincide).`);
+      } else if (ps.default !== undefined) {
+        v = ps.default;
+      } else {
+        continue;
       }
     }
 
-    if (type === "extrude") {
-      if (
-        typeof feature.depth_mm !== "number" ||
-        !Number.isFinite(feature.depth_mm) ||
-        feature.depth_mm <= 0
-      ) {
-        issues.push(`Extrude ${id} must use a strictly positive depth_mm.`);
+    if (ps.type === "number") {
+      const n = typeof v === "string" ? Number(v) : v;
+      if (typeof n !== "number" || !Number.isFinite(n)) {
+        issues.push(`Param "${key}" must be a finite number (got ${JSON.stringify(v)})`);
+        continue;
       }
-      if (feature.origin !== undefined) {
-        issues.push(`Extrude ${id} uses unsupported "origin" placement; place the sketch on the correct named plane instead.`);
+      if (ps.min !== undefined && n < ps.min) issues.push(`Param "${key}"=${n} below min ${ps.min}`);
+      if (ps.max !== undefined && n > ps.max) issues.push(`Param "${key}"=${n} above max ${ps.max}`);
+      if (n < 1 && (key.includes("radius") || key.includes("width") || key.includes("thickness") || key.includes("length"))) {
+        issues.push(`Dimension "${key}"=${n}mm is sub-millimetre — rejected.`);
       }
-      if (feature.plane !== undefined && !NAMED_PLANES.has(feature.plane)) {
-        issues.push(`Extrude ${id} uses an unsupported plane.`);
+      out[key] = n;
+    } else if (ps.type === "enum") {
+      if (typeof v !== "string" || !ps.values?.includes(v)) {
+        issues.push(`Param "${key}" must be one of ${JSON.stringify(ps.values)} (got ${JSON.stringify(v)})`);
+        continue;
       }
-    }
-
-    if (type === "loft" && isBodyPanel) {
-      issues.push(`Loft ${id} is not allowed for body-panel parts; use a single closed sketch + extrude.`);
-    }
-
-    if (type === "shell") {
-      if (
-        typeof feature.thickness_mm !== "number" ||
-        !Number.isFinite(feature.thickness_mm) ||
-        feature.thickness_mm <= 0
-      ) {
-        issues.push(`Shell ${id} must use a strictly positive thickness_mm.`);
+      out[key] = v;
+    } else if (ps.type === "string") {
+      if (typeof v !== "string" || v.length === 0) {
+        issues.push(`Param "${key}" must be a non-empty string`);
+        continue;
       }
-    }
-
-    if (type === "revolve") {
-      if (
-        typeof feature.angle_deg !== "number" ||
-        feature.angle_deg <= 0 ||
-        feature.angle_deg >= 360
-      ) {
-        issues.push(`Revolve ${id} angle_deg must be in (0, 360).`);
+      out[key] = v;
+    } else if (ps.type === "vector3") {
+      if (!Array.isArray(v) || v.length !== 3 || v.some((x) => typeof x !== "number" || !Number.isFinite(x))) {
+        issues.push(`Param "${key}" must be a [x,y,z] array of 3 finite numbers`);
+        continue;
       }
-    }
-
-    if (type === "mirror") {
-      const plane = feature.plane ?? "YZ";
-      if (!NAMED_PLANES.has(plane)) {
-        issues.push(`Mirror ${id} must use plane "XY", "YZ", or "XZ".`);
-      }
+      out[key] = v;
     }
   }
 
-  const hasBody = recipe.features.some(
-    (f: any) => f && typeof f.type === "string" && BODY_PRODUCING.has(f.type),
-  );
-  if (!hasBody) {
-    issues.push("Recipe has no body-producing feature (need at least one extrude / loft / revolve).");
-  }
-
-  // Body-conforming requirement: if a base mesh is available and this is a
-  // body panel, the recipe MUST trim the panel against the imported car mesh,
-  // otherwise the part has no chance of fitting the car.
-  if (isBodyPanel && opts.hasBaseMesh) {
-    const importMesh = recipe.features.find((f: any) => f?.type === "import_mesh");
-    if (!importMesh) {
-      issues.push("Body-conforming part must include an import_mesh feature referencing the base car mesh.");
-    }
-    const last = recipe.features[recipe.features.length - 1];
-    if (
-      !last ||
-      last.type !== "boolean" ||
-      last.op !== "intersect" ||
-      !Array.isArray(last.targets) ||
-      (importMesh && !last.targets.includes(importMesh.id))
-    ) {
-      issues.push("Body-conforming part must end with a boolean intersect between the panel body and the imported car mesh.");
+  // Reject unknown keys (forces AI to stick to schema).
+  for (const k of Object.keys(params)) {
+    if (!(k in spec.params)) {
+      // soft-ignore rather than hard-fail (AI sometimes adds a "style" hint)
+      // but DO surface so we can audit
+      console.warn(`generate-cad-recipe: ignoring unknown param "${k}"`);
     }
   }
 
-  return issues;
+  if (issues.length > 0) return { ok: false, issues };
+  return { ok: true, params: out };
 }
 
-/**
- * Conservative known-good template for body-panel parts. Single closed YZ
- * sketch + symmetric extrude + edge fillet. When a base mesh URL is provided
- * we also import it and intersect the extruded slab with the car body so the
- * resulting part actually conforms to the vehicle's surface.
- */
-function fallbackRecipeForBodyPanel(
-  partKind: string,
-  partLabel?: string,
-  baseMeshUrl?: string | null,
-) {
-  const isArch = partKind.includes("arch");
-  // A simple flared quarter shape: rectangle with a chamfered top.
-  const halfWidth = 220;     // mm — half of full panel width along X
-  const height = isArch ? 380 : 320;
-  const flare = isArch ? 60 : 40;
-  const depth = isArch ? 180 : 220; // extrusion thickness (X direction, since plane is YZ)
-  const features: any[] = [
-    {
-      type: "sketch",
-      id: "s_profile",
-      plane: "YZ",
-      curves: [
-        { type: "line", from: [-halfWidth, 0], to: [halfWidth, 0] },
-        { type: "line", from: [halfWidth, 0], to: [halfWidth + flare, height * 0.6] },
-        { type: "line", from: [halfWidth + flare, height * 0.6], to: [halfWidth, height] },
-        { type: "line", from: [halfWidth, height], to: [-halfWidth, height] },
-        { type: "line", from: [-halfWidth, height], to: [-halfWidth - flare, height * 0.6] },
-        { type: "line", from: [-halfWidth - flare, height * 0.6], to: [-halfWidth, 0] },
-      ],
-    },
-    { type: "extrude", id: "e_body", sketch: "s_profile", depth_mm: depth, symmetric: true },
-    { type: "fillet", id: "f_edges", target: "e_body", edges: "all", radius_mm: 8 },
-  ];
+// ---------------------------------------------------------------------------
+// Fallback param sets — used when the AI is offline / returns garbage
+// ---------------------------------------------------------------------------
 
-  if (baseMeshUrl) {
-    features.push({ type: "import_mesh", id: "m_car", url: baseMeshUrl });
-    features.push({
-      type: "boolean",
-      id: "b_fit",
-      op: "intersect",
-      targets: ["f_edges", "m_car"],
-    });
+function fallbackParams(spec: BuilderSpec, partLabel: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, p] of Object.entries(spec.params)) {
+    if (p.default !== undefined) out[k] = p.default;
   }
-
-  return {
-    version: 1,
-    part: partKind,
-    units: "mm",
-    label: partLabel ?? partKind,
-    features,
-    outputs: ["step", "stl", "glb"],
-    _fallback: true,
-  };
+  // Side hint from label.
+  const lbl = partLabel.toLowerCase();
+  if ("side" in spec.params) {
+    if (/right|rh|\(r\)/.test(lbl)) out.side = "right";
+    else out.side = "left";
+  }
+  return out;
 }
+
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   try {
-    if (!LOVABLE_API_KEY) return json({ error: "LOVABLE_API_KEY missing" }, 500);
-
     const body = await req.json();
     const {
+      concept_id = null,
       part_kind,
-      part_label,
+      part_label = "",
       reference_image_urls = [],
-      notes = "",
       base_mesh_url = null,
+      notes = "",
     } = body ?? {};
+
     if (!part_kind) return json({ error: "part_kind required" }, 400);
 
     const authHeader = req.headers.get("Authorization") ?? "";
@@ -350,94 +202,157 @@ Deno.serve(async (req) => {
     const { data: userRes, error: userErr } = await userClient.auth.getUser();
     if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
 
-    const isBodyPanel = BODY_PANEL_KINDS.has(part_kind);
-    const userPrompt = [
-      `Part kind: ${part_kind}`,
-      part_label ? `Part label: ${part_label}` : null,
-      base_mesh_url ? `Base car mesh URL (use this EXACT url for import_mesh): ${base_mesh_url}` : `No base car mesh available — DO NOT use import_mesh.`,
-      isBodyPanel
-        ? `This is a BODY PANEL. Output a single closed sketch on YZ + one positive extrude + optional fillet. Do NOT use loft. Do NOT use multiple sketches on different planes. Stay under 8 features.`
-        : null,
-      isBodyPanel && base_mesh_url
-        ? `BODY-CONFORMING REQUIREMENT: include an import_mesh feature using the URL above (id "m_car"), and end the recipe with { "type":"boolean", "id":"b_fit", "op":"intersect", "targets":[<extruded panel id>, "m_car"] } so the panel is trimmed to the actual car surface. Without this final intersect, the part will not fit.`
-        : null,
-      notes ? `Designer notes: ${notes}` : null,
-      reference_image_urls.length
-        ? `Reference images attached. Match the silhouette closely but stay manufacturable.`
-        : null,
-      `Return the strict JSON recipe only.`,
-    ].filter(Boolean).join("\n");
-
-    const userContent: any[] = [{ type: "text", text: userPrompt }];
-    for (const url of reference_image_urls.slice(0, 4)) {
-      userContent.push({ type: "image_url", image_url: { url } });
+    const spec = findBuilderForPartKind(part_kind);
+    if (!spec) {
+      return json({
+        error: `No trusted CAD builder yet for part_kind="${part_kind}". Available builders: ${BUILDERS.map((b) => b.builder).join(", ")}.`,
+      }, 400);
     }
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: SYSTEM },
-          { role: "user", content: userContent },
-        ],
-        response_format: { type: "json_object" },
-      }),
-    });
+    // 1) Try Lovable AI to fill params. We give it the schema and demand strict
+    //    JSON of shape { params: {...} } — nothing else.
+    let aiParams: Record<string, unknown> | null = null;
+    let aiError: string | null = null;
 
-    if (!aiResp.ok) {
-      const t = await aiResp.text();
-      if (aiResp.status === 429) return json({ error: "AI rate limited, retry shortly." }, 429);
-      if (aiResp.status === 402) return json({ error: "AI credits exhausted." }, 402);
-      return json({ error: `AI ${aiResp.status}: ${t.slice(0, 300)}` }, 500);
-    }
-    const aiJson = await aiResp.json();
-    const raw = aiJson?.choices?.[0]?.message?.content ?? "{}";
-
-    let recipe: any;
-    try {
-      recipe = typeof raw === "string" ? JSON.parse(raw) : raw;
-    } catch {
-      return json({ error: "AI returned invalid JSON", raw: String(raw).slice(0, 500) }, 500);
-    }
-
-    const validatorOpts = { partKind: part_kind, hasBaseMesh: !!base_mesh_url };
-    let issues = collectRecipeIssues(recipe, validatorOpts);
-
-    // For body panels, swap to a known-good fallback recipe instead of failing.
-    if (issues.length && isBodyPanel) {
-      const fallback = fallbackRecipeForBodyPanel(part_kind, part_label, base_mesh_url);
-      const fbIssues = collectRecipeIssues(fallback, validatorOpts);
-      if (fbIssues.length === 0) {
-        return json({
-          recipe: fallback,
-          fallback_used: true,
-          original_issues: issues,
+    if (LOVABLE_API_KEY) {
+      try {
+        aiParams = await callLovableAI(spec, {
+          part_kind, part_label, notes,
+          reference_image_urls: reference_image_urls.slice(0, 4),
+          has_base_mesh: !!base_mesh_url,
         });
+      } catch (e) {
+        aiError = e instanceof Error ? e.message : String(e);
+        console.warn("AI param generation failed:", aiError);
       }
     }
 
-    if (issues.length) {
-      return json(
-        {
-          error: `Recipe is not CAD-worker-safe: ${issues[0]}`,
-          issues,
-          recipe,
-        },
-        422,
-      );
+    let chosenParams = aiParams;
+    let fallbackUsed = false;
+    let originalIssues: string[] = [];
+
+    if (chosenParams) {
+      const v = validateParams(spec, chosenParams);
+      if (!v.ok) {
+        originalIssues = v.issues;
+        console.warn(`AI params failed validation, using fallback:`, v.issues);
+        chosenParams = null;
+      } else {
+        chosenParams = v.params;
+      }
     }
 
-    return json({ recipe });
+    if (!chosenParams) {
+      const fb = fallbackParams(spec, part_label);
+      const v = validateParams(spec, fb);
+      if (!v.ok) {
+        return json({
+          error: `Internal: fallback params for ${spec.builder} failed validation`,
+          issues: v.issues,
+        }, 500);
+      }
+      chosenParams = v.params;
+      fallbackUsed = true;
+    }
+
+    const recipe = {
+      version: 2,
+      builder: spec.builder,
+      part_type: part_kind,
+      params: chosenParams,
+    };
+
+    return json({
+      recipe,
+      builder: spec.builder,
+      fallback_used: fallbackUsed,
+      original_issues: originalIssues,
+      ai_error: aiError,
+    });
   } catch (e) {
     console.error("generate-cad-recipe error:", e);
     return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
   }
 });
+
+async function callLovableAI(
+  spec: BuilderSpec,
+  ctx: { part_kind: string; part_label: string; notes: string; reference_image_urls: string[]; has_base_mesh: boolean },
+): Promise<Record<string, unknown>> {
+  const paramDocs = Object.entries(spec.params)
+    .map(([k, p]) => {
+      const range = p.min !== undefined ? ` (${p.min}–${p.max}${p.type === "number" ? "mm" : ""})` : "";
+      const req = p.required ? "REQUIRED" : "optional";
+      const enumStr = p.values ? ` one of ${JSON.stringify(p.values)}` : "";
+      return `  - ${k} [${p.type}${enumStr}, ${req}, default ${JSON.stringify(p.default ?? null)}]${range}: ${p.description ?? ""}`;
+    })
+    .join("\n");
+
+  const system = `You are a parametric CAD parameter generator. You do NOT write code. You ONLY pick numerical / enum values for a fixed builder function the worker already implements.
+
+Builder: ${spec.builder}
+Purpose: ${spec.description}
+
+Allowed params:
+${paramDocs}
+
+Output STRICT JSON only, no prose, no markdown, of EXACTLY this shape:
+{ "params": { "<key>": <value>, ... } }
+
+Rules:
+- Use millimetres for all dimensions.
+- Stay inside the [min, max] ranges. Never invent new keys.
+- Pick "side" from the label/notes (left vs right). Default to "left" if unsure.
+- Aggressive / wide-body styles → flare_out, arch_width, height_above_wheel toward the upper end.
+- Subtle / OEM+ styles → toward the lower end.
+- Never return zero or negative dimensions.`;
+
+  const userParts: Array<{ type: "text" | "image_url"; text?: string; image_url?: { url: string } }> = [];
+  userParts.push({
+    type: "text",
+    text:
+      `part_kind: ${ctx.part_kind}\n` +
+      `part_label: ${ctx.part_label}\n` +
+      `designer notes: ${ctx.notes || "(none)"}\n` +
+      (ctx.has_base_mesh ? `(A base car mesh is available — pick proportions consistent with a real road car.)\n` : "") +
+      (ctx.reference_image_urls.length ? `Reference images follow.` : ""),
+  });
+  for (const url of ctx.reference_image_urls) {
+    userParts.push({ type: "image_url", image_url: { url } });
+  }
+
+  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userParts },
+      ],
+      response_format: { type: "json_object" },
+    }),
+  });
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`Lovable AI ${resp.status}: ${t.slice(0, 200)}`);
+  }
+  const json = await resp.json();
+  const content = json?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("AI returned empty content");
+
+  let parsed: any;
+  try { parsed = JSON.parse(content); }
+  catch { throw new Error(`AI returned non-JSON: ${String(content).slice(0, 200)}`); }
+
+  if (!parsed || typeof parsed !== "object" || !parsed.params || typeof parsed.params !== "object") {
+    throw new Error(`AI JSON missing "params" object`);
+  }
+  return parsed.params as Record<string, unknown>;
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

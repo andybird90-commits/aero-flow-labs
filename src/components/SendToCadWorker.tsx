@@ -124,11 +124,13 @@ export function SendToCadWorker({
         notes,
       });
       setRecipe(r.recipe);
+      const builder = r.recipe?.builder ?? "(legacy recipe)";
+      const paramCount = r.recipe?.params ? Object.keys(r.recipe.params).length : (r.recipe?.features?.length ?? 0);
       toast({
-        title: r.fallback_used ? "Recipe ready (fallback)" : "Recipe ready",
+        title: r.fallback_used ? "Params ready (defaults)" : "Params ready",
         description: r.fallback_used
-          ? `AI output failed worker safety checks — using a conservative template (${r.recipe?.features?.length ?? 0} features).`
-          : `${r.recipe?.features?.length ?? 0} CAD features.`,
+          ? `AI couldn't fit valid params — using safe defaults for ${builder} (${paramCount} params).`
+          : `${builder}: ${paramCount} validated params.`,
       });
     } catch (e: any) {
       toast({ title: "Recipe failed", description: String(e.message ?? e), variant: "destructive" });
@@ -214,8 +216,13 @@ export function SendToCadWorker({
               <div className="rounded-md border border-success/40 bg-success/10 text-xs p-3 inline-flex items-start gap-2">
                 <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-success" />
                 <div>
-                  Recipe ready — <span className="font-mono">{recipe?.features?.length ?? 0}</span> features.
-                  Step 2: dispatch to the Onshape worker.
+                  {recipe.builder ? (
+                    <>Builder <span className="font-mono">{recipe.builder}</span> ready —{" "}
+                    <span className="font-mono">{Object.keys(recipe.params ?? {}).length}</span> validated params.</>
+                  ) : (
+                    <>Recipe ready — <span className="font-mono">{recipe?.features?.length ?? 0}</span> features.</>
+                  )}{" "}
+                  Step 2: dispatch to the CAD worker.
                 </div>
               </div>
             )}

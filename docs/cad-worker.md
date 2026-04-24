@@ -1,25 +1,15 @@
 # CAD Worker — HTTP Contract (CadQuery reference)
 
-This document defines the API contract between the BodyKit Studio backend and
-the external CAD worker that builds parts parametrically (sketches, extrudes,
-lofts, fillets) instead of meshing them with AI.
+## Design rule (read this first)
 
-The reference implementation uses **[CadQuery](https://github.com/CadQuery/cadquery)**
-— an open-source Python B-rep modeller built on the OpenCascade kernel. It
-produces real STEP files, no third-party API account required, no per-job cost,
-no public-document trap. Any kernel that can consume the recipe schema below
-(Build123d, OpenCascade.js, FreeCAD, even Onshape FeatureScript) can implement
-the same contract.
+> **The AI never writes CadQuery code.**
+> The AI only generates **validated parameters** for **trusted builder
+> functions** that the worker already implements. The worker decides which
+> builder to call based on `builder` in the request payload.
 
-The worker is **not deployed by Lovable** — it lives in your geometry repo and
-is hosted alongside the Blender worker (Modal / Replicate / Fly / RunPod /
-self-hosted). Lovable only knows two secrets:
-
-- `CAD_WORKER_URL` — the worker's base URL
-- `CAD_WORKER_TOKEN` — bearer token used in the `Authorization` header
-
-The dispatch / status edge functions also accept the legacy `ONSHAPE_WORKER_URL`
-/ `ONSHAPE_WORKER_TOKEN` names as fallbacks, so existing setups keep working.
+This eliminates the entire class of "AI hallucinated an unbuildable sketch"
+failures (open profiles, self-intersecting splines, zero-area faces, etc.).
+Adding new part types is a code change in the worker, not a prompt change.
 
 ---
 
@@ -27,31 +17,24 @@ The dispatch / status edge functions also accept the legacy `ONSHAPE_WORKER_URL`
 
 ### `POST /jobs`
 
-Kick off a CAD build. Returns immediately with a task id; the caller polls
-`/jobs/:task_id` for status.
+Auth: `Authorization: Bearer <CAD_WORKER_TOKEN>` required.
 
-**Request**
+**Request — v2 (current, builder-based)**
 ```json
 {
-  "part_kind": "rear_wing",
-  "recipe": {
-    "version": 1,
-    "part": "rear_wing",
-    "units": "mm",
-    "features": [
-      {
-        "type": "sketch",
-        "id": "s1",
-        "plane": "XY",
-        "curves": [
-          { "type": "naca", "code": "6412", "chord": 200, "origin": [0, 0], "rotation_deg": -3 }
-        ]
-      },
-      { "type": "extrude", "id": "e1", "sketch": "s1", "depth_mm": 1500, "symmetric": true },
-      { "type": "shell",   "id": "sh1", "target": "e1", "thickness_mm": 2.0, "open_faces": ["+Z"] },
-      { "type": "fillet",  "id": "f1", "target": "e1", "edges": "all", "radius_mm": 3 }
-    ],
-    "outputs": ["step", "stl", "glb"]
+  "builder": "build_front_arch",
+  "part_type": "front_arch",
+  "part_kind": "front_arch",
+  "params": {
+    "side": "left",
+    "radius": 330,
+    "arch_width": 90,
+    "flare_out": 55,
+    "thickness": 3,
+    "lip_return": 18,
+    "length_front": 380,
+    "length_rear": 480,
+    "height_above_wheel": 100
   },
   "inputs": {
     "base_mesh_url": "https://.../car.stl"
@@ -59,23 +42,30 @@ Kick off a CAD build. Returns immediately with a task id; the caller polls
 }
 ```
 
-**Response**
+The worker MUST:
+1. Look `builder` up in its trusted-builder registry. Reject unknown builders with HTTP 400.
+2. Re-validate `params` against the builder's schema (defence in depth — Lovable already validates).
+3. Call the builder.
+4. Export the result as STEP, STL, GLB, plus a small preview PNG.
+5. Upload outputs to a publicly fetchable host and return the URLs in `GET /jobs/:id`.
+
+**Request — v1 (legacy free-form recipe, deprecated)**
+Still accepted for backward compatibility. If `recipe.features[]` is present
+the worker should run the legacy interpreter. New parts should NOT use this
+path.
+
+**Response (both)**
 ```json
 { "task_id": "cad-abc-123" }
 ```
 
-Auth: `Authorization: Bearer <CAD_WORKER_TOKEN>` required.
-
 ### `GET /jobs/:task_id`
 
-Poll for status.
+Same as before:
 
-**Response (in-progress)**
 ```json
 { "status": "running", "progress": 0.42 }
 ```
-
-**Response (succeeded)**
 ```json
 {
   "status": "succeeded",
@@ -88,105 +78,258 @@ Poll for status.
   }
 }
 ```
-
-**Response (failed)**
 ```json
-{ "status": "failed", "error": "loft failed: sketches not coplanar" }
+{ "status": "failed", "error": "validation: radius=0.5 below min 200" }
 ```
-
-The worker should host its output URLs somewhere fetchable by the Lovable edge
-function (signed S3 URL, public CDN, etc.). The `cad-job-status` edge function
-downloads the artifacts and re-hosts them in the `geometries` Supabase storage
-bucket so the client always reads from a stable Lovable URL.
 
 ---
 
-## Recipe schema
+## Trusted builders (v2)
 
 All dimensions in **millimetres**. Vehicle-local coordinates: forward = -Z,
 up = +Y, right = +X.
 
-### Feature types
+### `build_front_arch`
 
-| Type | Required fields | Notes |
-|------|-----------------|-------|
-| `sketch` | `id`, `plane`, `curves[]` | `plane` is `"XY"`/`"YZ"`/`"XZ"` or `{origin,normal}` |
-| `extrude` | `id`, `sketch`, `depth_mm` | Optional `symmetric: true` |
-| `loft` | `id`, `sketches[]` | Lofts between 2+ sketches |
-| `revolve` | `id`, `sketch`, `axis`, `angle_deg` | `axis` is `"X"`/`"Y"`/`"Z"` |
-| `sweep` | `id`, `profile`, `path` | Sketch ids |
-| `shell` | `id`, `target`, `thickness_mm` | Optional `open_faces: ["+Z"]` |
-| `fillet` | `id`, `target`, `radius_mm` | `edges: "all"` or `["edge_id"]` |
-| `chamfer` | `id`, `target`, `distance_mm` | Same edge selector as fillet |
-| `mirror` | `id`, `target`, `plane` | Plane defaults to vehicle YZ |
-| `boolean` | `id`, `op` (`union`/`cut`/`intersect`), `targets[]` | Combine bodies |
-| `import_mesh` | `id`, `url` | Brings the base car STL in for projection |
+Solid wheel arch / fender flare for the front. Curved sweep around the wheel
+with optional outward flare and an inward lip return. Built standalone — does
+NOT need the car STL to succeed.
 
-### Curve types (inside `sketch.curves`)
+| param | type | range | required | default | meaning |
+|-------|------|-------|----------|---------|---------|
+| `side` | enum | `left` / `right` | ✔ | `left` | which side of the car |
+| `radius` | number | 200–600 mm | ✔ | 330 | wheel arch radius |
+| `arch_width` | number | 30–250 mm | ✔ | 90 | width along tyre axis (X) |
+| `flare_out` | number | 0–200 mm | ✔ | 55 | outward flare beyond the body |
+| `thickness` | number | 1–20 mm | ✔ | 3 | panel wall thickness |
+| `lip_return` | number | 0–60 mm | ✔ | 18 | inward return lip depth |
+| `length_front` | number | 50–800 mm | ✔ | 380 | extent forward of wheel centre |
+| `length_rear` | number | 50–800 mm | ✔ | 480 | extent rearward of wheel centre |
+| `height_above_wheel` | number | 20–400 mm | ✖ | 100 | how high above the wheel centre the arch reaches |
+| `wheel_centre` | `[x,y,z]` | — | ✖ | — | optional translate to vehicle wheel-centre |
 
-| Type | Fields |
-|------|--------|
-| `line` | `from[2]`, `to[2]` |
-| `arc` | `center[2]`, `radius`, `start_deg`, `end_deg` |
-| `spline` | `points[][2]` |
-| `naca` | `code` (4-digit), `chord`, `origin[2]`, `rotation_deg` |
+More builders (`build_rear_arch`, `build_splitter_blade`, `build_side_skirt`,
+`build_wing_blade`, `build_canard`…) get added the same way — register the
+schema in Lovable's `BUILDERS` list AND implement the function in the worker.
 
 ---
 
-## Reference CadQuery implementation (sketch)
+## Reference Python implementation
 
 ```python
-# worker.py — minimal sketch, not production
+# worker.py — minimal, builder-based
+from __future__ import annotations
+from typing import Any, Callable
+import math
 import cadquery as cq
 
-def build(recipe: dict) -> cq.Workplane:
-    bodies: dict[str, cq.Workplane] = {}
-    sketches: dict[str, cq.Sketch] = {}
+# ---------- validation ----------
 
-    for feat in recipe["features"]:
-        t = feat["type"]
-        if t == "sketch":
-            s = cq.Sketch()
-            for c in feat["curves"]:
-                if c["type"] == "line":
-                    s = s.segment(tuple(c["from"]), tuple(c["to"]))
-                elif c["type"] == "arc":
-                    s = s.arc(tuple(c["center"]), c["radius"],
-                              c["start_deg"], c["end_deg"])
-                elif c["type"] == "spline":
-                    s = s.spline([tuple(p) for p in c["points"]])
-                elif c["type"] == "naca":
-                    pts = naca_4digit(c["code"], c["chord"])  # your helper
-                    s = s.polygon(pts)
-            sketches[feat["id"]] = s.assemble()
-        elif t == "extrude":
-            wp = cq.Workplane(feat.get("plane", "XY")).placeSketch(sketches[feat["sketch"]])
-            bodies[feat["id"]] = wp.extrude(feat["depth_mm"], both=feat.get("symmetric", False))
-        elif t == "fillet":
-            tgt = bodies[feat["target"]]
-            edges = tgt.edges() if feat.get("edges") == "all" else tgt.edges(feat["edges"])
-            bodies[feat["id"]] = edges.fillet(feat["radius_mm"])
-        # ...shell, mirror, loft, boolean, import_mesh
-    # last body wins
-    return list(bodies.values())[-1]
+class ValidationError(Exception): pass
 
-def export(wp, outdir):
+def _v_num(p: dict, k: str, lo: float, hi: float, default: float | None = None, required: bool = True):
+    v = p.get(k, default)
+    if v is None:
+        if required: raise ValidationError(f'missing required param "{k}"')
+        return None
+    try: v = float(v)
+    except Exception: raise ValidationError(f'param "{k}" must be a number, got {v!r}')
+    if not math.isfinite(v): raise ValidationError(f'param "{k}" not finite')
+    if v < 1.0 and any(s in k for s in ("radius","width","thickness","length")):
+        raise ValidationError(f'dimension "{k}"={v}mm sub-millimetre, rejected')
+    if v < lo or v > hi: raise ValidationError(f'param "{k}"={v} outside [{lo},{hi}]')
+    return v
+
+def _v_enum(p: dict, k: str, values: list[str], default: str | None = None, required: bool = True):
+    v = p.get(k, default)
+    if v is None:
+        if required: raise ValidationError(f'missing required param "{k}"')
+        return None
+    if v not in values: raise ValidationError(f'param "{k}" must be one of {values}, got {v!r}')
+    return v
+
+def _v_vec3(p: dict, k: str, required: bool = False):
+    v = p.get(k)
+    if v is None:
+        if required: raise ValidationError(f'missing required param "{k}"')
+        return None
+    if not (isinstance(v, (list, tuple)) and len(v) == 3): raise ValidationError(f'param "{k}" must be [x,y,z]')
+    try: return [float(x) for x in v]
+    except Exception: raise ValidationError(f'param "{k}" must be 3 numbers')
+
+# ---------- builder: build_front_arch ----------
+
+def build_front_arch(params: dict) -> cq.Workplane:
+    """
+    Builds a curved front wheel arch / fender flare as a SOLID body.
+    Stage-1 contract: standalone in empty space, no car-STL trim.
+    """
+    side               = _v_enum(params, "side", ["left","right"], default="left")
+    radius             = _v_num(params, "radius", 200, 600, default=330)
+    arch_width         = _v_num(params, "arch_width", 30, 250, default=90)
+    flare_out          = _v_num(params, "flare_out", 0, 200, default=55)
+    thickness          = _v_num(params, "thickness", 1, 20, default=3)
+    lip_return         = _v_num(params, "lip_return", 0, 60, default=18)
+    length_front       = _v_num(params, "length_front", 50, 800, default=380)
+    length_rear        = _v_num(params, "length_rear", 50, 800, default=480)
+    height_above_wheel = _v_num(params, "height_above_wheel", 20, 400, default=100, required=False)
+    wheel_centre       = _v_vec3(params, "wheel_centre", required=False)
+
+    # Sweep angle controlled by length_front / length_rear projected onto the arch.
+    span_front_deg = math.degrees(min(math.pi, length_front / radius))
+    span_rear_deg  = math.degrees(min(math.pi, length_rear  / radius))
+    a_start = 90.0 - span_front_deg     # measured from +Y (up), going forward (-Z)
+    a_end   = 90.0 + span_rear_deg
+
+    # Build cross-section in the YZ plane: an L-shaped panel = main flare + inward lip.
+    half_w = arch_width / 2.0
+    flare_pts = [
+        (-half_w, 0),
+        ( half_w, 0),
+        ( half_w + flare_out * 0.0, -thickness),  # outer face stays flush radially
+        (-half_w,                  -thickness),
+    ]
+    cross_section = (
+        cq.Sketch()
+        .polygon([(half_w, 0),
+                  (half_w + flare_out, 0),
+                  (half_w + flare_out, -thickness),
+                  (-half_w - flare_out, -thickness),
+                  (-half_w - flare_out, 0),
+                  (-half_w, 0),
+                  (-half_w, lip_return),
+                  (-half_w - thickness, lip_return),
+                  (-half_w - thickness, -thickness - lip_return),
+                  ( half_w + thickness, -thickness - lip_return),
+                  ( half_w + thickness, lip_return),
+                  ( half_w, lip_return),
+                  (half_w, 0)])
+        .assemble()
+    )
+
+    # Sweep that cross-section along an arc of `radius` from a_start to a_end
+    # in the XY plane (will rotate to wheel orientation after).
+    arc_pts = []
+    n = 24
+    for i in range(n + 1):
+        t = i / n
+        ang = math.radians(a_start + (a_end - a_start) * t)
+        arc_pts.append((radius * math.cos(ang), radius * math.sin(ang), 0))
+
+    path = cq.Workplane("XY").spline(arc_pts).val()
+    body = (
+        cq.Workplane("YZ")
+        .placeSketch(cross_section)
+        .sweep(path, isFrenet=True)
+    )
+
+    # Cap the height: trim away anything above (height_above_wheel + small epsilon)
+    if height_above_wheel:
+        cap = (
+            cq.Workplane("XY")
+            .box(2000, 2000, 2000, centered=(True, True, False))
+            .translate((0, 0, height_above_wheel))
+        )
+        body = body.cut(cap)
+
+    # Mirror to the right side if requested.
+    if side == "right":
+        body = body.mirror("YZ")
+
+    # Translate to the wheel centre, if provided (Stage-2).
+    if wheel_centre:
+        body = body.translate(tuple(wheel_centre))
+
+    # Sanity: must have at least one solid.
+    solids = body.val().Solids() if hasattr(body.val(), "Solids") else []
+    if not solids:
+        raise ValidationError("build_front_arch produced no solid — params may be self-intersecting")
+
+    return body
+
+# ---------- registry ----------
+
+BUILDERS: dict[str, Callable[[dict], cq.Workplane]] = {
+    "build_front_arch": build_front_arch,
+    # "build_rear_arch":    build_rear_arch,
+    # "build_splitter_blade": build_splitter_blade,
+    # "build_side_skirt":   build_side_skirt,
+    # "build_wing_blade":   build_wing_blade,
+}
+
+# ---------- entrypoint ----------
+
+def run_job(payload: dict) -> dict:
+    """
+    Called by the HTTP layer. Returns a dict { step_url, stl_url, glb_url, preview_png_url }.
+    """
+    builder_name = payload.get("builder")
+    if not builder_name:
+        # legacy v1 free-form recipe path
+        return run_legacy_recipe(payload.get("recipe", {}), payload.get("inputs", {}))
+
+    fn = BUILDERS.get(builder_name)
+    if fn is None:
+        raise ValidationError(f'unknown builder "{builder_name}". Available: {sorted(BUILDERS)}')
+
+    params = payload.get("params") or {}
+    if not isinstance(params, dict):
+        raise ValidationError("params must be an object")
+
+    # Defence-in-depth: re-validate. Reject if anything is missing or empty.
+    if not params:
+        raise ValidationError("params is empty — refusing to build with all defaults silently")
+
+    wp = fn(params)
+
+    # Export STL / STEP / GLB / preview.
+    outdir = make_tmpdir()
     cq.exporters.export(wp, f"{outdir}/part.step")
     cq.exporters.export(wp, f"{outdir}/part.stl",  tolerance=0.1)
-    cq.exporters.export(wp, f"{outdir}/part.glb")
+    try:
+        cq.exporters.export(wp, f"{outdir}/part.glb")
+        glb_url = upload_public(f"{outdir}/part.glb", "model/gltf-binary")
+    except Exception:
+        glb_url = None
+
+    step_url    = upload_public(f"{outdir}/part.step", "model/step")
+    stl_url     = upload_public(f"{outdir}/part.stl",  "model/stl")
+    preview_url = render_preview_png(wp, f"{outdir}/preview.png")
+
+    return {
+        "step_url":        step_url,
+        "stl_url":         stl_url,
+        "glb_url":         glb_url,
+        "preview_png_url": preview_url,
+    }
 ```
 
-Wrap that in any HTTP framework (FastAPI, Flask, Bun) that implements the two
-endpoints above, queues jobs (Redis / SQLite / in-memory), uploads outputs to
-S3 (or anywhere publicly fetchable), and returns the URLs.
+Pseudocode helpers (`make_tmpdir`, `upload_public`, `render_preview_png`,
+`run_legacy_recipe`) are left to your implementation — typical setups use S3
++ presigned URLs for upload and `cq-vtk` / `pyvista` for preview rendering.
 
 ---
 
-## Why this exists
+## Staged testing (recommended)
 
-Mesh AI (Rodin, Meshy, Hyper3D) hallucinates surface noise, double-walls, and
-holes on what should be flat panels. CAD removes that whole class of failures
-for engineered parts — wings, splitters, canards, vents — by building the
-geometry from explicit features instead of inferring it from images. The Lovable
-client is engine-agnostic: every part can be built with CAD, Mesh AI, or Blender;
-the user picks per-part.
+The Lovable client deliberately drives staged tests so you can isolate
+failures. Verify each stage works before moving to the next.
+
+| Stage | Inputs | Expected |
+|-------|--------|----------|
+| **1. Standalone part** | `{builder, params}` only | STL/STEP of arch in empty space |
+| **2. Place near vehicle** | + `params.wheel_centre = [x,y,z]` | Same arch translated |
+| **3. Display alongside car STL** | + `inputs.base_mesh_url` | Worker renders preview with car visible (no boolean) |
+| **4. Clearance check** | use `trimesh` server-side | Report mm of intersection |
+| **5. Trim / split** | run Blender / Open3D step | Final mesh joined to body |
+
+---
+
+## Why this design
+
+Mesh AI (Rodin, Meshy, Hyper3D) hallucinates surface noise, double-walls,
+and holes on what should be flat panels. Free-form CAD recipe AI (the
+previous v1 path) hallucinates open profiles and self-intersecting splines
+that crash the kernel. Builder-based parametric CAD removes both classes of
+failure: the AI is never trusted to author geometry, only to fill numerical
+slots that are bounded by the schema.
