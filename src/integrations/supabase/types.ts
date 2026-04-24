@@ -426,6 +426,7 @@ export type Database = {
       design_briefs: {
         Row: {
           aggression: string | null
+          body_swap_mode: boolean
           build_type: string | null
           constraints: string[]
           created_at: string
@@ -445,6 +446,7 @@ export type Database = {
         }
         Insert: {
           aggression?: string | null
+          body_swap_mode?: boolean
           build_type?: string | null
           constraints?: string[]
           created_at?: string
@@ -464,6 +466,7 @@ export type Database = {
         }
         Update: {
           aggression?: string | null
+          body_swap_mode?: boolean
           build_type?: string | null
           constraints?: string[]
           created_at?: string
