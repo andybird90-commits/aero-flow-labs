@@ -932,7 +932,7 @@ async function callImageModel({
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-3.1-flash-image-preview",
+      model,
       messages,
       modalities: ["image", "text"],
     }),
