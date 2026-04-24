@@ -39,6 +39,7 @@ const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: strin
   concept_part_mesh:   { label: "Single part",   icon: Wrench,    tone: "text-emerald-400" },
   prototype_part_mesh: { label: "Prototype",     icon: Beaker,    tone: "text-fuchsia-400" },
   geometry_part_mesh:  { label: "Fitted part",   icon: Wand2,     tone: "text-violet-400"  },
+  cad_part_mesh:       { label: "CAD part",      icon: Wrench,    tone: "text-sky-400"     },
 };
 
 const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
@@ -48,6 +49,7 @@ const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
   { id: "concept_part_mesh",   label: "Parts" },
   { id: "prototype_part_mesh", label: "Prototypes" },
   { id: "geometry_part_mesh",  label: "Fitted parts" },
+  { id: "cad_part_mesh",       label: "CAD parts" },
 ];
 
 export default function LibraryPage() {
