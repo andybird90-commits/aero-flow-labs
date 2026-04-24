@@ -1,58 +1,304 @@
-import { Link, useSearchParams } from "react-router-dom";
-import { AppLayout } from "@/components/AppLayout";
-import { PageHeader } from "@/components/PageHeader";
-import { Button } from "@/components/ui/button";
-import { Boxes, Sparkles, ArrowRight } from "lucide-react";
-
 /**
- * 3D Build Studio — placeholder.
+ * 3D Build Studio — Phase 3.
  *
- * Phase 1 stub: lays down the route + framing UI so the sidebar resolves
- * cleanly. The real Build Studio (R3F viewport, part library rail, properties
- * panel, transform controls, snap zones) is delivered in Phase 3.
+ * Three-pane layout:
+ *  • Left rail   — Part Library (drop a library item into the scene)
+ *  • Center      — R3F viewport with car placeholder + placed parts
+ *  • Right rail  — Properties of the selected part
+ *  • Bottom strip — placed-parts timeline
  *
- * For now we direct users to either the Concept Studio (to design what they
- * want) or the existing Refine flow (legacy 3D editor) so they aren't blocked.
+ * Persists every transform / flag change to placed_parts. Loads the user's
+ * current project (or the project from ?project=).
  */
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
+import { Topbar } from "@/components/Topbar";
+import { Button } from "@/components/ui/button";
+import { Toggle } from "@/components/ui/toggle";
+import { Separator } from "@/components/ui/separator";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Move3d,
+  RotateCcw,
+  Maximize2,
+  Grid3x3,
+  Save,
+  Camera,
+  FolderOpen,
+  Boxes,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { useAuth } from "@/hooks/useAuth";
+import { useCurrentProject } from "@/hooks/useCurrentProject";
+import { useCarTemplates, useMyLibrary, type LibraryItem } from "@/lib/repo";
+import {
+  usePlacedParts,
+  useAddPlacedPart,
+  useUpdatePlacedPart,
+  useDeletePlacedPart,
+  useDuplicatePlacedPart,
+  type PlacedPart,
+} from "@/lib/build-studio/placed-parts";
+
+import { BuildStudioViewport, type CameraPreset, type TransformMode } from "@/components/build-studio/BuildStudioViewport";
+import { PartLibraryRail } from "@/components/build-studio/PartLibraryRail";
+import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
+import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
+
 export default function BuildStudio() {
-  const [search] = useSearchParams();
-  const project = search.get("project");
+  const { user } = useAuth();
+  const { projectId, project, isLoading: projectLoading, isEmpty } = useCurrentProject();
+  const { data: templates = [] } = useCarTemplates();
+  const { data: library, isLoading: libLoading } = useMyLibrary(user?.id);
+  const { data: parts = [] } = usePlacedParts(projectId);
 
+  const addPart = useAddPlacedPart();
+  const updatePart = useUpdatePlacedPart();
+  const deletePart = useDeletePlacedPart();
+  const duplicatePart = useDuplicatePlacedPart();
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<TransformMode>("translate");
+  const [showGrid, setShowGrid] = useState(true);
+  const [preset, setPreset] = useState<CameraPreset>("free");
+
+  const selected = useMemo(
+    () => parts.find((p) => p.id === selectedId) ?? null,
+    [parts, selectedId],
+  );
+
+  const template = useMemo(() => {
+    if (!project?.car_id) return null;
+    // car_templates aren't directly joined here; pick the first as a sane default
+    return templates[0] ?? null;
+  }, [project, templates]);
+
+  /* ─── handlers ─── */
+  const handleAdd = (item: LibraryItem | null) => {
+    if (!user || !projectId) {
+      toast.error("Open a project first");
+      return;
+    }
+    addPart.mutate(
+      {
+        user_id: user.id,
+        project_id: projectId,
+        library_item_id: item?.id ?? null,
+        part_name: item?.title ?? "Blank part",
+        position: { x: 0, y: 0.5, z: 0 },
+        metadata: item ? { source_kind: item.kind, asset_url: item.asset_url } : {},
+      },
+      {
+        onSuccess: (p) => {
+          setSelectedId(p.id);
+          toast.success(`Added ${p.part_name}`);
+        },
+        onError: (e: any) => toast.error(e.message ?? "Add failed"),
+      },
+    );
+  };
+
+  const handlePatch = (
+    patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "locked" | "hidden" | "mirrored" | "part_name">>,
+  ) => {
+    if (!selected || !projectId) return;
+    updatePart.mutate({ id: selected.id, project_id: projectId, patch });
+  };
+
+  const handleCommit = (id: string, patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale">>) => {
+    if (!projectId) return;
+    updatePart.mutate({ id, project_id: projectId, patch });
+  };
+
+  const handleDelete = () => {
+    if (!selected || !projectId) return;
+    deletePart.mutate(
+      { id: selected.id, project_id: projectId },
+      {
+        onSuccess: () => {
+          setSelectedId(null);
+          toast.success("Part deleted");
+        },
+      },
+    );
+  };
+
+  const handleDuplicate = () => {
+    if (!selected) return;
+    duplicatePart.mutate(selected, {
+      onSuccess: (p) => {
+        setSelectedId(p.id);
+        toast.success("Duplicated");
+      },
+    });
+  };
+
+  const handleMirror = () => {
+    if (!selected) return;
+    handlePatch({
+      position: { ...selected.position, z: -selected.position.z },
+      mirrored: !selected.mirrored,
+      scale: { ...selected.scale, z: -selected.scale.z },
+    });
+  };
+
+  const handleSaveDesign = () => {
+    toast.success(`Design saved (${parts.length} parts)`);
+  };
+
+  /* ─── render ─── */
   return (
-    <AppLayout>
-      <div className="container mx-auto px-6 py-8 max-w-6xl space-y-8">
-        <PageHeader
-          eyebrow="3D"
-          title="Build Studio"
-          description="Drag generated parts onto your car, snap them to body zones, save the design as JSON."
-        />
+    <SidebarProvider defaultOpen={false}>
+      <div className="flex min-h-screen w-full bg-background">
+        <AppSidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md">
+            <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
+            <div className="h-5 w-px bg-border" />
+            <Topbar />
+          </header>
 
-        <div className="glass relative overflow-hidden rounded-xl p-10 text-center grid-bg">
-          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-lg bg-primary/10 text-primary mb-4">
-            <Boxes className="h-7 w-7" />
-          </div>
-          <h2 className="text-xl font-semibold">3D viewport coming next</h2>
-          <p className="mt-2 mx-auto max-w-md text-sm text-muted-foreground">
-            The full configurator (transform controls, snap zones, body-skin
-            alignment, save/load) lands in the next iteration. For now you can
-            still design concepts and review parts.
-          </p>
-          <div className="mt-6 flex items-center justify-center gap-2">
-            <Button asChild>
-              <Link to={project ? `/concept-studio?project=${project}` : "/concept-studio"}>
-                <Sparkles className="h-4 w-4 mr-1.5" />
-                Open Concept Studio
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link to={project ? `/refine?project=${project}` : "/projects"}>
-                Legacy refine view
-                <ArrowRight className="h-4 w-4 ml-1.5" />
-              </Link>
-            </Button>
-          </div>
+          {!projectId ? (
+            <div className="flex flex-1 items-center justify-center p-8">
+              <div className="glass max-w-md rounded-xl p-8 text-center">
+                <Boxes className="mx-auto mb-3 h-10 w-10 text-primary" />
+                <h2 className="text-lg font-semibold">Open a project to start building</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {projectLoading
+                    ? "Loading…"
+                    : isEmpty
+                      ? "Create your first project to use the Build Studio."
+                      : "Pick a project from your list."}
+                </p>
+                <Button asChild className="mt-4" variant="outline">
+                  <Link to="/projects">
+                    <FolderOpen className="mr-1.5 h-4 w-4" /> Go to projects
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col">
+              {/* Toolbar */}
+              <div className="flex h-12 items-center gap-2 border-b border-border bg-card/30 px-3">
+                <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Build
+                </div>
+                <div className="text-sm font-medium truncate max-w-[200px]">{project?.name}</div>
+                <Separator orientation="vertical" className="h-5" />
+
+                <ToggleGroup
+                  type="single"
+                  value={mode}
+                  onValueChange={(v) => v && setMode(v as TransformMode)}
+                  className="gap-0"
+                >
+                  <ToggleGroupItem value="translate" size="sm" className="h-7 px-2">
+                    <Move3d className="h-3.5 w-3.5" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="rotate" size="sm" className="h-7 px-2">
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="scale" size="sm" className="h-7 px-2">
+                    <Maximize2 className="h-3.5 w-3.5" />
+                  </ToggleGroupItem>
+                </ToggleGroup>
+
+                <Separator orientation="vertical" className="h-5" />
+
+                <Toggle
+                  pressed={showGrid}
+                  onPressedChange={setShowGrid}
+                  size="sm"
+                  className="h-7 px-2"
+                  aria-label="Toggle grid"
+                >
+                  <Grid3x3 className="h-3.5 w-3.5" />
+                </Toggle>
+
+                <Select value={preset} onValueChange={(v) => setPreset(v as CameraPreset)}>
+                  <SelectTrigger className="h-7 w-[140px] text-xs">
+                    <Camera className="mr-1 h-3 w-3" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">Free orbit</SelectItem>
+                    <SelectItem value="three_quarter">3/4</SelectItem>
+                    <SelectItem value="front">Front</SelectItem>
+                    <SelectItem value="rear">Rear</SelectItem>
+                    <SelectItem value="left">Left</SelectItem>
+                    <SelectItem value="right">Right</SelectItem>
+                    <SelectItem value="top">Top</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <div className="ml-auto flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={handleSaveDesign} className="h-7 text-xs">
+                    <Save className="mr-1 h-3 w-3" /> Save
+                  </Button>
+                </div>
+              </div>
+
+              {/* 3-column body */}
+              <div className="grid flex-1 min-h-0 grid-cols-[260px_1fr_280px]">
+                <aside className="border-r border-border bg-card/20">
+                  <PartLibraryRail
+                    items={library}
+                    isLoading={libLoading}
+                    onAdd={handleAdd}
+                    onAddBlank={() => handleAdd(null)}
+                  />
+                </aside>
+
+                <div className="relative min-h-0">
+                  <BuildStudioViewport
+                    template={template}
+                    parts={parts}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    transformMode={mode}
+                    showGrid={showGrid}
+                    preset={preset}
+                    onCommit={handleCommit}
+                  />
+                </div>
+
+                <aside className="border-l border-border bg-card/20">
+                  <PropertiesPanel
+                    part={selected}
+                    onPatch={handlePatch}
+                    onDuplicate={handleDuplicate}
+                    onDelete={handleDelete}
+                    onMirror={handleMirror}
+                  />
+                </aside>
+              </div>
+
+              {/* Bottom strip */}
+              <div className="h-16 shrink-0 border-t border-border bg-card/30">
+                <PlacedPartsStrip
+                  parts={parts}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
-    </AppLayout>
+    </SidebarProvider>
   );
 }
