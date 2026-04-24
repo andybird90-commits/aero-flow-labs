@@ -78,6 +78,8 @@ type GenerationContext = {
   vehicleLabel: string;
   briefText: string;
   presetMode: boolean;
+  /** Signed URLs of user-uploaded reference body kit images from the brief. */
+  briefReferenceUrls: string[];
 };
 
 /* ─── Discipline & aggression baselines ─────────────────────── */
