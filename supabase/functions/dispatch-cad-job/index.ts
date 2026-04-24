@@ -50,8 +50,18 @@ Deno.serve(async (req) => {
     if (!part_kind || !recipe || typeof recipe !== "object") {
       return json({ error: "part_kind and recipe required" }, 400);
     }
-    if (!Array.isArray(recipe.features)) {
-      return json({ error: "recipe.features[] missing" }, 400);
+    // New builder-based recipe (version 2). The AI generates {builder, params} only —
+    // no free-form CadQuery operations.
+    const isBuilderRecipe =
+      typeof recipe.builder === "string" &&
+      recipe.params &&
+      typeof recipe.params === "object";
+    // Legacy free-form recipe (version 1) — still accepted for backward compat.
+    const isLegacyRecipe = Array.isArray(recipe.features);
+    if (!isBuilderRecipe && !isLegacyRecipe) {
+      return json({
+        error: "recipe must be either {builder, params} (v2) or {features:[]} (v1)",
+      }, 400);
     }
 
     const authHeader = req.headers.get("Authorization") ?? "";
