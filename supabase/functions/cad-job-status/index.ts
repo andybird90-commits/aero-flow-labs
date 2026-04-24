@@ -73,10 +73,12 @@ Deno.serve(async (req) => {
     }
 
     if (wStatus === "failed" || wStatus === "canceled" || wStatus === "error") {
-      const errMsg = (w?.error ?? `Worker reported ${wStatus}`) as string;
+      const rawErr = String(w?.error ?? `Worker reported ${wStatus}`);
+      const friendly = humanizeWorkerError(rawErr);
+      const errMsg = friendly === rawErr ? rawErr : `${friendly}\n(worker said: ${rawErr})`;
       await admin
         .from("cad_jobs")
-        .update({ status: "failed", error: String(errMsg).slice(0, 500) })
+        .update({ status: "failed", error: errMsg.slice(0, 500) })
         .eq("id", job_id);
       return json({ status: "failed", error: errMsg });
     }
@@ -161,4 +163,21 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function humanizeWorkerError(raw: string): string {
+  const r = raw.toLowerCase();
+  if (r.includes("list index out of range")) {
+    return "The CAD worker could not produce a solid body from this recipe. Most likely the sketch profile didn't close into a valid face, or the extrude/loft produced no body. Try regenerating with a simpler shape or different notes.";
+  }
+  if (r.includes("brep") && r.includes("null")) {
+    return "The CAD kernel rejected the geometry (null shape). The sketch likely self-intersects or has zero area.";
+  }
+  if (r.includes("not coplanar")) {
+    return "Loft sketches were not on parallel planes. Use a single closed sketch + extrude instead.";
+  }
+  if (r.includes("face") && r.includes("invalid")) {
+    return "The sketch profile is invalid (likely open or self-intersecting). Use a closed sequence of lines / arcs.";
+  }
+  return raw;
 }

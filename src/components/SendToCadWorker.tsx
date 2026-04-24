@@ -123,8 +123,13 @@ export function SendToCadWorker({
         base_mesh_url: baseMeshUrl ?? null,
         notes,
       });
-      setRecipe(r);
-      toast({ title: "Recipe ready", description: `${r?.features?.length ?? 0} CAD features.` });
+      setRecipe(r.recipe);
+      toast({
+        title: r.fallback_used ? "Recipe ready (fallback)" : "Recipe ready",
+        description: r.fallback_used
+          ? `AI output failed worker safety checks — using a conservative template (${r.recipe?.features?.length ?? 0} features).`
+          : `${r.recipe?.features?.length ?? 0} CAD features.`,
+      });
     } catch (e: any) {
       toast({ title: "Recipe failed", description: String(e.message ?? e), variant: "destructive" });
     }
@@ -253,6 +258,17 @@ export function SendToCadWorker({
                 )}
               </div>
             </div>
+
+            {(status === "failed" || status === "succeeded") && recipe && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  Inspect recipe JSON sent to worker
+                </summary>
+                <pre className="mt-2 max-h-48 overflow-auto rounded bg-surface-0 border border-border p-2 font-mono text-[10px] leading-tight">
+                  {JSON.stringify(recipe, null, 2)}
+                </pre>
+              </details>
+            )}
 
             {previewUrl && (
               <div className="rounded-md border border-border bg-surface-0 overflow-hidden">
