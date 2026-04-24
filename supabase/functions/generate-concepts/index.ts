@@ -82,6 +82,13 @@ type GenerationContext = {
   briefReferenceUrls: string[];
   /** When true, references are the literal target silhouette (full body-swap kit, e.g. Vale GT1 over a Boxster). */
   bodySwapMode: boolean;
+  /**
+   * SURGICAL MODE — the user's brief is a small, focused, "change only X"
+   * request (e.g. "25mm wider arches all around", "add a ducktail", "lower
+   * by 30mm"). When true we bypass discipline/aggression baselines, skip
+   * variations, and emit a single render that changes ONLY what was asked.
+   */
+  surgicalMode: boolean;
 };
 
 /* ─── Discipline & aggression baselines ─────────────────────── */
