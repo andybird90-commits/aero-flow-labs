@@ -582,11 +582,19 @@ async function runSingleVariation({
 
   const userFrontRef = context.snaps.front_three_quarter;
   const frontRefs: string[] = [];
-  if (isImageRef(userFrontRef)) frontRefs.push(userFrontRef);
-  // Brief-uploaded body kit references go on the FRONT 3/4 hero render so the
-  // AI can match the requested kit. Other angles inherit the look from the
-  // generated front concept image, so we don't re-attach them downstream.
-  for (const u of context.briefReferenceUrls) frontRefs.push(u);
+  if (context.bodySwapMode) {
+    // KIT REFS FIRST, donor car last. Gemini weights the first attached image
+    // most heavily, and in body-swap mode we want it to anchor on the kit
+    // silhouette, not on the donor car.
+    for (const u of context.briefReferenceUrls) frontRefs.push(u);
+    if (isImageRef(userFrontRef)) frontRefs.push(userFrontRef);
+  } else {
+    if (isImageRef(userFrontRef)) frontRefs.push(userFrontRef);
+    // Brief-uploaded body kit references go on the FRONT 3/4 hero render so the
+    // AI can match the requested kit. Other angles inherit the look from the
+    // generated front concept image, so we don't re-attach them downstream.
+    for (const u of context.briefReferenceUrls) frontRefs.push(u);
+  }
 
   const frontResult = await renderAngle({
     admin,
@@ -603,6 +611,8 @@ async function runSingleVariation({
     briefReferenceCount: context.briefReferenceUrls.length,
     userCarRefAttached: isImageRef(userFrontRef),
     bodySwapMode: context.bodySwapMode,
+    // In body-swap mode the kit refs are first, donor car (if any) is last.
+    bodySwapKitFirst: context.bodySwapMode,
   });
   if (!frontResult) {
     console.warn("Front 3/4 render failed for variation:", v.title);
@@ -611,7 +621,15 @@ async function runSingleVariation({
 
   const otherResults = await Promise.all(otherAngles.map(async (a) => {
     const userAngleRef = context.snaps[a.key];
+    // For other angles, the just-generated front concept is the AUTHORITATIVE
+    // reference (it already has the kit on the donor). We pass it first so
+    // Gemini matches its silhouette/colour exactly. In body-swap mode we
+    // additionally re-attach the original kit refs so the AI can re-derive
+    // the kit panels from the correct angle.
     const refs: string[] = [frontResult.publicUrl];
+    if (context.bodySwapMode) {
+      for (const u of context.briefReferenceUrls) refs.push(u);
+    }
     if (isImageRef(userAngleRef)) refs.push(userAngleRef);
     const result = await renderAngle({
       admin,
@@ -625,9 +643,10 @@ async function runSingleVariation({
       aggression: context.aggression,
       discipline: context.discipline,
       extraModifier: body.extra_modifier ?? null,
-      briefReferenceCount: 0,
+      briefReferenceCount: context.bodySwapMode ? context.briefReferenceUrls.length : 0,
       userCarRefAttached: isImageRef(userAngleRef),
       bodySwapMode: context.bodySwapMode,
+      bodySwapKitFirst: false, // front concept is image #1 here
     });
     return { key: a.key, result };
   }));
