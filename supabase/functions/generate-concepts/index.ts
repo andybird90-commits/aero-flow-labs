@@ -757,6 +757,70 @@ async function renderAngle({
     : "";
   const steerLine = extraModifier ? `\nADDITIONAL STEER (apply on top): ${extraModifier}` : "";
 
+  // ─── BODY-SWAP MODE: full prompt override ────────────────────────────────
+  // The kit reference photos are the AUTHORITY. Brief flavour, variation
+  // modifier, intensity, identity rules are all suppressed because they
+  // dilute Gemini's attention away from the kit silhouette.
+  if (bodySwapMode && hasBriefRefs) {
+    const kitFirst = !!bodySwapKitFirst;
+    const kitRange = briefReferenceCount === 1
+      ? (kitFirst ? `Image #1` : `the last image`)
+      : (kitFirst ? `Images #1–#${briefReferenceCount}` : `the last ${briefReferenceCount} images`);
+    const donorClause = userCarRefAttached
+      ? (kitFirst
+          ? `The FINAL image is the donor car (subject vehicle) — use it ONLY for: greenhouse/cabin/doors/glass shape, A-pillar position, wheelbase, paint colour, badge, and overall scale. Treat all other panels of the donor as REMOVED.`
+          : `Image #1 is the donor car (subject vehicle) — use it ONLY for greenhouse/cabin/doors/glass, wheelbase, paint colour and overall scale.`)
+      : ``;
+
+    const swapPrompt =
+      `BODY-SWAP KIT RENDER — ${angle.framing}.\n\n` +
+      `${kitRange} are reference photos of an aftermarket FULL BODY-SWAP KIT ` +
+      `(think Vale GT1 over a 986 Boxster, RAUH-Welt / Old & New slantnose over a 996, ` +
+      `or a TCR/GT silhouette kit). These references define the EXACT bodywork the donor ` +
+      `car must wear. ${donorClause}\n\n` +
+      `MANDATORY PANEL REPLACEMENTS — replicate from the kit references:\n` +
+      `• Front bumper / fascia profile, splitter depth, intake openings, headlight cut-outs.\n` +
+      `• Front fenders / arches — match the flare width, curvature, vent locations and ` +
+      `  louvre count exactly. If the kit has slantnose / pop-up-delete fenders, USE THEM.\n` +
+      `• Hood — match bulges, vents, NACA ducts, scoop shape, and panel splits.\n` +
+      `• Side skirts — match depth, leading-edge angle, and any flicks/winglets.\n` +
+      `• Rear bumper / diffuser — match strake count, exhaust cut-outs, lower lip shape.\n` +
+      `• Rear quarters / arches — match flare width and shoulder line.\n` +
+      `• Rear deck / ducktail / wing — match shape, mounting style (swan-neck vs gooseneck), ` +
+      `  chord, span, end-plate profile.\n` +
+      `• Ride height and wheel offset/poke from the kit photos.\n\n` +
+      `STRICTLY PRESERVED FROM DONOR (do NOT redesign these):\n` +
+      `• Greenhouse / cabin / roof / doors / windscreen / side glass / rear glass.\n` +
+      `• Wheelbase and overall length proportion.\n` +
+      `• Door handle and mirror placement (unless the kit obviously deletes them).\n\n` +
+      `HARD RULES:\n` +
+      `• Output MUST look like the donor car wearing the kit — NOT a stock donor with a ` +
+      `  carbon nose grafted on, NOT a kit floating in space.\n` +
+      `• If the donor's stock front bumper / hood / fenders / rear are still visible in the ` +
+      `  output, the render is WRONG — those panels are physically replaced by the kit.\n` +
+      `• Do not invent aero parts that are not in the kit references.\n` +
+      `• Do not apply any styling vibe from the brief text — only the kit photos drive shape.\n` +
+      `• Camera angle: ${angle.framing}. Studio lighting, dark dramatic backdrop, ` +
+      `  photorealistic, sharp focus, no text, no watermark, no UI overlays.`;
+
+    const messages: any[] = [{
+      role: "user",
+      content: [{ type: "text", text: swapPrompt }],
+    }];
+    for (const ref of referenceImages) {
+      messages[0].content.push({ type: "image_url", image_url: { url: ref } });
+    }
+
+    return await callImageModel({
+      admin, userId, projectId, variation, angle,
+      messages, promptText: swapPrompt,
+      // Pro image model is significantly more obedient to multi-image references
+      // — worth the extra cost in body-swap mode where geometry must match.
+      model: "google/gemini-3-pro-image-preview",
+    });
+  }
+  // ─── END BODY-SWAP MODE ──────────────────────────────────────────────────
+
   // When the user has attached body-kit reference photos to the brief, we must
   // OBEY them — match the kit shapes/proportions/details exactly, do not freestyle.
   // The trailing N images in `referenceImages` are those refs (after the optional car snapshot).
@@ -771,31 +835,6 @@ async function renderAngle({
         const carClause = userCarRefAttached
           ? `Image #1 is the SUBJECT CAR / DONOR (use it ONLY for chassis identity, wheelbase, greenhouse, glass, headlight position, wheels and overall scale). `
           : ``;
-
-        if (bodySwapMode) {
-          // Body-swap kit: refs ARE the new bodywork (Vale, Old & New, RWB-style).
-          // The donor car is just the chassis underneath.
-          return (
-            `\n\nBODY-SWAP KIT MODE — STRICT REPLICATION: ${carClause}` +
-            `${range} show the EXACT BODY-SWAP KIT the user wants applied to the donor car ` +
-            `(think Vale GT1 over a 986 Boxster, or Old & New slantnose over a 996 — the kit ` +
-            `replaces the entire visible bodywork: front bumper, fenders, hood, side skirts, ` +
-            `rear bumper, ducktail/wing). ` +
-            `\n\nYour job is to render the donor car WEARING this kit. The kit silhouette in the ` +
-            `references is AUTHORITATIVE: match the front fascia profile, headlight cutouts, ` +
-            `intake shapes, fender flare width and curvature, hood vents and bulges, A-pillar-to-roof ` +
-            `transition, side skirt geometry, rear deck/ducktail shape, wing mount and chord, ` +
-            `diffuser strake count, ride height and wheel offset. ` +
-            `\n\nDO NOT keep the donor car's stock front bumper, stock fenders, stock hood, stock ` +
-            `rear bumper or stock side skirts — those panels are REPLACED by the kit. The only ` +
-            `things preserved from the donor are: greenhouse/cabin/doors/glass, factory headlights ` +
-            `IF the kit reuses them (otherwise match the kit's lights), wheelbase, and overall scale. ` +
-            `\n\nDO NOT freestyle. DO NOT mix in aero parts that aren't in the references. ` +
-            `Brief text and variation flavour are IGNORED whenever they conflict with the kit photos. ` +
-            `Only the camera angle, the carbon material finish, and the donor car's identity tells (badge, ` +
-            `paint colour if not specified by the kit) are yours to control.`
-          );
-        }
 
         return (
           `\n\nBODY KIT MATCH MODE — STRICT: ${carClause}` +
@@ -865,6 +904,26 @@ async function renderAngle({
   for (const ref of referenceImages) {
     messages[0].content.push({ type: "image_url", image_url: { url: ref } });
   }
+
+  return await callImageModel({
+    admin, userId, projectId, variation, angle,
+    messages, promptText,
+    model: "google/gemini-3.1-flash-image-preview",
+  });
+}
+
+async function callImageModel({
+  admin, userId, projectId, variation, angle, messages, promptText, model,
+}: {
+  admin: any;
+  userId: string;
+  projectId: string;
+  variation: Variation;
+  angle: (typeof ANGLES)[number];
+  messages: any[];
+  promptText: string;
+  model: string;
+}): Promise<{ publicUrl: string; dataUrl: string; promptUsed: string } | null> {
 
   const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
