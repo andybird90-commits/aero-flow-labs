@@ -651,6 +651,7 @@ export function useUpsertBrief() {
         ...(input.patch as any).aggression !== undefined && { aggression: (input.patch as any).aggression },
         ...(input.patch as any).must_include !== undefined && { must_include: (input.patch as any).must_include },
         ...(input.patch as any).must_avoid !== undefined && { must_avoid: (input.patch as any).must_avoid },
+        ...(input.patch as any).variation_count !== undefined && { variation_count: (input.patch as any).variation_count },
       } as any).select("*").single();
       if (error) throw error;
       return data as DesignBrief;
