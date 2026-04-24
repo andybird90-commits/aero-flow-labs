@@ -295,6 +295,12 @@ export default function Projects() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CarTemplatePickerDialog
+        open={!!templateCar}
+        onOpenChange={(o) => !o && setTemplateCar(null)}
+        car={templateCar}
+      />
     </AppLayout>
   );
 }
