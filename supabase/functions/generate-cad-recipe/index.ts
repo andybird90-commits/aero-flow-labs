@@ -3,14 +3,9 @@
  *
  * Uses Lovable AI (Gemini) to convert a part kind + label + optional reference
  * image set into a strict-JSON parametric CAD recipe the CadQuery worker can
- * execute (sketches, extrudes, lofts, fillets, mirrors, etc.). Engine-agnostic
- * — any kernel (CadQuery, Build123d, OpenCascade.js, Onshape) that consumes
- * the schema documented in `docs/cad-worker.md` works.
- *
- * Body:
- *   { concept_id?, part_kind, part_label, reference_image_urls?: string[], notes?: string }
- *
- * Returns: { recipe }
+ * execute. Heavily validates the AI output before returning, and falls back to
+ * a known-good template recipe for body-panel parts (arches, fenders) where
+ * the AI tends to produce unbuildable freeform geometry.
  */
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 
@@ -34,7 +29,7 @@ Recipe schema. All dimensions in millimetres. Vehicle-local coords: forward = -Z
   "part": "<part_kind>",
   "units": "mm",
   "features": [
-    { "type": "sketch", "id": "s1", "plane": "XY"|"YZ"|"XZ"|{"origin":[x,y,z],"normal":[x,y,z]},
+    { "type": "sketch", "id": "s1", "plane": "XY"|"YZ"|"XZ",
       "curves": [
         { "type":"line",   "from":[x,y], "to":[x,y] },
         { "type":"arc",    "center":[x,y], "radius":r, "start_deg":a, "end_deg":b },
@@ -44,36 +39,35 @@ Recipe schema. All dimensions in millimetres. Vehicle-local coords: forward = -Z
     },
     { "type": "extrude", "id":"e1", "sketch":"s1", "depth_mm": 20, "symmetric": false },
     { "type": "loft",    "id":"l1", "sketches":["s1","s2"] },
-    { "type": "revolve", "id":"r1", "sketch":"s1", "axis":"Y", "angle_deg": 360 },
-    { "type": "sweep",   "id":"sw1","profile":"s1", "path":"s2" },
+    { "type": "revolve", "id":"r1", "sketch":"s1", "axis":"Y", "angle_deg": 180 },
     { "type": "shell",   "id":"sh1","target":"e1", "thickness_mm": 2.0, "open_faces":["+Z"] },
-    { "type": "fillet",  "id":"f1", "target":"e1", "edges":"all"|["edge_id"], "radius_mm": 3 },
+    { "type": "fillet",  "id":"f1", "target":"e1", "edges":"all", "radius_mm": 3 },
     { "type": "chamfer", "id":"c1", "target":"e1", "edges":"all", "distance_mm": 1.5 },
     { "type": "mirror",  "id":"m1", "target":"e1", "plane":"YZ" },
-    { "type": "boolean", "id":"b1", "op":"union"|"cut"|"intersect", "targets":["e1","m1"] },
-    { "type": "import_mesh", "id":"car", "url":"<base_mesh_url>" }
+    { "type": "boolean", "id":"b1", "op":"union"|"cut"|"intersect", "targets":["e1","m1"] }
   ],
   "outputs": ["step", "stl", "glb"]
 }
 
-Rules:
+WORKER-SAFE RULES (the worker WILL crash if any are violated):
 - Always set units to "mm".
 - Every feature MUST have a unique "id". Later features reference earlier ones by id.
-- The LAST body produced is what gets exported, so finish with the final composite (boolean union or the dressed-up extrude).
-- For aero parts (wings, splitters, canards, diffuser fins) prefer NACA airfoil sketches with sensible chord (150-300mm) and AoA (-2 to -6 deg).
-- For arches/skirts/lips that must conform to the car body, FIRST emit { "type":"import_mesh", "id":"car", "url":"<base_mesh_url>" }, THEN sketch the part profile and the worker will project it against the car surface.
-- Default wall thickness 2mm via shell on hollow aero parts.
-- Use mirror across "YZ" for any part that has a left/right pair (canards, side skirts) — sketch one side, mirror the other.
-- Keep the recipe under 25 features. Prefer simplicity over cleverness.
-- Worker-safe mode is preferred: use only named planes ("XY", "YZ", "XZ"), not custom {origin, normal} planes.
-- Prefer one closed sketch + extrude over loft / sweep whenever possible.
-- Never use negative extrude depths.
-- Never include unsupported placement keys like "origin" on extrude features; place the sketch on the correct named plane instead.
-- Shell thickness must always be strictly positive.
-- Keep each sketch to closed, manufacturable profiles; avoid disconnected multi-island sketches unless absolutely necessary.
-- Never draw a full circle with one arc from 0 to 360 degrees.
-- For body panels like fenders / arches, return a conservative manufacturable solid rather than a sculpted multi-plane loft.
-- Return ONLY the JSON object.`;
+- Sketch "plane" MUST be the literal string "XY", "YZ", or "XZ". Never use {origin, normal} object planes.
+- Never use the "origin" key on extrude features. Position via the sketch's plane instead.
+- Never use "import_mesh" unless a base mesh URL is explicitly provided in the prompt.
+- Every sketch MUST form ONE closed profile. The first curve's start point and the last curve's end point must coincide.
+- Use AT MOST one spline per sketch (long splines are fragile). Combine line + arc + at most one spline.
+- Never draw a full-circle arc (avoid start_deg/end_deg spans of 360 degrees).
+- depth_mm MUST be strictly positive. thickness_mm MUST be strictly positive.
+- Shell with negative thickness is forbidden.
+- Revolve angle_deg MUST be in (0, 360); prefer values <= 180 for body parts.
+- For body panels (fenders, arches, skirts, lips, splitters, diffusers): DO NOT loft between sketches on different planes; instead use ONE closed sketch on YZ or XZ + a single positive extrude + optional fillet. Body-panel recipes MUST stay under 8 features.
+- For aero parts (wings, canards): NACA airfoil sketch + symmetric extrude is preferred.
+- Use mirror across "YZ" for left/right pairs.
+- Total features MUST be <= 20. Prefer simplicity over cleverness.
+- The LAST body-producing feature is what gets exported, so end with the final composite.
+
+Return ONLY the JSON object.`;
 
 const NAMED_PLANES = new Set(["XY", "YZ", "XZ"]);
 const BODY_PRODUCING = new Set([
@@ -81,7 +75,52 @@ const BODY_PRODUCING = new Set([
   "shell", "fillet", "chamfer", "mirror",
 ]);
 
-function collectRecipeIssues(recipe: any): string[] {
+const BODY_PANEL_KINDS = new Set([
+  "wide_arch", "front_arch", "rear_arch", "arch",
+  "fender_panel", "fender", "wide_fender",
+  "side_skirt", "skirt", "lip", "front_lip", "rear_lip",
+  "splitter", "diffuser",
+]);
+
+function isClosed(curves: any[]): boolean {
+  if (!Array.isArray(curves) || curves.length === 0) return false;
+  const start = endpointStart(curves[0]);
+  const end = endpointEnd(curves[curves.length - 1]);
+  if (!start || !end) return false;
+  const dx = start[0] - end[0];
+  const dy = start[1] - end[1];
+  return Math.hypot(dx, dy) < 1.0; // 1mm tolerance
+}
+
+function endpointStart(curve: any): [number, number] | null {
+  if (!curve || typeof curve !== "object") return null;
+  if (curve.type === "line" && Array.isArray(curve.from)) return [curve.from[0], curve.from[1]];
+  if (curve.type === "arc" && Array.isArray(curve.center) && typeof curve.radius === "number") {
+    const a = (curve.start_deg ?? 0) * Math.PI / 180;
+    return [curve.center[0] + curve.radius * Math.cos(a), curve.center[1] + curve.radius * Math.sin(a)];
+  }
+  if (curve.type === "spline" && Array.isArray(curve.points) && curve.points.length > 0) {
+    const p = curve.points[0];
+    return [p[0], p[1]];
+  }
+  return null;
+}
+
+function endpointEnd(curve: any): [number, number] | null {
+  if (!curve || typeof curve !== "object") return null;
+  if (curve.type === "line" && Array.isArray(curve.to)) return [curve.to[0], curve.to[1]];
+  if (curve.type === "arc" && Array.isArray(curve.center) && typeof curve.radius === "number") {
+    const a = (curve.end_deg ?? 0) * Math.PI / 180;
+    return [curve.center[0] + curve.radius * Math.cos(a), curve.center[1] + curve.radius * Math.sin(a)];
+  }
+  if (curve.type === "spline" && Array.isArray(curve.points) && curve.points.length > 0) {
+    const p = curve.points[curve.points.length - 1];
+    return [p[0], p[1]];
+  }
+  return null;
+}
+
+function collectRecipeIssues(recipe: any, opts: { partKind: string; hasBaseMesh: boolean }): string[] {
   if (!recipe || typeof recipe !== "object") return ["Recipe must be a JSON object."];
   if (!Array.isArray(recipe.features) || recipe.features.length === 0) {
     return ["Recipe must include a non-empty features array."];
@@ -89,6 +128,14 @@ function collectRecipeIssues(recipe: any): string[] {
 
   const issues: string[] = [];
   const ids = new Set<string>();
+  const isBodyPanel = BODY_PANEL_KINDS.has(opts.partKind);
+
+  if (recipe.features.length > 20) {
+    issues.push(`Recipe has ${recipe.features.length} features; max is 20.`);
+  }
+  if (isBodyPanel && recipe.features.length > 8) {
+    issues.push(`Body-panel recipes must stay under 8 features (got ${recipe.features.length}).`);
+  }
 
   for (const feature of recipe.features) {
     if (!feature || typeof feature !== "object") {
@@ -112,19 +159,35 @@ function collectRecipeIssues(recipe: any): string[] {
       continue;
     }
 
+    if (type === "import_mesh" && !opts.hasBaseMesh) {
+      issues.push(`import_mesh feature ${id} is not allowed without a base mesh URL.`);
+    }
+
     if (type === "sketch") {
       if (!NAMED_PLANES.has(feature.plane)) {
-        issues.push(`Sketch ${id} must use plane XY, YZ, or XZ.`);
+        issues.push(`Sketch ${id} must use plane "XY", "YZ", or "XZ" (got ${JSON.stringify(feature.plane)}).`);
       }
-      for (const curve of Array.isArray(feature.curves) ? feature.curves : []) {
+      const curves = Array.isArray(feature.curves) ? feature.curves : [];
+      if (curves.length === 0) {
+        issues.push(`Sketch ${id} has no curves.`);
+      }
+      let splines = 0;
+      for (const curve of curves) {
+        if (curve?.type === "spline") splines++;
         if (
           curve?.type === "arc" &&
           typeof curve.start_deg === "number" &&
           typeof curve.end_deg === "number" &&
           Math.abs(curve.end_deg - curve.start_deg) >= 360
         ) {
-          issues.push(`Sketch ${id} contains a full-circle arc, which the worker cannot build safely.`);
+          issues.push(`Sketch ${id} contains a full-circle arc; use two half-arcs instead.`);
         }
+      }
+      if (splines > 1) {
+        issues.push(`Sketch ${id} has ${splines} splines; use at most one spline per sketch.`);
+      }
+      if (curves.length > 0 && !isClosed(curves)) {
+        issues.push(`Sketch ${id} is not a closed profile (start and end points must coincide).`);
       }
     }
 
@@ -134,11 +197,18 @@ function collectRecipeIssues(recipe: any): string[] {
         !Number.isFinite(feature.depth_mm) ||
         feature.depth_mm <= 0
       ) {
-        issues.push(`Extrude ${id} must use a positive depth_mm.`);
+        issues.push(`Extrude ${id} must use a strictly positive depth_mm.`);
       }
       if (feature.origin !== undefined) {
-        issues.push(`Extrude ${id} uses unsupported origin placement.`);
+        issues.push(`Extrude ${id} uses unsupported "origin" placement; place the sketch on the correct named plane instead.`);
       }
+      if (feature.plane !== undefined && !NAMED_PLANES.has(feature.plane)) {
+        issues.push(`Extrude ${id} uses an unsupported plane.`);
+      }
+    }
+
+    if (type === "loft" && isBodyPanel) {
+      issues.push(`Loft ${id} is not allowed for body-panel parts; use a single closed sketch + extrude.`);
     }
 
     if (type === "shell") {
@@ -147,14 +217,24 @@ function collectRecipeIssues(recipe: any): string[] {
         !Number.isFinite(feature.thickness_mm) ||
         feature.thickness_mm <= 0
       ) {
-        issues.push(`Shell ${id} must use a positive thickness_mm.`);
+        issues.push(`Shell ${id} must use a strictly positive thickness_mm.`);
+      }
+    }
+
+    if (type === "revolve") {
+      if (
+        typeof feature.angle_deg !== "number" ||
+        feature.angle_deg <= 0 ||
+        feature.angle_deg >= 360
+      ) {
+        issues.push(`Revolve ${id} angle_deg must be in (0, 360).`);
       }
     }
 
     if (type === "mirror") {
       const plane = feature.plane ?? "YZ";
       if (!NAMED_PLANES.has(plane)) {
-        issues.push(`Mirror ${id} must use plane XY, YZ, or XZ.`);
+        issues.push(`Mirror ${id} must use plane "XY", "YZ", or "XZ".`);
       }
     }
   }
@@ -163,12 +243,48 @@ function collectRecipeIssues(recipe: any): string[] {
     (f: any) => f && typeof f.type === "string" && BODY_PRODUCING.has(f.type),
   );
   if (!hasBody) {
-    issues.push(
-      "Recipe has no body-producing feature (need at least one extrude / loft / revolve / sweep).",
-    );
+    issues.push("Recipe has no body-producing feature (need at least one extrude / loft / revolve).");
   }
 
   return issues;
+}
+
+/**
+ * Conservative known-good template for body-panel parts. Single closed YZ
+ * sketch + symmetric extrude + edge fillet. The worker can always build this.
+ */
+function fallbackRecipeForBodyPanel(partKind: string, partLabel?: string) {
+  const isArch = partKind.includes("arch");
+  // A simple flared quarter shape: rectangle with a chamfered top.
+  const halfWidth = 220;     // mm — half of full panel width along X
+  const height = isArch ? 380 : 320;
+  const flare = isArch ? 60 : 40;
+  const depth = isArch ? 180 : 220; // extrusion thickness (X direction, since plane is YZ)
+  return {
+    version: 1,
+    part: partKind,
+    units: "mm",
+    label: partLabel ?? partKind,
+    features: [
+      {
+        type: "sketch",
+        id: "s_profile",
+        plane: "YZ",
+        curves: [
+          { type: "line", from: [-halfWidth, 0], to: [halfWidth, 0] },
+          { type: "line", from: [halfWidth, 0], to: [halfWidth + flare, height * 0.6] },
+          { type: "line", from: [halfWidth + flare, height * 0.6], to: [halfWidth, height] },
+          { type: "line", from: [halfWidth, height], to: [-halfWidth, height] },
+          { type: "line", from: [-halfWidth, height], to: [-halfWidth - flare, height * 0.6] },
+          { type: "line", from: [-halfWidth - flare, height * 0.6], to: [-halfWidth, 0] },
+        ],
+      },
+      { type: "extrude", id: "e_body", sketch: "s_profile", depth_mm: depth, symmetric: true },
+      { type: "fillet", id: "f_edges", target: "e_body", edges: "all", radius_mm: 8 },
+    ],
+    outputs: ["step", "stl", "glb"],
+    _fallback: true,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -178,10 +294,15 @@ Deno.serve(async (req) => {
     if (!LOVABLE_API_KEY) return json({ error: "LOVABLE_API_KEY missing" }, 500);
 
     const body = await req.json();
-    const { part_kind, part_label, reference_image_urls = [], notes = "", base_mesh_url = null } = body ?? {};
+    const {
+      part_kind,
+      part_label,
+      reference_image_urls = [],
+      notes = "",
+      base_mesh_url = null,
+    } = body ?? {};
     if (!part_kind) return json({ error: "part_kind required" }, 400);
 
-    // Auth: just verify the caller is logged in.
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
@@ -189,15 +310,19 @@ Deno.serve(async (req) => {
     const { data: userRes, error: userErr } = await userClient.auth.getUser();
     if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
 
+    const isBodyPanel = BODY_PANEL_KINDS.has(part_kind);
     const userPrompt = [
       `Part kind: ${part_kind}`,
       part_label ? `Part label: ${part_label}` : null,
-      base_mesh_url ? `Base car mesh URL (for body-conforming parts): ${base_mesh_url}` : null,
+      base_mesh_url ? `Base car mesh URL (you MAY use import_mesh with this exact URL): ${base_mesh_url}` : `No base car mesh available — DO NOT use import_mesh.`,
+      isBodyPanel
+        ? `This is a BODY PANEL. Output a single closed sketch on YZ + one positive extrude + optional fillet. Do NOT use loft. Do NOT use multiple sketches on different planes. Stay under 8 features.`
+        : null,
       notes ? `Designer notes: ${notes}` : null,
       reference_image_urls.length
-        ? `Reference images attached. Match the silhouette closely.`
+        ? `Reference images attached. Match the silhouette closely but stay manufacturable.`
         : null,
-      `Return the strict JSON recipe.`,
+      `Return the strict JSON recipe only.`,
     ].filter(Boolean).join("\n");
 
     const userContent: any[] = [{ type: "text", text: userPrompt }];
@@ -234,10 +359,25 @@ Deno.serve(async (req) => {
     try {
       recipe = typeof raw === "string" ? JSON.parse(raw) : raw;
     } catch {
-      return json({ error: "AI returned invalid JSON", raw: raw.slice(0, 500) }, 500);
+      return json({ error: "AI returned invalid JSON", raw: String(raw).slice(0, 500) }, 500);
     }
 
-    const issues = collectRecipeIssues(recipe);
+    const validatorOpts = { partKind: part_kind, hasBaseMesh: !!base_mesh_url };
+    let issues = collectRecipeIssues(recipe, validatorOpts);
+
+    // For body panels, swap to a known-good fallback recipe instead of failing.
+    if (issues.length && isBodyPanel) {
+      const fallback = fallbackRecipeForBodyPanel(part_kind, part_label);
+      const fbIssues = collectRecipeIssues(fallback, validatorOpts);
+      if (fbIssues.length === 0) {
+        return json({
+          recipe: fallback,
+          fallback_used: true,
+          original_issues: issues,
+        });
+      }
+    }
+
     if (issues.length) {
       return json(
         {

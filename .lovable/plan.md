@@ -1,93 +1,55 @@
-## Multi-engine "Build" pipeline
+## What’s actually wrong
+The app is only showing `IndexError: list index out of range` because the backend status function simply relays the external CAD worker’s raw error string. In the latest stored job, the recipe does contain body-producing features, so this is no longer the earlier “no extrude at all” case.
 
-Stop using part classification as a hard gate. Instead, every picked part shows three engine choices and the user picks. Classification becomes a *recommendation* badge, not a fork.
+The more likely failure is: the worker never successfully creates a solid body from the sketch/extrude chain, so its final `list(bodies.values())[-1]` lookup crashes. The current validator catches some bad recipes (`origin`, negative extrudes, bad planes), but it still allows recipes that are syntactically valid JSON yet unsafe for the worker to build, especially for arch/fender-style parts.
 
-```text
-Pick a part →  ┌─ Build with CAD       (Onshape — parametric, clean B-rep)
-               ├─ Generate 3D mesh     (Rodin — image-to-3D, fast, lumpy)
-               └─ Fit to body          (Blender — surface-conform to car STL)
-```
+Do I know what the issue is?
+Yes: the current system is validating too little and reporting too little. Invalid-or-unbuildable recipes are still reaching the CAD worker, and the status UI can only display the worker’s vague crash string.
 
-All three are available for every part kind. The UI suggests the best one, but never blocks the others.
+## Plan
+1. Tighten CAD recipe validation in `supabase/functions/generate-cad-recipe/index.ts`
+   - Add stricter checks for sketch safety before returning a recipe.
+   - Reject recipes that look open, ambiguous, multi-island, or unsafe for the reference worker.
+   - Block `import_mesh` unless a real `base_mesh_url` was provided.
+   - Add stronger per-part constraints for arch/fender/body-panel parts so the AI prefers a simple closed profile + one extrude + optional fillet, instead of complex mixed spline/arc/cut recipes.
 
----
+2. Add deterministic fallbacks for troublesome part kinds
+   - For `wide_arch`, `front arch`, `fender_panel`, and similar body-panel parts, generate a conservative fallback recipe template when the AI output fails validation.
+   - This keeps the worker on simple shapes it can actually build instead of retrying risky freeform geometry.
 
-### 1. Replace the binary CTA with an engine picker
+3. Improve backend error reporting in the CAD flow
+   - Update `dispatch-cad-job` and/or `cad-job-status` so failed jobs persist more context, such as validation summary and a compact recipe snapshot.
+   - When the worker returns a generic failure, attach a friendlier app-side message like “The CAD worker could not build a solid from this sketch profile.”
 
-In `ExtractedPartPreview.tsx`, after the user approves the AI render of an isolated part, replace the single "Make 3D model" button with a small chooser:
+4. Improve the modal UI in `src/components/SendToCadWorker.tsx`
+   - Show richer failure details instead of only the raw worker string.
+   - If recipe validation fails, show the exact blocked rule(s) in the dialog.
+   - Keep the “Inspect recipe JSON” area available after failure so the user can see what was attempted.
 
-- **Build with CAD** (recommended for: wings, splitters, diffusers, canards, vents)
-- **Generate mesh** (recommended for: organic / one-off shapes; warning shown for body-conforming kinds about lumpy results)
-- **Fit to body** (recommended for: arches, scoops, skirts, lips; greyed out if no base car STL is saved)
-
-The "recommended" pill is driven by the existing `classifyPartKind` — but no engine is disabled based on it. Each engine button shows: ETA estimate, output formats (STEP / GLB / STL), and a one-line "what this is good at" hint.
-
-### 2. Drop the server-side classification gate
-
-`supabase/functions/meshify-part/index.ts` currently 422s on body-conforming kinds. Remove that guard so Rodin meshing works for any part the user explicitly chose. Keep the existing single-shell prompt fix.
-
-`src/lib/part-classification.ts` keeps its classify functions but their role is purely advisory (drives the "recommended" badge). Rename `FIT_CLASS_DESCRIPTION` copy so it no longer says "image-to-3D fails" — instead it says "Best fitted via Blender, but you can still try mesh AI or CAD."
-
-### 3. Add the CAD engine (Onshape)
-
-New table `cad_jobs` and two edge functions, mirroring the existing `geometry_jobs` worker contract so the UX is symmetric:
-
-- **`cad_jobs`** — id, user_id, concept_id, project_id, part_kind, status, recipe (jsonb), inputs, outputs (step/stl/glb/preview), worker_task_id, error
-- **`generate-cad-recipe`** — Gemini-2.5-pro emits a strict JSON feature recipe (sketches, extrudes, lofts, fillets) for the chosen part. For body-conforming kinds the recipe references the saved car STL as a mesh import.
-- **`dispatch-cad-job`** — validates the recipe, inserts a `cad_jobs` row, POSTs to the external Onshape worker, returns the job id.
-- **`cad-job-status`** — polls the worker, re-hosts artifacts in `geometries` bucket, marks succeeded/failed.
-- DB trigger `sync_cad_job_library_items` mirrors successful jobs into `library_items` as `cad_part_mesh`.
-
-New UI component `SendToCadWorker.tsx` (modelled on `SendToGeometryWorker.tsx`) with form fields per part type (chord, span, NACA profile, flare, etc.) and a status panel that polls and shows STEP / STL / GLB download buttons.
-
-Worker contract is documented in a new `docs/onshape-worker.md`. The worker itself is hosted outside Lovable.
-
-### 4. Keep Rodin and Blender unchanged
-
-- **Rodin path** stays the existing `meshify-part` flow. Now reachable for every part.
-- **Blender path** stays the existing `SendToGeometryWorker` + `dispatch-geometry-job` flow. Now reachable for every part (not just body-conforming).
-- After any engine succeeds, surface a "Refine in Blender" follow-up that takes the produced mesh and chains a `fit_part_to_zone` job — so users can CAD a wing then Blender-fit the mounting tabs to the body, or Rodin a scoop then Blender-conform the back face.
-
-### 5. Library + history
-
-Library gets two new kinds: `cad_part_mesh` and (already exists) `geometry_part_mesh`. Each library card shows which engine produced it (CAD / Mesh AI / Blender) and a "Send to <other engine>" action so users can pivot without re-picking the part.
-
----
+5. Verify the flow end-to-end
+   - Test `generate-cad-recipe`, `dispatch-cad-job`, and `cad-job-status` with the failing arch/fender cases.
+   - Confirm the result is either:
+     - a simpler recipe that builds successfully, or
+     - a specific validation error before the job is sent.
 
 ## Technical details
-
-**New files**
-- `supabase/migrations/<ts>_cad_jobs.sql` — table, RLS, library trigger
+Files to update:
 - `supabase/functions/generate-cad-recipe/index.ts`
 - `supabase/functions/dispatch-cad-job/index.ts`
 - `supabase/functions/cad-job-status/index.ts`
-- `src/lib/cad-jobs.ts` — react-query hooks (mirrors `geometry-jobs.ts`)
-- `src/lib/cad-recipe.ts` — recipe TypeScript types + zod schema
-- `src/components/SendToCadWorker.tsx` — dispatch + polling UI
-- `src/components/EngineChooser.tsx` — three-button picker with recommended badge
-- `docs/onshape-worker.md` — HTTP contract
+- `src/components/SendToCadWorker.tsx`
+- optionally `src/lib/cad-jobs.ts` for improved error handling
 
-**Edited files**
-- `src/components/ExtractedPartPreview.tsx` — replace single CTA with `EngineChooser`; wire all three dispatch dialogs; remove `bodyConforming` branching gate
-- `src/lib/part-classification.ts` — soften copy so it's advisory only
-- `supabase/functions/meshify-part/index.ts` — remove the 422 guard for body-conforming kinds (keep single-shell prompt)
-- `src/components/SendToGeometryWorker.tsx` — accept *any* `partKind`, no kind-based gating
-- `src/lib/repo.ts` — add `cad_part_mesh` to `LibraryItemKind`
-- `src/pages/Library.tsx` — show engine badge + "Send to other engine" action
+Likely validation additions:
+- require supported named planes only
+- require positive extrude/shell values
+- reject unsupported placement keys
+- reject sketches that are likely open or malformed
+- reject body-panel recipes with overly complex feature chains
+- require final exportable body target
 
-**Secrets needed at implementation time**
-- `ONSHAPE_WORKER_URL` — base URL of your Onshape worker
-- `ONSHAPE_WORKER_TOKEN` — bearer token
-- (`BLENDER_WORKER_URL` / `BLENDER_WORKER_TOKEN` already configured)
-
-**Out of scope**
-- Building the Onshape worker code (lives in your geometry repo)
-- Removing Rodin or Meshy (kept as the "fast & lumpy" option on purpose)
-- Auto-routing — every dispatch is an explicit user choice
-
-**Acceptance**
-1. Every picked part shows three engine buttons; "recommended" is a badge, not a constraint
-2. `meshify-part` accepts any kind (no 422)
-3. Choosing "Build with CAD" dispatches a `cad_jobs` row and polls status; success surfaces STEP/STL/GLB downloads
-4. Library shows engine provenance and lets you re-dispatch to a different engine
-5. After CAD or Rodin success, a "Refine in Blender" CTA chains a fit job
+Expected outcome:
+- no more silent “still just says this” failures
+- fewer bad recipes reaching the worker
+- much clearer messages when a CAD build is blocked or fails
+- better success rate for front arch / fender style parts
