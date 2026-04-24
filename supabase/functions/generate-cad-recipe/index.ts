@@ -44,7 +44,8 @@ Recipe schema. All dimensions in millimetres. Vehicle-local coords: forward = -Z
     { "type": "fillet",  "id":"f1", "target":"e1", "edges":"all", "radius_mm": 3 },
     { "type": "chamfer", "id":"c1", "target":"e1", "edges":"all", "distance_mm": 1.5 },
     { "type": "mirror",  "id":"m1", "target":"e1", "plane":"YZ" },
-    { "type": "boolean", "id":"b1", "op":"union"|"cut"|"intersect", "targets":["e1","m1"] }
+    { "type": "boolean", "id":"b1", "op":"union"|"cut"|"intersect", "targets":["e1","m1"] },
+    { "type": "import_mesh", "id":"car", "url":"<base_mesh_url>" }
   ],
   "outputs": ["step", "stl", "glb"]
 }
@@ -62,6 +63,7 @@ WORKER-SAFE RULES (the worker WILL crash if any are violated):
 - Shell with negative thickness is forbidden.
 - Revolve angle_deg MUST be in (0, 360); prefer values <= 180 for body parts.
 - For body panels (fenders, arches, skirts, lips, splitters, diffusers): DO NOT loft between sketches on different planes; instead use ONE closed sketch on YZ or XZ + a single positive extrude + optional fillet. Body-panel recipes MUST stay under 8 features.
+- BODY-CONFORMING RULE: when a base car mesh URL is provided AND the part is a body-conforming panel (arch, fender, skirt, lip, splitter, diffuser), the recipe MUST include an "import_mesh" feature with that exact URL, and the FINAL feature MUST be a boolean "intersect" between the freshly-extruded panel body and the imported car mesh — so the panel is trimmed to the car's actual surface. Without this, the part will not fit the car.
 - For aero parts (wings, canards): NACA airfoil sketch + symmetric extrude is preferred.
 - Use mirror across "YZ" for left/right pairs.
 - Total features MUST be <= 20. Prefer simplicity over cleverness.
@@ -246,42 +248,80 @@ function collectRecipeIssues(recipe: any, opts: { partKind: string; hasBaseMesh:
     issues.push("Recipe has no body-producing feature (need at least one extrude / loft / revolve).");
   }
 
+  // Body-conforming requirement: if a base mesh is available and this is a
+  // body panel, the recipe MUST trim the panel against the imported car mesh,
+  // otherwise the part has no chance of fitting the car.
+  if (isBodyPanel && opts.hasBaseMesh) {
+    const importMesh = recipe.features.find((f: any) => f?.type === "import_mesh");
+    if (!importMesh) {
+      issues.push("Body-conforming part must include an import_mesh feature referencing the base car mesh.");
+    }
+    const last = recipe.features[recipe.features.length - 1];
+    if (
+      !last ||
+      last.type !== "boolean" ||
+      last.op !== "intersect" ||
+      !Array.isArray(last.targets) ||
+      (importMesh && !last.targets.includes(importMesh.id))
+    ) {
+      issues.push("Body-conforming part must end with a boolean intersect between the panel body and the imported car mesh.");
+    }
+  }
+
   return issues;
 }
 
 /**
  * Conservative known-good template for body-panel parts. Single closed YZ
- * sketch + symmetric extrude + edge fillet. The worker can always build this.
+ * sketch + symmetric extrude + edge fillet. When a base mesh URL is provided
+ * we also import it and intersect the extruded slab with the car body so the
+ * resulting part actually conforms to the vehicle's surface.
  */
-function fallbackRecipeForBodyPanel(partKind: string, partLabel?: string) {
+function fallbackRecipeForBodyPanel(
+  partKind: string,
+  partLabel?: string,
+  baseMeshUrl?: string | null,
+) {
   const isArch = partKind.includes("arch");
   // A simple flared quarter shape: rectangle with a chamfered top.
   const halfWidth = 220;     // mm — half of full panel width along X
   const height = isArch ? 380 : 320;
   const flare = isArch ? 60 : 40;
   const depth = isArch ? 180 : 220; // extrusion thickness (X direction, since plane is YZ)
+  const features: any[] = [
+    {
+      type: "sketch",
+      id: "s_profile",
+      plane: "YZ",
+      curves: [
+        { type: "line", from: [-halfWidth, 0], to: [halfWidth, 0] },
+        { type: "line", from: [halfWidth, 0], to: [halfWidth + flare, height * 0.6] },
+        { type: "line", from: [halfWidth + flare, height * 0.6], to: [halfWidth, height] },
+        { type: "line", from: [halfWidth, height], to: [-halfWidth, height] },
+        { type: "line", from: [-halfWidth, height], to: [-halfWidth - flare, height * 0.6] },
+        { type: "line", from: [-halfWidth - flare, height * 0.6], to: [-halfWidth, 0] },
+      ],
+    },
+    { type: "extrude", id: "e_body", sketch: "s_profile", depth_mm: depth, symmetric: true },
+    { type: "fillet", id: "f_edges", target: "e_body", edges: "all", radius_mm: 8 },
+  ];
+
+  if (baseMeshUrl) {
+    features.push({ type: "import_mesh", id: "m_car", url: baseMeshUrl });
+    features.push({
+      type: "boolean",
+      id: "b_fit",
+      op: "intersect",
+      targets: ["f_edges", "m_car"],
+    });
+  }
+
   return {
     version: 1,
     part: partKind,
     units: "mm",
     label: partLabel ?? partKind,
-    features: [
-      {
-        type: "sketch",
-        id: "s_profile",
-        plane: "YZ",
-        curves: [
-          { type: "line", from: [-halfWidth, 0], to: [halfWidth, 0] },
-          { type: "line", from: [halfWidth, 0], to: [halfWidth + flare, height * 0.6] },
-          { type: "line", from: [halfWidth + flare, height * 0.6], to: [halfWidth, height] },
-          { type: "line", from: [halfWidth, height], to: [-halfWidth, height] },
-          { type: "line", from: [-halfWidth, height], to: [-halfWidth - flare, height * 0.6] },
-          { type: "line", from: [-halfWidth - flare, height * 0.6], to: [-halfWidth, 0] },
-        ],
-      },
-      { type: "extrude", id: "e_body", sketch: "s_profile", depth_mm: depth, symmetric: true },
-      { type: "fillet", id: "f_edges", target: "e_body", edges: "all", radius_mm: 8 },
-    ],
+    features,
     outputs: ["step", "stl", "glb"],
     _fallback: true,
   };
@@ -314,9 +354,12 @@ Deno.serve(async (req) => {
     const userPrompt = [
       `Part kind: ${part_kind}`,
       part_label ? `Part label: ${part_label}` : null,
-      base_mesh_url ? `Base car mesh URL (you MAY use import_mesh with this exact URL): ${base_mesh_url}` : `No base car mesh available — DO NOT use import_mesh.`,
+      base_mesh_url ? `Base car mesh URL (use this EXACT url for import_mesh): ${base_mesh_url}` : `No base car mesh available — DO NOT use import_mesh.`,
       isBodyPanel
         ? `This is a BODY PANEL. Output a single closed sketch on YZ + one positive extrude + optional fillet. Do NOT use loft. Do NOT use multiple sketches on different planes. Stay under 8 features.`
+        : null,
+      isBodyPanel && base_mesh_url
+        ? `BODY-CONFORMING REQUIREMENT: include an import_mesh feature using the URL above (id "m_car"), and end the recipe with { "type":"boolean", "id":"b_fit", "op":"intersect", "targets":[<extruded panel id>, "m_car"] } so the panel is trimmed to the actual car surface. Without this final intersect, the part will not fit.`
         : null,
       notes ? `Designer notes: ${notes}` : null,
       reference_image_urls.length
@@ -367,7 +410,7 @@ Deno.serve(async (req) => {
 
     // For body panels, swap to a known-good fallback recipe instead of failing.
     if (issues.length && isBodyPanel) {
-      const fallback = fallbackRecipeForBodyPanel(part_kind, part_label);
+      const fallback = fallbackRecipeForBodyPanel(part_kind, part_label, base_mesh_url);
       const fbIssues = collectRecipeIssues(fallback, validatorOpts);
       if (fbIssues.length === 0) {
         return json({
