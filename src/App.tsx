@@ -25,6 +25,13 @@ import Parts from "./pages/Parts";
 import Refine from "./pages/Refine";
 import Exports from "./pages/Exports";
 
+// APEX NEXT — new IA shell
+import Dashboard from "./pages/Dashboard";
+import BuildStudio from "./pages/BuildStudio";
+import BodySkinLibrary from "./pages/BodySkinLibrary";
+import MeshyAdmin from "./pages/MeshyAdmin";
+import BlenderJobs from "./pages/BlenderJobs";
+
 function RealtimeBridge() {
   const { user } = useAuth();
   useJobRealtime(user?.id);
@@ -44,29 +51,41 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
-            <Route path="/upload" element={<Navigate to="/brief" replace />} />
-            <Route path="/brief" element={<ProtectedRoute><Brief /></ProtectedRoute>} />
-            <Route path="/concepts" element={<ProtectedRoute><Concepts /></ProtectedRoute>} />
-            <Route path="/styles" element={<ProtectedRoute><Styles /></ProtectedRoute>} />
-            <Route path="/garage" element={<ProtectedRoute><Garage /></ProtectedRoute>} />
-            <Route path="/parts" element={<ProtectedRoute><Parts /></ProtectedRoute>} />
-            <Route path="/refine" element={<ProtectedRoute><Refine /></ProtectedRoute>} />
-            <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
-            <Route path="/marketplace" element={<Marketplace />} />
-            <Route path="/prototyper" element={<ProtectedRoute><Prototyper /></ProtectedRoute>} />
-            <Route path="/exports" element={<ProtectedRoute><Exports /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+
+            {/* APEX NEXT — primary IA */}
+            <Route path="/dashboard"         element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/concept-studio"    element={<ProtectedRoute><Concepts /></ProtectedRoute>} />
+            <Route path="/build-studio"      element={<ProtectedRoute><BuildStudio /></ProtectedRoute>} />
+            <Route path="/part-library"      element={<ProtectedRoute><Library /></ProtectedRoute>} />
+            <Route path="/body-skin-library" element={<ProtectedRoute><BodySkinLibrary /></ProtectedRoute>} />
+            <Route path="/car-library"       element={<ProtectedRoute><Garage /></ProtectedRoute>} />
+            <Route path="/meshy-admin"       element={<ProtectedRoute><MeshyAdmin /></ProtectedRoute>} />
+            <Route path="/blender-jobs"      element={<ProtectedRoute><BlenderJobs /></ProtectedRoute>} />
+            <Route path="/projects"          element={<ProtectedRoute><Projects /></ProtectedRoute>} />
+            <Route path="/settings"          element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/settings/car-stls" element={<ProtectedRoute><AdminCarStls /></ProtectedRoute>} />
 
-            {/* Legacy redirects */}
-            <Route path="/build" element={<Navigate to="/projects" replace />} />
-            <Route path="/geometry" element={<Navigate to="/brief" replace />} />
-            <Route path="/simulation" element={<Navigate to="/concepts" replace />} />
-            <Route path="/results" element={<Navigate to="/concepts" replace />} />
-            <Route path="/compare" element={<Navigate to="/concepts" replace />} />
-            <Route path="/optimization" element={<Navigate to="/concepts" replace />} />
-            <Route path="/system" element={<Navigate to="/projects" replace />} />
+            {/* Legacy routes — still reachable, hidden from sidebar */}
+            <Route path="/upload"      element={<Navigate to="/concept-studio" replace />} />
+            <Route path="/brief"       element={<ProtectedRoute><Brief /></ProtectedRoute>} />
+            <Route path="/concepts"    element={<ProtectedRoute><Concepts /></ProtectedRoute>} />
+            <Route path="/styles"      element={<ProtectedRoute><Styles /></ProtectedRoute>} />
+            <Route path="/garage"      element={<ProtectedRoute><Garage /></ProtectedRoute>} />
+            <Route path="/parts"       element={<ProtectedRoute><Parts /></ProtectedRoute>} />
+            <Route path="/refine"      element={<ProtectedRoute><Refine /></ProtectedRoute>} />
+            <Route path="/library"     element={<ProtectedRoute><Library /></ProtectedRoute>} />
+            <Route path="/marketplace" element={<Marketplace />} />
+            <Route path="/prototyper"  element={<ProtectedRoute><Prototyper /></ProtectedRoute>} />
+            <Route path="/exports"     element={<ProtectedRoute><Exports /></ProtectedRoute>} />
+
+            {/* Legacy redirects (very old routes) */}
+            <Route path="/build"         element={<Navigate to="/dashboard" replace />} />
+            <Route path="/geometry"      element={<Navigate to="/concept-studio" replace />} />
+            <Route path="/simulation"    element={<Navigate to="/concept-studio" replace />} />
+            <Route path="/results"       element={<Navigate to="/concept-studio" replace />} />
+            <Route path="/compare"       element={<Navigate to="/concept-studio" replace />} />
+            <Route path="/optimization"  element={<Navigate to="/concept-studio" replace />} />
+            <Route path="/system"        element={<Navigate to="/dashboard" replace />} />
             <Route path="/design-system" element={<Navigate to="/" replace />} />
 
             <Route path="*" element={<NotFound />} />

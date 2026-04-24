@@ -3,25 +3,40 @@ import { ChevronRight } from "lucide-react";
 import { UserMenu } from "@/components/UserMenu";
 
 const labels: Record<string, string[]> = {
-  "/projects": ["Projects"],
-  "/brief": ["Studio", "Design Brief"],
-  "/concepts": ["Studio", "Concepts"],
-  "/parts": ["Studio", "Fitted Parts"],
-  "/refine": ["Studio", "Refine"],
-  "/exports": ["Studio", "Exports"],
-  "/settings": ["Settings"],
-  "/": ["Welcome"],
+  "/dashboard":         ["Dashboard"],
+  "/concept-studio":    ["Studio", "Concept"],
+  "/build-studio":      ["Studio", "3D Build"],
+  "/part-library":      ["Library", "Parts"],
+  "/body-skin-library": ["Library", "Body Skins"],
+  "/car-library":       ["Library", "Cars"],
+  "/projects":          ["Projects"],
+  "/meshy-admin":       ["Admin", "Meshy"],
+  "/blender-jobs":      ["Admin", "Blender Jobs"],
+  "/settings":          ["Settings"],
+  "/settings/car-stls": ["Settings", "Car STLs"],
+  // Legacy crumbs (still reachable via URL)
+  "/brief":             ["Studio", "Brief (legacy)"],
+  "/concepts":          ["Studio", "Concepts"],
+  "/parts":             ["Studio", "Parts (legacy)"],
+  "/refine":            ["Studio", "Refine (legacy)"],
+  "/exports":           ["Studio", "Exports (legacy)"],
+  "/styles":            ["Library", "Styles"],
+  "/garage":            ["Library", "Garage"],
+  "/library":           ["Library"],
+  "/marketplace":       ["Marketplace"],
+  "/prototyper":        ["Prototyper (legacy)"],
+  "/":                  ["Welcome"],
 };
 
 export function Topbar() {
   const { pathname } = useLocation();
-  const crumbs = labels[pathname] ?? ["BodyKit Studio"];
+  const crumbs = labels[pathname] ?? ["APEX NEXT"];
 
   return (
     <div className="flex w-full items-center gap-4">
       <nav className="flex items-center gap-2 text-sm">
         <span className="text-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          BodyKit Studio
+          APEX NEXT
         </span>
         {crumbs.map((c, i) => (
           <span key={c} className="flex items-center gap-2">

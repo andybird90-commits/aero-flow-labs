@@ -13,9 +13,9 @@ function Nav() {
           <Hexagon className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
         </div>
         <div className="leading-tight">
-          <div className="text-sm font-semibold tracking-tight">BodyKit Studio</div>
+          <div className="text-sm font-semibold tracking-tight">APEX NEXT</div>
           <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            AI body kit & aero design
+            Aero design studio
           </div>
         </div>
       </div>
@@ -27,7 +27,7 @@ function Nav() {
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" asChild><Link to="/auth">Sign in</Link></Button>
         <Button variant="hero" size="sm" asChild>
-          <Link to="/projects">Open Studio <ArrowRight className="ml-1 h-3.5 w-3.5" /></Link>
+          <Link to="/dashboard">Open Studio <ArrowRight className="ml-1 h-3.5 w-3.5" /></Link>
         </Button>
       </div>
     </header>
@@ -43,7 +43,7 @@ function Hero() {
           <div className="lg:col-span-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-1/60 px-3 py-1 text-mono text-[11px] uppercase tracking-widest text-muted-foreground backdrop-blur">
               <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse-soft" />
-              AI body kit & aero design studio
+              Aero design studio studio
             </div>
 
             <h1 className="mt-6 text-5xl md:text-6xl font-semibold leading-[1.04] tracking-tight">
@@ -59,7 +59,7 @@ function Hero() {
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button variant="hero" size="lg" asChild>
-                <Link to="/projects">Start a project <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                <Link to="/dashboard">Start a project <ArrowRight className="ml-2 h-4 w-4" /></Link>
               </Button>
               <Button variant="glass" size="lg" asChild>
                 <Link to="/auth">Sign in</Link>
@@ -195,7 +195,7 @@ function CTA() {
         </p>
         <div className="mt-8">
           <Button variant="hero" size="lg" asChild>
-            <Link to="/projects">Open BodyKit Studio <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            <Link to="/dashboard">Open APEX NEXT <ArrowRight className="ml-2 h-4 w-4" /></Link>
           </Button>
         </div>
       </div>
@@ -209,9 +209,9 @@ function Footer() {
       <div className="mx-auto max-w-7xl px-6 py-8 flex items-center justify-between text-mono text-[11px] text-muted-foreground">
         <div className="flex items-center gap-2">
           <Hexagon className="h-3.5 w-3.5 text-primary" />
-          <span>BodyKit Studio</span>
+          <span>APEX NEXT</span>
         </div>
-        <div>© {new Date().getFullYear()} BodyKit Studio</div>
+        <div>© {new Date().getFullYear()} APEX NEXT</div>
       </div>
     </footer>
   );

@@ -4,80 +4,80 @@
 @tailwind components;
 @tailwind utilities;
 
-/* AeroLab Design System — premium engineering UI
-   Dark, graphite/navy palette with electric cyan accent.
-   All colors are HSL.
+/* APEX NEXT — Aero Design Studio
+   Premium motorsport CAD configurator UI: graphite/black surfaces with
+   electric orange accent. All colors are HSL.
 */
 
 @layer base {
   :root {
-    /* Surfaces */
-    --background: 220 26% 6%;
-    --foreground: 210 30% 92%;
+    /* Surfaces — pure graphite/black */
+    --background: 0 0% 5%;
+    --foreground: 30 15% 92%;
 
-    --surface-0: 220 26% 6%;
-    --surface-1: 220 24% 9%;
-    --surface-2: 220 22% 12%;
-    --surface-3: 220 20% 16%;
+    --surface-0: 0 0% 5%;
+    --surface-1: 0 0% 8%;
+    --surface-2: 0 0% 11%;
+    --surface-3: 0 0% 15%;
 
-    --card: 220 24% 9%;
-    --card-foreground: 210 30% 92%;
+    --card: 0 0% 8%;
+    --card-foreground: 30 15% 92%;
 
-    --popover: 220 24% 10%;
-    --popover-foreground: 210 30% 92%;
+    --popover: 0 0% 9%;
+    --popover-foreground: 30 15% 92%;
 
-    /* Brand — electric cyan */
-    --primary: 188 95% 55%;
-    --primary-foreground: 220 30% 6%;
-    --primary-glow: 188 100% 65%;
-    --primary-dim: 188 60% 30%;
+    /* Brand — motorsport orange */
+    --primary: 22 95% 55%;
+    --primary-foreground: 0 0% 5%;
+    --primary-glow: 22 100% 65%;
+    --primary-dim: 22 60% 32%;
 
-    --secondary: 220 22% 14%;
-    --secondary-foreground: 210 30% 92%;
+    --secondary: 0 0% 13%;
+    --secondary-foreground: 30 15% 92%;
 
-    --muted: 220 18% 14%;
-    --muted-foreground: 215 14% 58%;
+    --muted: 0 0% 13%;
+    --muted-foreground: 30 8% 60%;
 
-    --accent: 220 22% 16%;
-    --accent-foreground: 188 95% 65%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 22 95% 65%;
 
     --destructive: 0 75% 58%;
-    --destructive-foreground: 210 30% 96%;
+    --destructive-foreground: 30 15% 96%;
 
     --warning: 38 95% 58%;
-    --warning-foreground: 220 30% 6%;
+    --warning-foreground: 0 0% 5%;
 
     --success: 152 70% 48%;
-    --success-foreground: 220 30% 6%;
+    --success-foreground: 0 0% 5%;
 
-    --border: 220 18% 16%;
-    --input: 220 22% 14%;
-    --ring: 188 95% 55%;
+    --border: 0 0% 15%;
+    --input: 0 0% 13%;
+    --ring: 22 95% 55%;
 
     --radius: 0.625rem;
 
     /* Sidebar */
-    --sidebar-background: 220 28% 5%;
-    --sidebar-foreground: 215 14% 65%;
-    --sidebar-primary: 188 95% 55%;
-    --sidebar-primary-foreground: 220 30% 6%;
-    --sidebar-accent: 220 24% 11%;
-    --sidebar-accent-foreground: 210 30% 95%;
-    --sidebar-border: 220 22% 11%;
-    --sidebar-ring: 188 95% 55%;
+    --sidebar-background: 0 0% 4%;
+    --sidebar-foreground: 30 8% 65%;
+    --sidebar-primary: 22 95% 55%;
+    --sidebar-primary-foreground: 0 0% 5%;
+    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent-foreground: 30 15% 95%;
+    --sidebar-border: 0 0% 10%;
+    --sidebar-ring: 22 95% 55%;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(188 95% 55%), hsl(200 95% 50%));
-    --gradient-glow: radial-gradient(60% 60% at 50% 0%, hsl(188 95% 55% / 0.18), transparent 70%);
-    --gradient-grid: linear-gradient(hsl(220 22% 12% / 0.5) 1px, transparent 1px),
-                     linear-gradient(90deg, hsl(220 22% 12% / 0.5) 1px, transparent 1px);
-    --gradient-surface: linear-gradient(180deg, hsl(220 24% 10%), hsl(220 26% 7%));
-    --gradient-data: linear-gradient(180deg, hsl(188 95% 55% / 0.18), hsl(188 95% 55% / 0));
+    --gradient-primary: linear-gradient(135deg, hsl(22 95% 55%), hsl(14 95% 50%));
+    --gradient-glow: radial-gradient(60% 60% at 50% 0%, hsl(22 95% 55% / 0.18), transparent 70%);
+    --gradient-grid: linear-gradient(hsl(0 0% 11% / 0.5) 1px, transparent 1px),
+                     linear-gradient(90deg, hsl(0 0% 11% / 0.5) 1px, transparent 1px);
+    --gradient-surface: linear-gradient(180deg, hsl(0 0% 9%), hsl(0 0% 6%));
+    --gradient-data: linear-gradient(180deg, hsl(22 95% 55% / 0.18), hsl(22 95% 55% / 0));
 
     /* Shadows */
-    --shadow-card: 0 1px 0 0 hsl(220 30% 100% / 0.04) inset, 0 8px 24px -8px hsl(220 50% 2% / 0.6);
-    --shadow-glow: 0 0 0 1px hsl(188 95% 55% / 0.25), 0 8px 30px -6px hsl(188 95% 55% / 0.35);
-    --shadow-elevated: 0 24px 60px -20px hsl(220 50% 2% / 0.8);
+    --shadow-card: 0 1px 0 0 hsl(0 0% 100% / 0.04) inset, 0 8px 24px -8px hsl(0 0% 0% / 0.6);
+    --shadow-glow: 0 0 0 1px hsl(22 95% 55% / 0.25), 0 8px 30px -6px hsl(22 95% 55% / 0.45);
+    --shadow-elevated: 0 24px 60px -20px hsl(0 0% 0% / 0.8);
 
     /* Motion */
     --transition-base: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -86,8 +86,8 @@
 
   .dark {
     /* same as :root — app is dark by default */
-    --background: 220 26% 6%;
-    --foreground: 210 30% 92%;
+    --background: 0 0% 5%;
+    --foreground: 30 15% 92%;
   }
 }
 
@@ -104,8 +104,8 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv11", "ss01", "ss03";
     background-image:
-      radial-gradient(80% 50% at 50% -10%, hsl(188 95% 55% / 0.06), transparent 60%),
-      radial-gradient(60% 40% at 100% 100%, hsl(220 80% 30% / 0.08), transparent 70%);
+      radial-gradient(80% 50% at 50% -10%, hsl(22 95% 55% / 0.06), transparent 60%),
+      radial-gradient(60% 40% at 100% 100%, hsl(14 90% 30% / 0.06), transparent 70%);
     background-attachment: fixed;
   }
 
@@ -123,14 +123,14 @@
 
 @layer components {
   .glass {
-    background: linear-gradient(180deg, hsl(220 24% 11% / 0.85), hsl(220 26% 8% / 0.85));
+    background: linear-gradient(180deg, hsl(0 0% 10% / 0.85), hsl(0 0% 6% / 0.85));
     backdrop-filter: blur(12px);
     border: 1px solid hsl(var(--border));
     box-shadow: var(--shadow-card);
   }
 
   .glass-strong {
-    background: linear-gradient(180deg, hsl(220 24% 13% / 0.95), hsl(220 26% 9% / 0.95));
+    background: linear-gradient(180deg, hsl(0 0% 12% / 0.95), hsl(0 0% 7% / 0.95));
     backdrop-filter: blur(16px);
     border: 1px solid hsl(var(--border));
     box-shadow: var(--shadow-elevated);
