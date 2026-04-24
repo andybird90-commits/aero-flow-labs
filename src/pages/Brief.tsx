@@ -84,6 +84,7 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [aggression, setAggression] = useState<string>("auto");
   const [mustInclude, setMustInclude] = useState<string[]>([]);
   const [mustAvoid, setMustAvoid] = useState<string[]>([]);
+  const [variationCount, setVariationCount] = useState<number>(4);
 
   const MAX_REFS = 5;
   const activePreset = presets.find((p) => p.id === stylePresetId) ?? null;
@@ -101,6 +102,8 @@ function BriefInner({ projectId }: { projectId: string }) {
       setAggression(((brief as any).aggression as string) || "auto");
       setMustInclude(((brief as any).must_include as string[]) ?? []);
       setMustAvoid(((brief as any).must_avoid as string[]) ?? []);
+      const vc = Number((brief as any).variation_count);
+      setVariationCount(Number.isFinite(vc) && vc >= 1 && vc <= 5 ? vc : 4);
     }
   }, [brief]);
 
@@ -202,6 +205,7 @@ function BriefInner({ projectId }: { projectId: string }) {
         aggression: aggression === "auto" ? null : aggression,
         must_include: mustInclude,
         must_avoid: mustAvoid,
+        variation_count: variationCount,
       } as any,
     });
     setCustomConstraint("");
@@ -409,9 +413,38 @@ function BriefInner({ projectId }: { projectId: string }) {
                   </button>
                 );
               })}
-            </div>
           </div>
         </div>
+
+        <div className="pt-2 border-t border-border">
+          <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Number of variations
+          </label>
+          <div className="mt-2 flex items-center gap-1.5">
+            {[1, 2, 3, 4, 5].map((n) => {
+              const on = variationCount === n;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setVariationCount(n)}
+                  className={cn(
+                    "h-9 w-9 rounded-md border text-sm font-medium transition-colors",
+                    on
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-surface-1 text-muted-foreground hover:text-foreground hover:border-border/80",
+                  )}
+                >
+                  {n}
+                </button>
+              );
+            })}
+            <span className="ml-2 text-xs text-muted-foreground">
+              {variationCount === 1 ? "1 concept" : `${variationCount} concepts`} will be generated.
+            </span>
+          </div>
+        </div>
+      </div>
       </div>
 
       <div className="glass rounded-xl p-5 space-y-4">

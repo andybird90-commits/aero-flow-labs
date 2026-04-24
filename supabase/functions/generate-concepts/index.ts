@@ -337,6 +337,10 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   const mustInclude: string[] = Array.isArray((brief as any).must_include) ? (brief as any).must_include : [];
   const mustAvoid: string[] = Array.isArray((brief as any).must_avoid) ? (brief as any).must_avoid : [];
 
+  // How many concept tiles to generate (1–5, default 4).
+  const rawCount = Number((brief as any).variation_count);
+  const variationCount = Number.isFinite(rawCount) ? Math.max(1, Math.min(5, Math.trunc(rawCount))) : 4;
+
   // Build the master style prompt with discipline/aggression up front.
   const disciplineLine =
     discipline !== "auto"
@@ -372,9 +376,13 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   if (body.variation_seed) {
     variations = [body.variation_seed];
   } else if (presetMode) {
-    variations = presetVariations(preset);
+    variations = presetVariations(preset).slice(0, variationCount);
+    // If user requested more than the preset offers, pad by repeating the last entry.
+    while (variations.length < variationCount && variations.length > 0) {
+      variations.push({ ...variations[variations.length - 1] });
+    }
   } else {
-    variations = await generateDynamicVariations({
+    const dynamic = await generateDynamicVariations({
       vehicleLabel,
       discipline,
       aggression,
@@ -382,7 +390,12 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
       mustInclude,
       mustAvoid,
       styleTags,
+      count: variationCount,
     });
+    variations = dynamic.slice(0, variationCount);
+    while (variations.length < variationCount && FALLBACK_VARIATIONS.length > 0) {
+      variations.push(FALLBACK_VARIATIONS[variations.length % FALLBACK_VARIATIONS.length]);
+    }
   }
 
   const garageRefs: Partial<Record<AngleKey, string>> = {};
@@ -480,9 +493,11 @@ async function generateDynamicVariations(args: {
   mustInclude: string[];
   mustAvoid: string[];
   styleTags: string[];
+  count: number;
 }): Promise<Variation[]> {
+  const n = Math.max(1, Math.min(5, args.count || 4));
   const sys =
-    "You are an automotive concept director. Given a build brief, propose 4 distinct " +
+    `You are an automotive concept director. Given a build brief, propose ${n} distinct ` +
     "styling DIRECTIONS for the same car. Each direction must respect the discipline and " +
     "aggression — they must NOT differ in aggression. They differ in cultural/stylistic " +
     "vocabulary (e.g. JDM time attack vs Euro touring vs GT3). Never propose OEM+, subtle, mild, clean street, or restrained directions when aggression is aggressive/extreme. Output strict JSON only.";
@@ -498,7 +513,7 @@ async function generateDynamicVariations(args: {
     `\nReturn JSON: { "variations": [ { "title": string (≤4 words), ` +
     `"direction": string (1 sentence describing the visual approach), ` +
     `"modifier": string (concrete aero parts list, comma-separated), ` +
-    `"emphasis": string (1 sentence — what MUST be visible) } x4 ] }`;
+    `"emphasis": string (1 sentence — what MUST be visible) } x${n} ] }`;
 
   try {
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -518,27 +533,27 @@ async function generateDynamicVariations(args: {
     });
     if (!resp.ok) {
       console.warn("dynamic variations failed:", resp.status, (await resp.text()).slice(0, 200));
-      return FALLBACK_VARIATIONS;
+      return FALLBACK_VARIATIONS.slice(0, n);
     }
     const data = await resp.json();
     const content = data?.choices?.[0]?.message?.content;
-    if (!content) return FALLBACK_VARIATIONS;
+    if (!content) return FALLBACK_VARIATIONS.slice(0, n);
     const parsed = JSON.parse(content);
     const out = Array.isArray(parsed?.variations) ? parsed.variations : [];
     const cleaned = out
       .filter((v: any) => v?.title && v?.direction && v?.modifier && v?.emphasis)
-      .slice(0, 4)
+      .slice(0, n)
       .map((v: any) => ({
         title: String(v.title).slice(0, 60),
         direction: String(v.direction).slice(0, 400),
         modifier: String(v.modifier).slice(0, 400),
         emphasis: String(v.emphasis).slice(0, 400),
       })) as Variation[];
-    if (cleaned.length === 0) return FALLBACK_VARIATIONS;
+    if (cleaned.length === 0) return FALLBACK_VARIATIONS.slice(0, n);
     return cleaned;
   } catch (e) {
     console.warn("dynamic variations exception:", e);
-    return FALLBACK_VARIATIONS;
+    return FALLBACK_VARIATIONS.slice(0, n);
   }
 }
 
