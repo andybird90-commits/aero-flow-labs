@@ -348,6 +348,9 @@ export function BuildStudioViewport({
   heroStlUrl,
   bodySkinUrl,
   bodySkinKind,
+  shellTransform,
+  shellEditMode,
+  onShellCommit,
   parts,
   libraryItemsById,
   snapZones = [],
@@ -361,8 +364,12 @@ export function BuildStudioViewport({
 }: ViewportProps) {
   const orbitRef = useRef<any>(null);
   const transformRef = useRef<any>(null);
+  const shellTransformRef = useRef<any>(null);
+  const shellGroupRef = useRef<THREE.Group | null>(null);
   const selected = parts.find((p) => p.id === selectedId) ?? null;
   const [meshNode, setMeshNode] = useState<THREE.Object3D | null>(null);
+
+  const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellGroupRef.current;
 
   return (
     <Canvas
@@ -413,7 +420,14 @@ export function BuildStudioViewport({
 
       {bodySkinUrl && bodySkinKind && (
         <Suspense fallback={null}>
-          <BodySkinOverlay url={bodySkinUrl} kind={bodySkinKind} template={template} />
+          <BodySkinOverlay
+            url={bodySkinUrl}
+            kind={bodySkinKind}
+            template={template}
+            transform={shellTransform ?? null}
+            groupRef={shellGroupRef}
+            highlight={!!shellEditMode}
+          />
         </Suspense>
       )}
 
@@ -434,7 +448,7 @@ export function BuildStudioViewport({
         onMeshFound={setMeshNode}
       />
 
-      {selected && meshNode && !selected.locked && (
+      {!shellEditMode && selected && meshNode && !selected.locked && (
         <TransformControls
           ref={transformRef}
           object={meshNode}
@@ -482,6 +496,28 @@ export function BuildStudioViewport({
                 y: meshNode.scale.y,
                 z: meshNode.scale.z,
               },
+            });
+          }}
+        />
+      )}
+
+      {showShellGizmo && shellGroupRef.current && (
+        <TransformControls
+          ref={shellTransformRef}
+          object={shellGroupRef.current}
+          mode={transformMode}
+          size={0.9}
+          onMouseDown={() => {
+            if (orbitRef.current) orbitRef.current.enabled = false;
+          }}
+          onMouseUp={() => {
+            if (orbitRef.current) orbitRef.current.enabled = true;
+            const g = shellGroupRef.current;
+            if (!g || !onShellCommit) return;
+            onShellCommit({
+              position: { x: g.position.x, y: g.position.y, z: g.position.z },
+              rotation: { x: g.rotation.x, y: g.rotation.y, z: g.rotation.z },
+              scale: { x: g.scale.x, y: g.scale.y, z: g.scale.z },
             });
           }}
         />
