@@ -413,9 +413,38 @@ function BriefInner({ projectId }: { projectId: string }) {
                   </button>
                 );
               })}
-            </div>
           </div>
         </div>
+
+        <div className="pt-2 border-t border-border">
+          <label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Number of variations
+          </label>
+          <div className="mt-2 flex items-center gap-1.5">
+            {[1, 2, 3, 4, 5].map((n) => {
+              const on = variationCount === n;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setVariationCount(n)}
+                  className={cn(
+                    "h-9 w-9 rounded-md border text-sm font-medium transition-colors",
+                    on
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-surface-1 text-muted-foreground hover:text-foreground hover:border-border/80",
+                  )}
+                >
+                  {n}
+                </button>
+              );
+            })}
+            <span className="ml-2 text-xs text-muted-foreground">
+              {variationCount === 1 ? "1 concept" : `${variationCount} concepts`} will be generated.
+            </span>
+          </div>
+        </div>
+      </div>
       </div>
 
       <div className="glass rounded-xl p-5 space-y-4">
