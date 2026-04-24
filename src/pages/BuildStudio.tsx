@@ -84,6 +84,33 @@ export default function BuildStudio() {
   const [showSnapZones, setShowSnapZones] = useState(true);
   const [preset, setPreset] = useState<CameraPreset>("free");
 
+  // Shell Fit Mode
+  const [shellSkinId, setShellSkinId] = useState<string | null>(null);
+  const [shellEditMode, setShellEditMode] = useState(false);
+  const { data: bodySkins = [] } = useBodySkins();
+  const activeSkin: BodySkin | null = useMemo(
+    () => bodySkins.find((s) => s.id === shellSkinId) ?? null,
+    [bodySkins, shellSkinId],
+  );
+  const skinAssetPath = activeSkin?.file_url_glb ?? activeSkin?.file_url_stl ?? null;
+  const skinKind: "glb" | "stl" | null = activeSkin?.file_url_glb
+    ? "glb"
+    : activeSkin?.file_url_stl
+      ? "stl"
+      : null;
+  const { data: bodySkinUrl } = useSignedBodySkinUrl(skinAssetPath);
+  const { data: alignment } = useShellAlignment(projectId, shellSkinId);
+  const upsertAlignment = useUpsertShellAlignment();
+
+  const shellTransform: ShellTransform | null = useMemo(() => {
+    if (!alignment) return null;
+    return {
+      position: alignment.position as any,
+      rotation: alignment.rotation as any,
+      scale: alignment.scale as any,
+    };
+  }, [alignment]);
+
   // Resolve real meshes for placed parts
   const libraryItemIds = useMemo(
     () => parts.map((p) => p.library_item_id).filter(Boolean) as string[],
