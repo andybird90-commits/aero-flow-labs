@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           input: {
             images: image_urls,
-            prompt: `A standalone aftermarket automotive ${partLabel} part, clean smooth surfaces, matte clay render, flat panels, sharp edges, no surface noise, thin-walled composite shell construction, approximately 2mm wall thickness, preserve real part depth and section, preserve reverse / inner side from the reference views, open-backed where appropriate, visible edge thickness, no bolt holes, no fasteners, no mounting tabs, no flanges, no brackets — bonded or bolted on after printing, never a solid block, never a paper-thin ribbon`,
+            prompt: `A standalone aftermarket automotive ${partLabel} part as a SINGLE-SIDED hollow composite shell — like one fibreglass panel pulled from a mould. ~2mm wall thickness. The OUTER (visible) face matches the reference exactly. The INNER face is a simple concave cavity that mirrors the outer surface inward. ABSOLUTELY DO NOT duplicate, mirror, or repeat the outer shape on the back side. DO NOT create a second fender / second panel / second shell behind the first one. DO NOT make a symmetric two-sided object. It is ONE panel, ONE shell, with an open hollow back. Clean smooth surfaces, matte clay, sharp edges, no surface noise, no logos, no badges, no embossed text, no bolt holes, no fasteners, no mounting tabs, no flanges, no brackets. Never a solid block, never a paper-thin ribbon — a true hollow shell with visible wall thickness only at the open rim.`,
           },
         }),
       });
