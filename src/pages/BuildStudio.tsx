@@ -321,6 +321,41 @@ export default function BuildStudio() {
                   </SelectContent>
                 </Select>
 
+                <Separator orientation="vertical" className="h-5" />
+
+                {/* Shell Fit Mode */}
+                <Select
+                  value={shellSkinId ?? "__none__"}
+                  onValueChange={(v) => {
+                    setShellSkinId(v === "__none__" ? null : v);
+                    if (v === "__none__") setShellEditMode(false);
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-[180px] text-xs">
+                    <Layers className="mr-1 h-3 w-3 text-primary" />
+                    <SelectValue placeholder="Shell Fit: none" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No shell overlay</SelectItem>
+                    {bodySkins.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Toggle
+                  pressed={shellEditMode}
+                  onPressedChange={setShellEditMode}
+                  size="sm"
+                  className="h-7 px-2 data-[state=on]:bg-primary/20 data-[state=on]:text-primary"
+                  aria-label="Edit shell alignment"
+                  disabled={!shellSkinId}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                </Toggle>
+
                 <div className="ml-auto flex items-center gap-2">
                   <Button size="sm" variant="outline" onClick={handleSaveDesign} className="h-7 text-xs">
                     <Save className="mr-1 h-3 w-3" /> Save
@@ -343,6 +378,11 @@ export default function BuildStudio() {
                   <BuildStudioViewport
                     template={template}
                     heroStlUrl={heroStlUrl}
+                    bodySkinUrl={bodySkinUrl ?? null}
+                    bodySkinKind={skinKind}
+                    shellTransform={shellTransform}
+                    shellEditMode={shellEditMode}
+                    onShellCommit={handleShellCommit}
                     parts={parts}
                     libraryItemsById={libraryItemsById}
                     snapZones={snapZones}
