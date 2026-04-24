@@ -92,6 +92,49 @@ const PART_SPEC: Record<Kind, { what: string; shape: string; not: string }> = {
     shape: "one elongated louvred vent panel about 180mm long, 90mm wide, 14mm thick, with 3-5 angled parallel louvre slats. Smaller and more oval/teardrop in outline than a bonnet vent",
     not:   "Do NOT draw a fender, wing panel, door, wheel, or any car body. Just the standalone louvred vent insert on a white background.",
   },
+  // ---- Body-swap panels (full replacement bodywork) ----
+  // These are large outer-body panels. Render them as standalone moulded
+  // composite panels — same clay treatment, no donor car visible.
+  front_clip: {
+    what:  "a single replacement front clip / front bumper assembly (the entire nose panel below the hood line)",
+    shape: "one large continuous front-end shell about 1900mm wide, 700mm tall, 900mm deep, including the bumper face, lower intake area, and integrated splitter shelf if present. Hollow on the back side",
+    not:   "Do NOT draw the hood, fenders, headlights internals, wheels, or any rest of the car. Just the standalone front clip moulding on a white background.",
+  },
+  hood_panel: {
+    what:  "a single replacement hood/bonnet panel",
+    shape: "one large flat-ish panel about 1500mm wide, 1200mm long, with subtle crown/curvature and any integrated vents or scoops. Hollow on the underside with edge returns",
+    not:   "Do NOT draw fenders, windscreen, grille, engine, or any rest of the car. Just the standalone hood panel on a white background.",
+  },
+  fender_panel: {
+    what:  "a single wide-body front fender / wing panel (one side only)",
+    shape: "one large curved panel about 1200mm long, 800mm tall, wrapping around a wheel-arch opening, with an integrated wide-body flare bulging outward 60-120mm. Hollow on the inside with edge returns",
+    not:   "Do NOT draw the wheel, tyre, bumper, door, hood, or any rest of the car. Just the standalone fender panel on a white background.",
+  },
+  door_skin: {
+    what:  "a single outer door skin panel (one door, outer surface only)",
+    shape: "one curved panel about 1000-1200mm long, 800-900mm tall, matching the door's painted outer surface — NO window aperture cut through, NO door handle hole, just the smooth painted skin with edge returns",
+    not:   "Do NOT draw the window, door frame, mirror, handle, interior, or any rest of the car. Just the standalone door skin moulding on a white background.",
+  },
+  side_skirt_panel: {
+    what:  "a single replacement side skirt / rocker panel (one side, full length)",
+    shape: "one long panel about 2000-2400mm long, 200-300mm tall, running between the front and rear arches, with sculpted aero detailing. Hollow on the inside",
+    not:   "Do NOT draw the doors, wheels, fenders, or any rest of the car. Just the standalone side skirt on a white background.",
+  },
+  rear_quarter: {
+    what:  "a single wide-body rear quarter panel (one side)",
+    shape: "one large curved panel about 1400mm long, 1000mm tall, wrapping around the rear wheel arch from B/C-pillar back to the rear clip shut-line, with an integrated wide-body flare bulging out 80-150mm. Hollow on the inside",
+    not:   "Do NOT draw the wheel, tyre, door, rear bumper, glass, or any rest of the car. Just the standalone rear quarter panel on a white background.",
+  },
+  rear_clip: {
+    what:  "a single replacement rear clip / rear bumper assembly (the full tail panel below the boot-lid line)",
+    shape: "one large continuous rear-end shell about 1900mm wide, 700mm tall, 900mm deep, including the bumper face, lower diffuser area, and integrated diffuser strakes if present. Hollow on the back side",
+    not:   "Do NOT draw the boot lid, taillights, exhaust, wheels, or any rest of the car. Just the standalone rear clip moulding on a white background.",
+  },
+  deck_panel: {
+    what:  "a single replacement rear deck / boot-lid / engine-cover panel",
+    shape: "one large flat-ish panel about 1400mm wide, 900mm long, with subtle crown/curvature and any integrated ducktail kick-up or vents. Hollow on the underside with edge returns",
+    not:   "Do NOT draw the rear glass, taillights, rear quarters, wing, or any rest of the car. Just the standalone deck panel on a white background.",
+  },
 };
 
 // Neutral surface treatment shared by all parts. We deliberately avoid
