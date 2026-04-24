@@ -187,13 +187,15 @@ async function runIsolation(args: {
   conceptId: string;
   userId: string;
   todo: Array<{ key: AngleKey; url: string | null; col: string }>;
+  bodySwapMode: boolean;
 }) {
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   try {
+    const prompt = args.bodySwapMode ? ISOLATION_PROMPT_BODYSWAP : ISOLATION_PROMPT_BOLTON;
     // Fan out all angles in parallel — same pattern that fixed
     // WORKER_RESOURCE_LIMIT in generate-concepts.
     const results = await Promise.all(args.todo.map(async (a) => {
-      const isolated = await isolateOne(a.url!);
+      const isolated = await isolateOne(a.url!, prompt);
       if (!isolated) return { col: a.col, url: null as string | null };
 
       const path = `${args.userId}/${args.conceptId}/carbon_${a.key}_${crypto.randomUUID().slice(0, 8)}.${isolated.ext}`;
