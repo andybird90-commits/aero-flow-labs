@@ -102,13 +102,23 @@ Deno.serve(async (req) => {
     }
 
     try {
+      const workerPayload = isBuilderRecipe
+        ? {
+            // v2 — trusted builder
+            builder: recipe.builder,
+            part_type: recipe.part_type ?? part_kind,
+            params: recipe.params,
+            inputs,
+            part_kind,
+          }
+        : { recipe, inputs, part_kind }; // v1 legacy
       const workerResp = await fetch(`${CAD_WORKER_URL.replace(/\/$/, "")}/jobs`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${CAD_WORKER_TOKEN}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ recipe, inputs, part_kind }),
+        body: JSON.stringify(workerPayload),
       });
       if (!workerResp.ok) {
         const t = await workerResp.text();
