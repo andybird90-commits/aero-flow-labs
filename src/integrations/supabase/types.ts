@@ -441,6 +441,7 @@ export type Database = {
           style_tags: string[]
           updated_at: string
           user_id: string
+          variation_count: number
         }
         Insert: {
           aggression?: string | null
@@ -459,6 +460,7 @@ export type Database = {
           style_tags?: string[]
           updated_at?: string
           user_id: string
+          variation_count?: number
         }
         Update: {
           aggression?: string | null
@@ -477,6 +479,7 @@ export type Database = {
           style_tags?: string[]
           updated_at?: string
           user_id?: string
+          variation_count?: number
         }
         Relationships: [
           {
