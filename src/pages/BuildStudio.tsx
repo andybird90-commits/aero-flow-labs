@@ -207,6 +207,23 @@ export default function BuildStudio() {
     toast.success(`Design saved (${parts.length} parts)`);
   };
 
+  const handleShellCommit = (t: ShellTransform) => {
+    if (!user || !projectId || !shellSkinId) return;
+    upsertAlignment.mutate(
+      {
+        user_id: user.id,
+        project_id: projectId,
+        body_skin_id: shellSkinId,
+        position: t.position,
+        rotation: t.rotation,
+        scale: t.scale,
+      },
+      {
+        onError: (e: any) => toast.error(e.message ?? "Could not save alignment"),
+      },
+    );
+  };
+
   /* ─── render ─── */
   return (
     <SidebarProvider defaultOpen={false}>
