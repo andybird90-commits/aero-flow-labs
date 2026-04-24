@@ -29,6 +29,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ShieldCheck, ShieldAlert, ShieldX, Eye, EyeOff, Send } from "lucide-react";
 import { isBodyConforming, FIT_CLASS_DESCRIPTION } from "@/lib/part-classification";
 import { SendToGeometryWorker } from "@/components/SendToGeometryWorker";
+import { SendToCadWorker } from "@/components/SendToCadWorker";
+import { EngineChooser, type BuildEngine } from "@/components/EngineChooser";
 
 interface Props {
   open: boolean;
@@ -89,13 +91,15 @@ export function ExtractedPartPreview({
   const [maskedUrl, setMaskedUrl] = useState<string | null>(null);
   const [snapping, setSnapping] = useState(false);
   const [geometryDialogOpen, setGeometryDialogOpen] = useState(false);
+  const [cadDialogOpen, setCadDialogOpen] = useState(false);
   const [baseMeshUrl, setBaseMeshUrl] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const bodyConforming = isBodyConforming(kind);
 
-  // Look up base car STL + project for the geometry worker dispatcher.
+  // Look up base car STL + project for the build-engine dispatchers.
+  // Runs for all parts now (any engine may need projectId; Blender + CAD body-conforming need the base mesh).
   useEffect(() => {
-    if (!open || !bodyConforming) return;
+    if (!open) return;
     let cancelled = false;
     (async () => {
       const { data: cp } = await supabase
