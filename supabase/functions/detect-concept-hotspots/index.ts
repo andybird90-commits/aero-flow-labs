@@ -34,6 +34,17 @@ const URL_COL: Record<ViewKey, string> = {
   rear: "render_rear_url",
 };
 
+/** In body-swap mode prefer the isolated carbon shell render — the
+ *  silhouette is cleaner there so panel boxes hug the actual swap shell
+ *  instead of being thrown by background/wheels/glass. Falls back to the
+ *  regular render when the carbon view isn't ready. */
+const CARBON_URL_COL: Record<ViewKey, string> = {
+  front: "render_front_carbon_url",
+  side: "render_side_carbon_url",
+  rear34: "render_rear34_carbon_url",
+  rear: "render_rear_carbon_url",
+};
+
 /** Parts the model is allowed to return per view. Keeps detections relevant
  * to what's actually visible from each camera. */
 const ALLOWED_PARTS: Record<ViewKey, Array<{ kind: string; label: string; hint: string }>> = {
@@ -69,16 +80,59 @@ const ALLOWED_PARTS: Record<ViewKey, Array<{ kind: string; label: string; hint: 
   ],
 };
 
+/**
+ * BODY-SWAP MODE panel atlas. The kit is a full outer shell, so we segment
+ * it into the body panels a real wide-body conversion ships as: front clip,
+ * hood, fenders L/R, door skins L/R, side skirts L/R, rear quarters L/R,
+ * rear clip, deck/bootlid, and wing if present. Each box should hug ONE
+ * panel — these later become "outer skin + conformed inner" parts that the
+ * Blender worker can shrinkwrap to the donor stock body.
+ */
+const BODY_SWAP_PARTS: Record<ViewKey, Array<{ kind: string; label: string; hint: string }>> = {
+  front: [
+    { kind: "front_clip", label: "Front clip", hint: "the entire replacement front bumper / nose panel below the hood line" },
+    { kind: "hood_panel", label: "Hood", hint: "the bonnet/hood panel of the swap kit" },
+    { kind: "fender_panel", label: "Fender (L)", hint: "left front fender / wide-body arch panel — one continuous panel from hood shut-line down to rocker" },
+    { kind: "fender_panel", label: "Fender (R)", hint: "right front fender / wide-body arch panel" },
+    { kind: "splitter", label: "Front splitter", hint: "splitter blade protruding forward off the front clip — only if it's clearly a separate aero piece" },
+  ],
+  side: [
+    { kind: "fender_panel", label: "Front fender", hint: "front wide-body fender panel from A-pillar forward, around the front wheel arch, down to rocker" },
+    { kind: "door_skin",   label: "Door skin",   hint: "outer door skin only — the painted surface between the front and rear shut-lines, NOT the window aperture" },
+    { kind: "side_skirt_panel", label: "Side skirt", hint: "rocker-line panel running between the front and rear arches" },
+    { kind: "rear_quarter", label: "Rear quarter", hint: "rear wide-body quarter panel from B/C-pillar back, around the rear wheel arch, to the rear clip shut-line" },
+    { kind: "deck_panel",  label: "Rear deck",  hint: "boot-lid / engine-cover panel visible from side" },
+    { kind: "wing",        label: "Rear wing",  hint: "SEPARATE blade on stalks/swan-necks above the deck, only if a clear gap is visible" },
+  ],
+  rear34: [
+    { kind: "rear_clip",   label: "Rear clip", hint: "the entire replacement rear bumper / tail panel below the boot-lid line" },
+    { kind: "rear_quarter",label: "Rear quarter (L)", hint: "left rear wide-body quarter panel" },
+    { kind: "rear_quarter",label: "Rear quarter (R)", hint: "right rear wide-body quarter panel" },
+    { kind: "deck_panel",  label: "Rear deck", hint: "boot-lid / engine-cover top panel" },
+    { kind: "diffuser",    label: "Diffuser",  hint: "diffuser panel under the rear bumper, only if it's a distinct sub-piece" },
+    { kind: "wing",        label: "Rear wing", hint: "SEPARATE blade on stalks above the deck — clear gap underneath" },
+  ],
+  rear: [
+    { kind: "rear_clip",   label: "Rear clip",  hint: "the full replacement rear bumper / tail panel" },
+    { kind: "deck_panel",  label: "Rear deck",  hint: "boot-lid / engine-cover panel above the rear clip" },
+    { kind: "rear_quarter",label: "Rear quarter (L)", hint: "left rear quarter panel visible at the corner" },
+    { kind: "rear_quarter",label: "Rear quarter (R)", hint: "right rear quarter panel visible at the corner" },
+    { kind: "diffuser",    label: "Diffuser",   hint: "diffuser sub-panel under the rear clip, only if distinct" },
+    { kind: "wing",        label: "Rear wing",  hint: "SEPARATE blade on stalks with daylight underneath" },
+  ],
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { concept_id, view, force } = await req.json() as {
-      concept_id: string; view: ViewKey; force?: boolean;
+    const { concept_id, view, force, body_swap_mode } = await req.json() as {
+      concept_id: string; view: ViewKey; force?: boolean; body_swap_mode?: boolean;
     };
     if (!concept_id || !view || !URL_COL[view]) {
       return json({ error: "concept_id and a valid view are required" }, 400);
     }
+    const swapMode = !!body_swap_mode;
 
     // Auth
     const authHeader = req.headers.get("Authorization") ?? "";
@@ -91,44 +145,66 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
+    // Read both regular + carbon URLs so swap mode can prefer the cleaner
+    // isolated shell when it's available.
     const { data: concept, error: cErr } = await admin
       .from("concepts")
-      .select(`id, user_id, hotspots, ${URL_COL[view]}`)
+      .select(`id, user_id, hotspots, ${URL_COL[view]}, ${CARBON_URL_COL[view]}`)
       .eq("id", concept_id)
       .maybeSingle();
     if (cErr || !concept) return json({ error: "Concept not found" }, 404);
     if (concept.user_id !== userId) return json({ error: "Forbidden" }, 403);
 
-    const renderUrl = (concept as any)[URL_COL[view]] as string | null;
+    const carbonUrl = (concept as any)[CARBON_URL_COL[view]] as string | null;
+    const baseUrl   = (concept as any)[URL_COL[view]] as string | null;
+    const renderUrl = swapMode ? (carbonUrl ?? baseUrl) : baseUrl;
     if (!renderUrl) return json({ error: `No ${view} render on this concept` }, 400);
 
-    // Cache hit
+    // Cache hit — namespaced by mode so bolt-on and swap detections don't
+    // overwrite each other on the same concept.
+    const cacheKey = swapMode ? `${view}__swap` : view;
     const existing = (concept.hotspots ?? {}) as Record<string, any>;
-    if (!force && existing[view]?.boxes) {
-      return json({ boxes: existing[view].boxes, cached: true });
+    if (!force && existing[cacheKey]?.boxes) {
+      return json({ boxes: existing[cacheKey].boxes, cached: true });
     }
 
-    const allowed = ALLOWED_PARTS[view];
+    const allowed = (swapMode ? BODY_SWAP_PARTS : ALLOWED_PARTS)[view];
     const partList = allowed.map((p, i) =>
       `  ${i + 1}. kind="${p.kind}" label="${p.label}" — ${p.hint}`
     ).join("\n");
 
-    const systemPrompt =
-      "You are a precise visual annotator for a car body kit design tool. " +
-      "You will be shown a single render of a custom car and asked to locate " +
-      "specific body kit parts. Return tight bounding boxes in normalised " +
-      "image coordinates (0..1 from the top-left). Only return boxes for " +
-      "parts that are clearly visible. Skip parts that are occluded or absent.\n\n" +
-      "CRITICAL DISAMBIGUATION — WING vs DUCKTAIL:\n" +
-      "• A WING is a separate aerofoil blade held above the rear deck on " +
-      "  visible stalks/swan-necks. There is a CLEAR GAP of air (daylight) " +
-      "  between the underside of the blade and the bootlid surface.\n" +
-      "• A DUCKTAIL is a short integrated lip rising directly off the " +
-      "  bootlid/rear-deck panel. It is part of the body itself — NO stalks, " +
-      "  NO daylight underneath, NO separation from the body surface.\n" +
-      "• Never return both for the same car — they are mutually exclusive.\n" +
-      "• If you cannot see daylight under a rear blade, it is a DUCKTAIL.\n" +
-      "• If you can see daylight + uprights, it is a WING.";
+    const systemPrompt = swapMode
+      ? "You are a precise visual annotator for a car body-swap design tool. " +
+        "The image shows a FULL replacement body shell (a wide-body conversion " +
+        "kit such as a GT1-style or slantnose conversion). Your job is to " +
+        "segment that shell into its constituent body panels and return one " +
+        "tight bounding box per panel.\n\n" +
+        "PANEL RULES:\n" +
+        "• Each box must hug exactly ONE panel — never group two panels into one box.\n" +
+        "• Panels meet at shut-lines: hood↔fender, fender↔door, door↔rear quarter, " +
+        "  rear quarter↔rear clip, deck↔rear clip. Use these shut-lines as box edges.\n" +
+        "• Do NOT include the window aperture inside a door-skin box — clip the box " +
+        "  to the painted skin only.\n" +
+        "• Do NOT include the wheel inside a fender or quarter box — clip around it.\n" +
+        "• For symmetric panels (fenders, quarters, doors) return ONE box per side, " +
+        "  and only if both sides are clearly visible from this camera.\n" +
+        "• Skip panels that are not visible from this camera — never guess off-screen.\n" +
+        "• Boxes are in normalised image coords (0..1 from top-left). x+w ≤ 1, y+h ≤ 1."
+      : "You are a precise visual annotator for a car body kit design tool. " +
+        "You will be shown a single render of a custom car and asked to locate " +
+        "specific body kit parts. Return tight bounding boxes in normalised " +
+        "image coordinates (0..1 from the top-left). Only return boxes for " +
+        "parts that are clearly visible. Skip parts that are occluded or absent.\n\n" +
+        "CRITICAL DISAMBIGUATION — WING vs DUCKTAIL:\n" +
+        "• A WING is a separate aerofoil blade held above the rear deck on " +
+        "  visible stalks/swan-necks. There is a CLEAR GAP of air (daylight) " +
+        "  between the underside of the blade and the bootlid surface.\n" +
+        "• A DUCKTAIL is a short integrated lip rising directly off the " +
+        "  bootlid/rear-deck panel. It is part of the body itself — NO stalks, " +
+        "  NO daylight underneath, NO separation from the body surface.\n" +
+        "• Never return both for the same car — they are mutually exclusive.\n" +
+        "• If you cannot see daylight under a rear blade, it is a DUCKTAIL.\n" +
+        "• If you can see daylight + uprights, it is a WING.";
 
     const userPrompt =
       `View: ${view}. ` +
@@ -236,10 +312,11 @@ Deno.serve(async (req) => {
         };
       });
 
-    // Persist into hotspots[view]
+    // Persist into hotspots[cacheKey] — namespaced so bolt-on and swap-mode
+    // detections coexist on the same concept row.
     const nextHotspots = {
       ...existing,
-      [view]: { boxes, detected_at: new Date().toISOString() },
+      [cacheKey]: { boxes, detected_at: new Date().toISOString(), mode: swapMode ? "body_swap" : "bolt_on" },
     };
     const { error: upErr } = await admin
       .from("concepts")
