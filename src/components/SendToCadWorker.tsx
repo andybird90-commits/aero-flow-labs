@@ -173,6 +173,21 @@ export function SendToCadWorker({
 
         {!jobId ? (
           <div className="space-y-4 text-sm">
+            <CadWorkerSetupCard
+              status={workerStatus.data}
+              loading={workerStatus.isLoading}
+              onAddSecrets={(names) => {
+                const list = names.join(", ");
+                if (typeof navigator !== "undefined" && navigator.clipboard) {
+                  navigator.clipboard.writeText(list).catch(() => {});
+                }
+                toast({
+                  title: "Ask the AI to add these secrets",
+                  description: `Copied to clipboard: ${list}. In chat, ask: "Add ${list} as Lovable Cloud secrets" — then click Re-check here.`,
+                });
+              }}
+            />
+
             <div className="space-y-1.5">
               <Label className="text-xs uppercase tracking-widest font-mono text-muted-foreground">
                 Designer notes (optional)
@@ -182,6 +197,7 @@ export function SendToCadWorker({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
+                disabled={!ready}
               />
             </div>
 
