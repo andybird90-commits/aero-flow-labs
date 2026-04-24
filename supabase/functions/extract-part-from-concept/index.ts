@@ -21,11 +21,36 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const ALLOWED_KINDS = [
+  // Bolt-on parts
   "splitter", "lip", "canard", "side_skirt",
   "wide_arch", "diffuser", "ducktail", "wing",
   "bonnet_vent", "wing_vent",
+  // Body-swap panels — these are crops of the swap shell that the meshify
+  // worker reconstructs as outer-skin + donor-conformed inner.
+  "front_clip", "hood_panel", "fender_panel", "door_skin",
+  "side_skirt_panel", "rear_quarter", "rear_clip", "deck_panel",
 ] as const;
 type Kind = typeof ALLOWED_KINDS[number];
+
+/** Body-swap panel kinds get the same default params bag: a normalised crop
+ *  rectangle (filled in client-side from the hotspot box) and a flag that
+ *  tells meshify-carbon-kit to build an inner skin conformed to the donor
+ *  stock panel instead of just a thin outer shell.
+ *
+ *  conform_to_donor = 1  → meshify worker shrinkwraps the back of the panel
+ *                          to the donor body so the kit bolts straight on.
+ *  panel_thickness_mm    → fallback wall thickness if the donor surface
+ *                          can't be sampled at that point. */
+const PANEL_KINDS = new Set<Kind>([
+  "front_clip", "hood_panel", "fender_panel", "door_skin",
+  "side_skirt_panel", "rear_quarter", "rear_clip", "deck_panel",
+]);
+
+const PANEL_DEFAULT_PARAMS = {
+  conform_to_donor: 1,
+  panel_thickness_mm: 4,
+  flange_width_mm: 18,
+};
 
 const DEFAULT_PARAMS: Record<Kind, Record<string, number>> = {
   splitter:    { depth: 80,  fence_height: 30, fence_inset: 60 },
@@ -38,6 +63,15 @@ const DEFAULT_PARAMS: Record<Kind, Record<string, number>> = {
   wing:        { aoa: 8, chord: 280, gurney: 12, span_pct: 78, stand_height: 220 },
   bonnet_vent: { length: 240, width: 120, louvre_count: 5, depth: 18 },
   wing_vent:   { length: 180, width: 90,  louvre_count: 4, depth: 14 },
+  // Panel kinds — same defaults bag, the per-panel crop is filled by the client.
+  front_clip:        { ...PANEL_DEFAULT_PARAMS },
+  hood_panel:        { ...PANEL_DEFAULT_PARAMS },
+  fender_panel:      { ...PANEL_DEFAULT_PARAMS },
+  door_skin:         { ...PANEL_DEFAULT_PARAMS, panel_thickness_mm: 3 },
+  side_skirt_panel:  { ...PANEL_DEFAULT_PARAMS },
+  rear_quarter:      { ...PANEL_DEFAULT_PARAMS },
+  rear_clip:         { ...PANEL_DEFAULT_PARAMS },
+  deck_panel:        { ...PANEL_DEFAULT_PARAMS, panel_thickness_mm: 3 },
 };
 
 /** Per-part hint about which renders matter most. */
