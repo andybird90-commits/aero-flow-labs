@@ -84,6 +84,7 @@ function BriefInner({ projectId }: { projectId: string }) {
   const [aggression, setAggression] = useState<string>("auto");
   const [mustInclude, setMustInclude] = useState<string[]>([]);
   const [mustAvoid, setMustAvoid] = useState<string[]>([]);
+  const [variationCount, setVariationCount] = useState<number>(4);
 
   const MAX_REFS = 5;
   const activePreset = presets.find((p) => p.id === stylePresetId) ?? null;
@@ -101,6 +102,8 @@ function BriefInner({ projectId }: { projectId: string }) {
       setAggression(((brief as any).aggression as string) || "auto");
       setMustInclude(((brief as any).must_include as string[]) ?? []);
       setMustAvoid(((brief as any).must_avoid as string[]) ?? []);
+      const vc = Number((brief as any).variation_count);
+      setVariationCount(Number.isFinite(vc) && vc >= 1 && vc <= 5 ? vc : 4);
     }
   }, [brief]);
 
@@ -202,6 +205,7 @@ function BriefInner({ projectId }: { projectId: string }) {
         aggression: aggression === "auto" ? null : aggression,
         must_include: mustInclude,
         must_avoid: mustAvoid,
+        variation_count: variationCount,
       } as any,
     });
     setCustomConstraint("");
