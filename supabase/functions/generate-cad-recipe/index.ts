@@ -248,42 +248,80 @@ function collectRecipeIssues(recipe: any, opts: { partKind: string; hasBaseMesh:
     issues.push("Recipe has no body-producing feature (need at least one extrude / loft / revolve).");
   }
 
+  // Body-conforming requirement: if a base mesh is available and this is a
+  // body panel, the recipe MUST trim the panel against the imported car mesh,
+  // otherwise the part has no chance of fitting the car.
+  if (isBodyPanel && opts.hasBaseMesh) {
+    const importMesh = recipe.features.find((f: any) => f?.type === "import_mesh");
+    if (!importMesh) {
+      issues.push("Body-conforming part must include an import_mesh feature referencing the base car mesh.");
+    }
+    const last = recipe.features[recipe.features.length - 1];
+    if (
+      !last ||
+      last.type !== "boolean" ||
+      last.op !== "intersect" ||
+      !Array.isArray(last.targets) ||
+      (importMesh && !last.targets.includes(importMesh.id))
+    ) {
+      issues.push("Body-conforming part must end with a boolean intersect between the panel body and the imported car mesh.");
+    }
+  }
+
   return issues;
 }
 
 /**
  * Conservative known-good template for body-panel parts. Single closed YZ
- * sketch + symmetric extrude + edge fillet. The worker can always build this.
+ * sketch + symmetric extrude + edge fillet. When a base mesh URL is provided
+ * we also import it and intersect the extruded slab with the car body so the
+ * resulting part actually conforms to the vehicle's surface.
  */
-function fallbackRecipeForBodyPanel(partKind: string, partLabel?: string) {
+function fallbackRecipeForBodyPanel(
+  partKind: string,
+  partLabel?: string,
+  baseMeshUrl?: string | null,
+) {
   const isArch = partKind.includes("arch");
   // A simple flared quarter shape: rectangle with a chamfered top.
   const halfWidth = 220;     // mm — half of full panel width along X
   const height = isArch ? 380 : 320;
   const flare = isArch ? 60 : 40;
   const depth = isArch ? 180 : 220; // extrusion thickness (X direction, since plane is YZ)
+  const features: any[] = [
+    {
+      type: "sketch",
+      id: "s_profile",
+      plane: "YZ",
+      curves: [
+        { type: "line", from: [-halfWidth, 0], to: [halfWidth, 0] },
+        { type: "line", from: [halfWidth, 0], to: [halfWidth + flare, height * 0.6] },
+        { type: "line", from: [halfWidth + flare, height * 0.6], to: [halfWidth, height] },
+        { type: "line", from: [halfWidth, height], to: [-halfWidth, height] },
+        { type: "line", from: [-halfWidth, height], to: [-halfWidth - flare, height * 0.6] },
+        { type: "line", from: [-halfWidth - flare, height * 0.6], to: [-halfWidth, 0] },
+      ],
+    },
+    { type: "extrude", id: "e_body", sketch: "s_profile", depth_mm: depth, symmetric: true },
+    { type: "fillet", id: "f_edges", target: "e_body", edges: "all", radius_mm: 8 },
+  ];
+
+  if (baseMeshUrl) {
+    features.push({ type: "import_mesh", id: "m_car", url: baseMeshUrl });
+    features.push({
+      type: "boolean",
+      id: "b_fit",
+      op: "intersect",
+      targets: ["f_edges", "m_car"],
+    });
+  }
+
   return {
     version: 1,
     part: partKind,
     units: "mm",
     label: partLabel ?? partKind,
-    features: [
-      {
-        type: "sketch",
-        id: "s_profile",
-        plane: "YZ",
-        curves: [
-          { type: "line", from: [-halfWidth, 0], to: [halfWidth, 0] },
-          { type: "line", from: [halfWidth, 0], to: [halfWidth + flare, height * 0.6] },
-          { type: "line", from: [halfWidth + flare, height * 0.6], to: [halfWidth, height] },
-          { type: "line", from: [halfWidth, height], to: [-halfWidth, height] },
-          { type: "line", from: [-halfWidth, height], to: [-halfWidth - flare, height * 0.6] },
-          { type: "line", from: [-halfWidth - flare, height * 0.6], to: [-halfWidth, 0] },
-        ],
-      },
-      { type: "extrude", id: "e_body", sketch: "s_profile", depth_mm: depth, symmetric: true },
-      { type: "fillet", id: "f_edges", target: "e_body", edges: "all", radius_mm: 8 },
-    ],
+    features,
     outputs: ["step", "stl", "glb"],
     _fallback: true,
   };
