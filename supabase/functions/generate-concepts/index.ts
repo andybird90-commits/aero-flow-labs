@@ -78,6 +78,8 @@ type GenerationContext = {
   vehicleLabel: string;
   briefText: string;
   presetMode: boolean;
+  /** Signed URLs of user-uploaded reference body kit images from the brief. */
+  briefReferenceUrls: string[];
 };
 
 /* ─── Discipline & aggression baselines ─────────────────────── */
@@ -418,8 +420,27 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
     rear: garageRefs.rear ?? body.snapshots?.rear ?? body.snapshots?.rear_three_quarter ?? null,
   };
 
+  // Resolve user-uploaded body kit reference photos from the brief into signed URLs.
+  const briefReferenceUrls: string[] = [];
+  const refPaths: string[] = Array.isArray((brief as any).reference_image_paths)
+    ? (brief as any).reference_image_paths
+    : [];
+  if (refPaths.length > 0) {
+    for (const p of refPaths.slice(0, 4)) {
+      try {
+        const { data } = await admin.storage
+          .from("brief-references")
+          .createSignedUrl(p, 60 * 60);
+        if (data?.signedUrl) briefReferenceUrls.push(data.signedUrl);
+      } catch (e) {
+        console.warn("brief reference signed URL failed for", p, e);
+      }
+    }
+  }
+
   console.log("generate-concepts: discipline=", discipline, "aggression=", aggression,
-    "variations=", variations.map(v => v.title));
+    "variations=", variations.map(v => v.title),
+    "briefRefs=", briefReferenceUrls.length);
 
   return {
     conceptSetId: cs?.id ?? null,
@@ -433,6 +454,7 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
     vehicleLabel,
     briefText,
     presetMode,
+    briefReferenceUrls,
   };
 }
 
@@ -538,7 +560,13 @@ async function runSingleVariation({
   const otherAngles = ANGLES.filter((a) => a.key !== "front_three_quarter");
 
   const userFrontRef = context.snaps.front_three_quarter;
-  const frontRefs = isImageRef(userFrontRef) ? [userFrontRef] : [];
+  const frontRefs: string[] = [];
+  if (isImageRef(userFrontRef)) frontRefs.push(userFrontRef);
+  // Brief-uploaded body kit references go on the FRONT 3/4 hero render so the
+  // AI can match the requested kit. Other angles inherit the look from the
+  // generated front concept image, so we don't re-attach them downstream.
+  for (const u of context.briefReferenceUrls) frontRefs.push(u);
+
   const frontResult = await renderAngle({
     admin,
     userId,
@@ -551,6 +579,8 @@ async function runSingleVariation({
     aggression: context.aggression,
     discipline: context.discipline,
     extraModifier: body.extra_modifier ?? null,
+    briefReferenceCount: context.briefReferenceUrls.length,
+    userCarRefAttached: isImageRef(userFrontRef),
   });
   if (!frontResult) {
     console.warn("Front 3/4 render failed for variation:", v.title);
@@ -573,6 +603,8 @@ async function runSingleVariation({
       aggression: context.aggression,
       discipline: context.discipline,
       extraModifier: body.extra_modifier ?? null,
+      briefReferenceCount: 0,
+      userCarRefAttached: isImageRef(userAngleRef),
     });
     return { key: a.key, result };
   }));
@@ -630,6 +662,8 @@ async function renderAngle({
   aggression,
   discipline,
   extraModifier,
+  briefReferenceCount,
+  userCarRefAttached,
 }: {
   admin: any;
   userId: string;
@@ -642,8 +676,13 @@ async function renderAngle({
   aggression: Aggression;
   discipline: Discipline;
   extraModifier: string | null;
+  /** How many of the trailing reference images are user-uploaded BODY KIT references that must be matched. */
+  briefReferenceCount: number;
+  /** Whether the FIRST reference is the user's car (the canvas to repaint). */
+  userCarRefAttached: boolean;
 }): Promise<{ publicUrl: string; dataUrl: string; promptUsed: string } | null> {
   const hasRef = referenceImages.length > 0;
+  const hasBriefRefs = briefReferenceCount > 0;
 
   const carbonFinish =
     `MATERIAL FINISH: every added/modified aero or styling part — splitter, ` +
@@ -670,14 +709,45 @@ async function renderAngle({
     : "";
   const steerLine = extraModifier ? `\nADDITIONAL STEER (apply on top): ${extraModifier}` : "";
 
+  // When the user has attached body-kit reference photos to the brief, we must
+  // OBEY them — match the kit shapes/proportions/details exactly, do not freestyle.
+  // The trailing N images in `referenceImages` are those refs (after the optional car snapshot).
+  const briefRefRule = hasBriefRefs
+    ? (() => {
+        const carImgIdx = userCarRefAttached ? 1 : 0;
+        const firstRefIdx = carImgIdx + 1;
+        const lastRefIdx = carImgIdx + briefReferenceCount;
+        const range = briefReferenceCount === 1
+          ? `image #${firstRefIdx}`
+          : `images #${firstRefIdx}–#${lastRefIdx}`;
+        const carClause = userCarRefAttached
+          ? `Image #1 is the SUBJECT CAR (use its body, colour, wheels, identity). `
+          : ``;
+        return (
+          `\n\nBODY KIT MATCH MODE — STRICT: ${carClause}` +
+          `${range} are user-supplied REFERENCE PHOTOS of the exact body kit / aero parts the user wants. ` +
+          `You MUST replicate the kit shown in those reference photos as faithfully as possible: ` +
+          `splitter shape, canards, side skirt geometry, arch flare profile and width, ducktail/wing ` +
+          `silhouette and mounting style, diffuser strake count and angle, vent locations, hood profile, ` +
+          `ride height and wheel/arch fitment. Do NOT invent your own kit. Do NOT freestyle. ` +
+          `Treat the brief text as secondary clarification — the reference photos are authoritative for kit geometry. ` +
+          `Variation flavour modifiers are IGNORED when they conflict with the references. ` +
+          `Only the camera angle, the subject car identity, and the carbon material finish are yours to control.`
+        );
+      })()
+    : (hasRef
+        ? `\n\nNo body kit reference photos were supplied — you MAY freestyle the kit design within the brief and variation direction.`
+        : "");
+
   const fromUserPrompt =
-    `Re-render THE EXACT CAR shown in the reference image with an added ${variation.modifier} body kit, ` +
+    `Re-render THE EXACT CAR shown in the first reference image with an added ${variation.modifier} body kit, ` +
     `framed as a ${angle.framing}. ` +
     `${identityRule} ` +
     `\n\nDESIGN DIRECTION (this variation): ${variation.direction} ` +
     `\nKEY EMPHASIS: ${variation.emphasis}` +
     intensityRule +
     steerLine +
+    briefRefRule +
     `\n\n${carbonFinish}` +
     `\n\nBRIEF (highest priority — every render must reflect this): ${stylePrompt} ` +
     `\n\nStudio lighting, dark dramatic backdrop, photorealistic, sharp focus, clean reflections, ` +
