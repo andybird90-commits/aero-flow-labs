@@ -30,6 +30,12 @@ import { SnapZoneViz } from "@/components/build-studio/SnapZoneViz";
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
 
+export interface ShellTransform {
+  position: Vec3;
+  rotation: Vec3;
+  scale: Vec3;
+}
+
 interface ViewportProps {
   template?: CarTemplate | null;
   /** Signed URL for the project's hero STL (preferred over the box placeholder). */
@@ -37,6 +43,12 @@ interface ViewportProps {
   /** Optional body skin overlay (Shell Fit Mode). */
   bodySkinUrl?: string | null;
   bodySkinKind?: "stl" | "glb" | null;
+  /** Persisted transform of the shell overlay (Shell Fit). */
+  shellTransform?: ShellTransform | null;
+  /** True when the shell overlay should be the active gizmo target. */
+  shellEditMode?: boolean;
+  /** Called when the user releases the shell gizmo. */
+  onShellCommit?: (t: ShellTransform) => void;
   parts: PlacedPart[];
   /** Resolved library_items for placed parts so we can render real meshes. */
   libraryItemsById: Map<string, LibraryItem>;
