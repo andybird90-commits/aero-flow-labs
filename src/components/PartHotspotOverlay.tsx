@@ -54,6 +54,9 @@ interface Preview {
   label: string;
   filenameBase: string;
   bbox: { x: number; y: number; w: number; h: number };
+  /** The exact image the bbox was measured against — must match what the
+   *  cropper sees, otherwise the crop lands on the wrong part. */
+  sourceUrl: string;
 }
 
 type Handle = "move" | "n" | "s" | "e" | "w" | "nw" | "ne" | "sw" | "se";
