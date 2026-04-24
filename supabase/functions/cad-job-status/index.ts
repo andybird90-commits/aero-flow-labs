@@ -1,7 +1,7 @@
 /**
  * cad-job-status
  *
- * Polls the external Onshape worker for a CAD job. On `succeeded`, downloads
+ * Polls the external CAD worker (CadQuery reference impl) for a job. On `succeeded`, downloads
  * the STEP / STL / GLB / preview artifacts and re-hosts them in the
  * `geometries` bucket so the client always reads from a stable Lovable URL.
  *
@@ -20,8 +20,10 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const ONSHAPE_WORKER_URL = Deno.env.get("ONSHAPE_WORKER_URL");
-const ONSHAPE_WORKER_TOKEN = Deno.env.get("ONSHAPE_WORKER_TOKEN");
+const CAD_WORKER_URL =
+  Deno.env.get("CAD_WORKER_URL") ?? Deno.env.get("ONSHAPE_WORKER_URL");
+const CAD_WORKER_TOKEN =
+  Deno.env.get("CAD_WORKER_TOKEN") ?? Deno.env.get("ONSHAPE_WORKER_TOKEN");
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -51,13 +53,13 @@ Deno.serve(async (req) => {
       return json({ status: job.status, outputs: job.outputs, error: job.error });
     }
     if (!job.worker_task_id) return json({ status: job.status });
-    if (!ONSHAPE_WORKER_URL || !ONSHAPE_WORKER_TOKEN) {
+    if (!CAD_WORKER_URL || !CAD_WORKER_TOKEN) {
       return json({ status: job.status, error: "Worker not configured" }, 503);
     }
 
     const pollResp = await fetch(
-      `${ONSHAPE_WORKER_URL.replace(/\/$/, "")}/jobs/${job.worker_task_id}`,
-      { headers: { Authorization: `Bearer ${ONSHAPE_WORKER_TOKEN}` } },
+      `${CAD_WORKER_URL.replace(/\/$/, "")}/jobs/${job.worker_task_id}`,
+      { headers: { Authorization: `Bearer ${CAD_WORKER_TOKEN}` } },
     );
     if (!pollResp.ok) {
       const t = await pollResp.text();
