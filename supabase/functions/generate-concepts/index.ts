@@ -671,6 +671,8 @@ async function runSingleVariation({
     bodySwapMode: context.bodySwapMode,
     // In body-swap mode the kit refs are first, donor car (if any) is last.
     bodySwapKitFirst: context.bodySwapMode,
+    surgicalMode: context.surgicalMode,
+    briefText: context.briefText,
   });
   if (!frontResult) {
     console.warn("Front 3/4 render failed for variation:", v.title);
