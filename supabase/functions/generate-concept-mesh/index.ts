@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
     const userId = userRes.user.id;
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY) as any;
 
     // Load concept (verify ownership) — pull all 4 angle URLs
     const { data: concept, error: cErr } = await admin
@@ -163,7 +163,7 @@ async function removeBackground(imageUrl: string): Promise<string | null> {
 async function runRodinJob({
   admin, concept_id, userId, projectId, angleUrls,
 }: {
-  admin: ReturnType<typeof createClient>;
+  admin: any;
   concept_id: string;
   userId: string;
   projectId: string;

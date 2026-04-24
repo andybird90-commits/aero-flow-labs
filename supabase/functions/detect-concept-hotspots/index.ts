@@ -143,13 +143,13 @@ Deno.serve(async (req) => {
     if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
     const userId = userRes.user.id;
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY) as any;
 
     // Read both regular + carbon URLs so swap mode can prefer the cleaner
     // isolated shell when it's available.
     const { data: concept, error: cErr } = await admin
       .from("concepts")
-      .select(`id, user_id, hotspots, ${URL_COL[view]}, ${CARBON_URL_COL[view]}`)
+      .select("*")
       .eq("id", concept_id)
       .maybeSingle();
     if (cErr || !concept) return json({ error: "Concept not found" }, 404);

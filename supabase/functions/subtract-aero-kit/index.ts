@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     const { data: userRes, error: userErr } = await userClient.auth.getUser();
     if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY) as any;
 
     const { data: concept, error: cErr } = await admin
       .from("concepts").select("*").eq("id", body.concept_id).maybeSingle();
@@ -216,7 +216,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-async function fail(admin: ReturnType<typeof createClient>, conceptId: string, message: string) {
+async function fail(admin: any, conceptId: string, message: string) {
   await admin.from("concepts").update({ aero_kit_status: "failed", aero_kit_error: message }).eq("id", conceptId);
   return json({ error: message }, 500);
 }

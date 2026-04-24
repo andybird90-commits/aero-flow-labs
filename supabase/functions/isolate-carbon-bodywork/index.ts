@@ -14,6 +14,10 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { decode as decodeImg, Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 
+declare const EdgeRuntime: {
+  waitUntil(promise: Promise<unknown>): void;
+};
+
 /**
  * Target canvas size for every isolated carbon view. All four views are
  * padded onto an identical NxN canvas so the inter-view scale ratio is
@@ -130,7 +134,7 @@ Deno.serve(async (req) => {
     const { data: userRes, error: userErr } = await userClient.auth.getUser();
     if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY) as any;
 
     const { data: concept } = await admin
       .from("concepts").select("*").eq("id", body.concept_id).maybeSingle();
@@ -189,7 +193,7 @@ async function runIsolation(args: {
   todo: Array<{ key: AngleKey; url: string | null; col: string }>;
   bodySwapMode: boolean;
 }) {
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY) as any;
   try {
     const prompt = args.bodySwapMode ? ISOLATION_PROMPT_BODYSWAP : ISOLATION_PROMPT_BOLTON;
     // Fan out all angles in parallel — same pattern that fixed
