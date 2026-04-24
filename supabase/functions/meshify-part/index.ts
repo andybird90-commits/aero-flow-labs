@@ -30,7 +30,7 @@ const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const RODIN_MODEL = "hyper3d/rodin";
+const MESH_MODEL = "tencent/hunyuan3d-2";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -81,11 +81,11 @@ Deno.serve(async (req) => {
         return json({ error: "image_urls required" }, 400);
       }
 
-      // Kick off Rodin Gen-2 (Ultra) prediction on Replicate.
-      // Rodin handles single OR multi-view input via the same `images` param.
-      const partLabel = part_kind.replace(/_/g, " ");
+      // Hunyuan3D-2 takes a SINGLE image. Use the first render (best view).
       const isMulti = image_urls.length > 1;
-      const createResp = await fetch(`https://api.replicate.com/v1/models/${RODIN_MODEL}/predictions`, {
+      const primaryImage = image_urls[0];
+
+      const createResp = await fetch(`https://api.replicate.com/v1/models/${MESH_MODEL}/predictions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
@@ -93,20 +93,24 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           input: {
-            images: image_urls,
-            prompt: `A standalone aftermarket automotive ${partLabel} part as a SINGLE-SIDED hollow composite shell — like one fibreglass panel pulled from a mould. ~2mm wall thickness. The OUTER (visible) face matches the reference exactly. The INNER face is a simple concave cavity that mirrors the outer surface inward. ABSOLUTELY DO NOT duplicate, mirror, or repeat the outer shape on the back side. DO NOT create a second fender / second panel / second shell behind the first one. DO NOT make a symmetric two-sided object. It is ONE panel, ONE shell, with an open hollow back. Clean smooth surfaces, matte clay, sharp edges, no surface noise, no logos, no badges, no embossed text, no bolt holes, no fasteners, no mounting tabs, no flanges, no brackets. Never a solid block, never a paper-thin ribbon — a true hollow shell with visible wall thickness only at the open rim.`,
+            image: primaryImage,
+            steps: 50,
+            guidance_scale: 5.5,
+            octree_resolution: 256,
+            remove_background: true,
+            seed: 1234,
           },
         }),
       });
       if (!createResp.ok) {
         const t = await createResp.text();
-        console.error("Rodin create failed:", createResp.status, t.slice(0, 500));
-        return json({ error: `Rodin ${createResp.status}: ${t.slice(0, 300)}` }, 500);
+        console.error("Hunyuan3D create failed:", createResp.status, t.slice(0, 500));
+        return json({ error: `Hunyuan3D ${createResp.status}: ${t.slice(0, 300)}` }, 500);
       }
       const pred = await createResp.json();
       const taskId: string | undefined = pred.id;
-      if (!taskId) return json({ error: "Rodin returned no prediction id" }, 500);
-      console.log("meshify-part Rodin task created:", taskId, "for", part_kind);
+      if (!taskId) return json({ error: "Hunyuan3D returned no prediction id" }, 500);
+      console.log("meshify-part Hunyuan3D task created:", taskId, "for", part_kind);
       return json({ task_id: taskId, status: "IN_PROGRESS", progress: 0, is_multi: isMulti });
     }
 
@@ -119,35 +123,32 @@ Deno.serve(async (req) => {
     });
     if (!pollResp.ok) {
       const t = await pollResp.text();
-      return json({ error: `Rodin poll ${pollResp.status}: ${t.slice(0, 200)}` }, 500);
+      return json({ error: `Hunyuan3D poll ${pollResp.status}: ${t.slice(0, 200)}` }, 500);
     }
     const pred = await pollResp.json();
     const status: string = pred.status;
-    console.log("meshify-part Rodin poll:", status);
+    console.log("meshify-part Hunyuan3D poll:", status);
 
-    // Map Replicate statuses → our existing client contract (IN_PROGRESS / SUCCEEDED / FAILED).
     if (status === "failed" || status === "canceled") {
-      const msg = pred.error || `Rodin status: ${status}`;
+      const msg = pred.error || `Hunyuan3D status: ${status}`;
       return json({ status: "FAILED", error: String(msg).slice(0, 500) });
     }
 
     if (status !== "succeeded") {
-      // Replicate doesn't expose granular % progress for this model; fake a
-      // gentle ramp so the UI bar moves.
       const fakeProgress = status === "processing" ? 60 : status === "starting" ? 15 : 30;
       return json({ status: "IN_PROGRESS", progress: fakeProgress });
     }
 
-    // SUCCEEDED — Rodin output is a GLB (or array containing one).
+    // SUCCEEDED — Hunyuan3D-2 output is a GLB url (string, or array containing one).
     const out = pred.output;
     const glbUrl: string | undefined =
       typeof out === "string" ? out :
-      Array.isArray(out) ? (out.find((u: string) => typeof u === "string" && u.endsWith(".glb")) ?? out[0]) :
-      undefined;
+      Array.isArray(out) ? (out.find((u: string) => typeof u === "string" && (u.endsWith(".glb") || u.endsWith(".obj"))) ?? out[0]) :
+      (out?.mesh ?? out?.glb ?? undefined);
 
     if (!glbUrl) {
-      console.error("Rodin succeeded but no GLB url:", JSON.stringify(out).slice(0, 500));
-      return json({ error: "Rodin returned no GLB" }, 500);
+      console.error("Hunyuan3D succeeded but no GLB url:", JSON.stringify(out).slice(0, 500));
+      return json({ error: "Hunyuan3D returned no mesh" }, 500);
     }
 
     const glbResp = await fetch(glbUrl);
