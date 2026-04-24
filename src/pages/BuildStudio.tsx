@@ -39,6 +39,7 @@ import {
   FolderOpen,
   Boxes,
   Magnet,
+  Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,8 +56,10 @@ import {
 } from "@/lib/build-studio/placed-parts";
 import { useSnapZones } from "@/lib/build-studio/snap-zones";
 import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
+import { useBodySkins, useSignedBodySkinUrl, type BodySkin } from "@/lib/body-skins";
+import { useShellAlignment, useUpsertShellAlignment } from "@/lib/build-studio/shell-alignments";
 
-import { BuildStudioViewport, type CameraPreset, type TransformMode } from "@/components/build-studio/BuildStudioViewport";
+import { BuildStudioViewport, type CameraPreset, type TransformMode, type ShellTransform } from "@/components/build-studio/BuildStudioViewport";
 import { PartLibraryRail } from "@/components/build-studio/PartLibraryRail";
 import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
@@ -80,6 +83,33 @@ export default function BuildStudio() {
   const [showGrid, setShowGrid] = useState(true);
   const [showSnapZones, setShowSnapZones] = useState(true);
   const [preset, setPreset] = useState<CameraPreset>("free");
+
+  // Shell Fit Mode
+  const [shellSkinId, setShellSkinId] = useState<string | null>(null);
+  const [shellEditMode, setShellEditMode] = useState(false);
+  const { data: bodySkins = [] } = useBodySkins();
+  const activeSkin: BodySkin | null = useMemo(
+    () => bodySkins.find((s) => s.id === shellSkinId) ?? null,
+    [bodySkins, shellSkinId],
+  );
+  const skinAssetPath = activeSkin?.file_url_glb ?? activeSkin?.file_url_stl ?? null;
+  const skinKind: "glb" | "stl" | null = activeSkin?.file_url_glb
+    ? "glb"
+    : activeSkin?.file_url_stl
+      ? "stl"
+      : null;
+  const { data: bodySkinUrl } = useSignedBodySkinUrl(skinAssetPath);
+  const { data: alignment } = useShellAlignment(projectId, shellSkinId);
+  const upsertAlignment = useUpsertShellAlignment();
+
+  const shellTransform: ShellTransform | null = useMemo(() => {
+    if (!alignment) return null;
+    return {
+      position: alignment.position as any,
+      rotation: alignment.rotation as any,
+      scale: alignment.scale as any,
+    };
+  }, [alignment]);
 
   // Resolve real meshes for placed parts
   const libraryItemIds = useMemo(
@@ -175,6 +205,23 @@ export default function BuildStudio() {
 
   const handleSaveDesign = () => {
     toast.success(`Design saved (${parts.length} parts)`);
+  };
+
+  const handleShellCommit = (t: ShellTransform) => {
+    if (!user || !projectId || !shellSkinId) return;
+    upsertAlignment.mutate(
+      {
+        user_id: user.id,
+        project_id: projectId,
+        body_skin_id: shellSkinId,
+        position: t.position,
+        rotation: t.rotation,
+        scale: t.scale,
+      },
+      {
+        onError: (e: any) => toast.error(e.message ?? "Could not save alignment"),
+      },
+    );
   };
 
   /* ─── render ─── */
@@ -274,6 +321,41 @@ export default function BuildStudio() {
                   </SelectContent>
                 </Select>
 
+                <Separator orientation="vertical" className="h-5" />
+
+                {/* Shell Fit Mode */}
+                <Select
+                  value={shellSkinId ?? "__none__"}
+                  onValueChange={(v) => {
+                    setShellSkinId(v === "__none__" ? null : v);
+                    if (v === "__none__") setShellEditMode(false);
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-[180px] text-xs">
+                    <Layers className="mr-1 h-3 w-3 text-primary" />
+                    <SelectValue placeholder="Shell Fit: none" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No shell overlay</SelectItem>
+                    {bodySkins.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Toggle
+                  pressed={shellEditMode}
+                  onPressedChange={setShellEditMode}
+                  size="sm"
+                  className="h-7 px-2 data-[state=on]:bg-primary/20 data-[state=on]:text-primary"
+                  aria-label="Edit shell alignment"
+                  disabled={!shellSkinId}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                </Toggle>
+
                 <div className="ml-auto flex items-center gap-2">
                   <Button size="sm" variant="outline" onClick={handleSaveDesign} className="h-7 text-xs">
                     <Save className="mr-1 h-3 w-3" /> Save
@@ -296,6 +378,11 @@ export default function BuildStudio() {
                   <BuildStudioViewport
                     template={template}
                     heroStlUrl={heroStlUrl}
+                    bodySkinUrl={bodySkinUrl ?? null}
+                    bodySkinKind={skinKind}
+                    shellTransform={shellTransform}
+                    shellEditMode={shellEditMode}
+                    onShellCommit={handleShellCommit}
                     parts={parts}
                     libraryItemsById={libraryItemsById}
                     snapZones={snapZones}

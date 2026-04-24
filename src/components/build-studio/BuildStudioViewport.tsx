@@ -30,6 +30,12 @@ import { SnapZoneViz } from "@/components/build-studio/SnapZoneViz";
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
 
+export interface ShellTransform {
+  position: Vec3;
+  rotation: Vec3;
+  scale: Vec3;
+}
+
 interface ViewportProps {
   template?: CarTemplate | null;
   /** Signed URL for the project's hero STL (preferred over the box placeholder). */
@@ -37,6 +43,12 @@ interface ViewportProps {
   /** Optional body skin overlay (Shell Fit Mode). */
   bodySkinUrl?: string | null;
   bodySkinKind?: "stl" | "glb" | null;
+  /** Persisted transform of the shell overlay (Shell Fit). */
+  shellTransform?: ShellTransform | null;
+  /** True when the shell overlay should be the active gizmo target. */
+  shellEditMode?: boolean;
+  /** Called when the user releases the shell gizmo. */
+  onShellCommit?: (t: ShellTransform) => void;
   parts: PlacedPart[];
   /** Resolved library_items for placed parts so we can render real meshes. */
   libraryItemsById: Map<string, LibraryItem>;
@@ -116,16 +128,25 @@ function HeroStlCar({ url, template }: { url: string; template?: CarTemplate | n
 }
 
 /* ─── Body skin overlay (Shell Fit Mode) ─── */
-function BodySkinOverlay({
+const BodySkinOverlay = function BodySkinOverlay({
   url,
   kind,
   template,
+  transform,
+  groupRef,
+  onClick,
+  highlight,
 }: {
   url: string;
   kind: "stl" | "glb";
   template?: CarTemplate | null;
+  transform?: ShellTransform | null;
+  groupRef?: React.MutableRefObject<THREE.Group | null>;
+  onClick?: () => void;
+  highlight?: boolean;
 }) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
+  const localRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,12 +178,14 @@ function BodySkinOverlay({
           m.castShadow = false;
           m.receiveShadow = false;
           m.material = new THREE.MeshPhysicalMaterial({
-            color: "#fb923c",
+            color: highlight ? "#fb923c" : "#fb923c",
             metalness: 0.2,
             roughness: 0.6,
             transparent: true,
-            opacity: 0.45,
+            opacity: highlight ? 0.55 : 0.42,
             clearcoat: 0.3,
+            emissive: highlight ? "#7c2d12" : "#000000",
+            emissiveIntensity: highlight ? 0.15 : 0,
           });
         }
       });
@@ -199,11 +222,38 @@ function BodySkinOverlay({
     return () => {
       cancelled = true;
     };
-  }, [url, kind, template?.wheelbase_mm]);
+  }, [url, kind, template?.wheelbase_mm, highlight]);
+
+  // Apply transform when it changes (without overriding gizmo dragging).
+  useEffect(() => {
+    const g = localRef.current;
+    if (!g || !transform) return;
+    g.position.set(transform.position.x, transform.position.y, transform.position.z);
+    g.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
+    g.scale.set(transform.scale.x, transform.scale.y, transform.scale.z);
+  }, [transform]);
 
   if (!object) return null;
-  return <primitive object={object} />;
-}
+  return (
+    <group
+      ref={(node) => {
+        localRef.current = node;
+        if (groupRef) groupRef.current = node;
+      }}
+      name="shell-overlay"
+      onClick={
+        onClick
+          ? (e) => {
+              e.stopPropagation();
+              onClick();
+            }
+          : undefined
+      }
+    >
+      <primitive object={object} />
+    </group>
+  );
+};
 
 /* ─── Procedural car placeholder (fallback) ─── */
 function CarPlaceholder({ template }: { template?: CarTemplate | null }) {
@@ -298,6 +348,9 @@ export function BuildStudioViewport({
   heroStlUrl,
   bodySkinUrl,
   bodySkinKind,
+  shellTransform,
+  shellEditMode,
+  onShellCommit,
   parts,
   libraryItemsById,
   snapZones = [],
@@ -311,8 +364,12 @@ export function BuildStudioViewport({
 }: ViewportProps) {
   const orbitRef = useRef<any>(null);
   const transformRef = useRef<any>(null);
+  const shellTransformRef = useRef<any>(null);
+  const shellGroupRef = useRef<THREE.Group | null>(null);
   const selected = parts.find((p) => p.id === selectedId) ?? null;
   const [meshNode, setMeshNode] = useState<THREE.Object3D | null>(null);
+
+  const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellGroupRef.current;
 
   return (
     <Canvas
@@ -363,7 +420,14 @@ export function BuildStudioViewport({
 
       {bodySkinUrl && bodySkinKind && (
         <Suspense fallback={null}>
-          <BodySkinOverlay url={bodySkinUrl} kind={bodySkinKind} template={template} />
+          <BodySkinOverlay
+            url={bodySkinUrl}
+            kind={bodySkinKind}
+            template={template}
+            transform={shellTransform ?? null}
+            groupRef={shellGroupRef}
+            highlight={!!shellEditMode}
+          />
         </Suspense>
       )}
 
@@ -384,7 +448,7 @@ export function BuildStudioViewport({
         onMeshFound={setMeshNode}
       />
 
-      {selected && meshNode && !selected.locked && (
+      {!shellEditMode && selected && meshNode && !selected.locked && (
         <TransformControls
           ref={transformRef}
           object={meshNode}
@@ -432,6 +496,28 @@ export function BuildStudioViewport({
                 y: meshNode.scale.y,
                 z: meshNode.scale.z,
               },
+            });
+          }}
+        />
+      )}
+
+      {showShellGizmo && shellGroupRef.current && (
+        <TransformControls
+          ref={shellTransformRef}
+          object={shellGroupRef.current}
+          mode={transformMode}
+          size={0.9}
+          onMouseDown={() => {
+            if (orbitRef.current) orbitRef.current.enabled = false;
+          }}
+          onMouseUp={() => {
+            if (orbitRef.current) orbitRef.current.enabled = true;
+            const g = shellGroupRef.current;
+            if (!g || !onShellCommit) return;
+            onShellCommit({
+              position: { x: g.position.x, y: g.position.y, z: g.position.z },
+              rotation: { x: g.rotation.x, y: g.rotation.y, z: g.rotation.z },
+              scale: { x: g.scale.x, y: g.scale.y, z: g.scale.z },
             });
           }}
         />
