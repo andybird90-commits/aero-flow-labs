@@ -71,7 +71,7 @@ export const FIT_CLASS_LABEL: Record<PartFitClass, string> = {
 
 export const FIT_CLASS_DESCRIPTION: Record<PartFitClass, string> = {
   free_standing:
-    "Bolt-on aero with its own clean shape (wings, diffusers, splitters, canards). Goes straight to image-to-3D.",
+    "Bolt-on aero with its own clean shape (wings, diffusers, splitters, canards). CAD or mesh AI both work well.",
   body_conforming:
-    "Blends into the bodywork (arches, scoops, skirts, lips). Image-to-3D fails — fit against the base car mesh in the geometry worker instead.",
+    "Blends into the bodywork (arches, scoops, skirts, lips). Best fitted via Blender against the base car mesh, but you can still try mesh AI or CAD.",
 };
