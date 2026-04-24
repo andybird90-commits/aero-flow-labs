@@ -60,10 +60,23 @@ export function useGenerateCadRecipe() {
         body: input,
       });
       if (error) throw error;
-      const payload = data as { recipe?: any; error?: string };
-      if (payload?.error) throw new Error(payload.error);
+      const payload = data as {
+        recipe?: any;
+        error?: string;
+        issues?: string[];
+        fallback_used?: boolean;
+        original_issues?: string[];
+      };
+      if (payload?.error) {
+        const detail = payload.issues?.length ? `\n• ${payload.issues.slice(0, 5).join("\n• ")}` : "";
+        throw new Error(payload.error + detail);
+      }
       if (!payload?.recipe) throw new Error("No recipe returned");
-      return payload.recipe as Record<string, any>;
+      return {
+        recipe: payload.recipe as Record<string, any>,
+        fallback_used: !!payload.fallback_used,
+        original_issues: payload.original_issues ?? [],
+      };
     },
   });
 }
