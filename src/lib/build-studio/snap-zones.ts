@@ -146,17 +146,17 @@ export const SNAP_ZONE_LABELS: Record<SnapZoneType, string> = {
   front_right_arch: "Front R arch",
   rear_left_arch: "Rear L arch",
   rear_right_arch: "Rear R arch",
-  front_bumper: "Front bumper",
-  rear_bumper: "Rear bumper",
   front_splitter: "Front splitter",
   rear_diffuser: "Rear diffuser",
-  side_skirt_left: "Side skirt L",
-  side_skirt_right: "Side skirt R",
+  left_sill: "Side skirt L",
+  right_sill: "Side skirt R",
   rear_wing: "Rear wing",
-  hood: "Hood",
+  bonnet: "Bonnet",
   roof: "Roof",
-  trunk: "Trunk",
-  bonnet_vent: "Bonnet vent",
-  mirror_left: "Mirror L",
-  mirror_right: "Mirror R",
-} as Record<SnapZoneType, string>;
+  left_door: "Door L",
+  right_door: "Door R",
+  left_quarter: "Quarter L",
+  right_quarter: "Quarter R",
+};
+
+export const SNAP_ZONE_TYPES: SnapZoneType[] = Object.keys(SNAP_ZONE_LABELS) as SnapZoneType[];
