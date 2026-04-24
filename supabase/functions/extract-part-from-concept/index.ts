@@ -155,6 +155,22 @@ Deno.serve(async (req) => {
     }
     const kind = part_kind as Kind;
 
+    // Fast-path for body-swap PANEL kinds: there's no aerodynamic parameter
+    // to measure — the part IS a crop of the swap shell. The hotspot box
+    // already gave us the exact image region; we just stamp the
+    // conform-to-donor flag so meshify-carbon-kit knows to build an inner
+    // skin that hugs the donor stock body.
+    if (PANEL_KINDS.has(kind)) {
+      return json({
+        kind,
+        present: true,
+        reasoning:
+          "Body-swap panel — outer surface taken from the swap-shell render; " +
+          "inner surface will be conformed to the donor stock panel by the meshify worker.",
+        params: { ...DEFAULT_PARAMS[kind] },
+      });
+    }
+
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
