@@ -111,8 +111,13 @@ Deno.serve(async (req) => {
               part_type: recipe.part_type ?? part_kind,
               features: [
                 {
+                  // Legacy worker iterates features and reads `type`. Use
+                  // "builder" so a builder-aware worker can dispatch, and
+                  // also include `op` for the same reason.
+                  type: "builder",
                   op: "builder",
                   builder: recipe.builder,
+                  part_type: recipe.part_type ?? part_kind,
                   params: recipe.params,
                 },
               ],
