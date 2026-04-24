@@ -68,9 +68,108 @@ Rules:
 - Worker-safe mode is preferred: use only named planes ("XY", "YZ", "XZ"), not custom {origin, normal} planes.
 - Prefer one closed sketch + extrude over loft / sweep whenever possible.
 - Never use negative extrude depths.
+- Never include unsupported placement keys like "origin" on extrude features; place the sketch on the correct named plane instead.
+- Shell thickness must always be strictly positive.
+- Keep each sketch to closed, manufacturable profiles; avoid disconnected multi-island sketches unless absolutely necessary.
 - Never draw a full circle with one arc from 0 to 360 degrees.
 - For body panels like fenders / arches, return a conservative manufacturable solid rather than a sculpted multi-plane loft.
 - Return ONLY the JSON object.`;
+
+const NAMED_PLANES = new Set(["XY", "YZ", "XZ"]);
+const BODY_PRODUCING = new Set([
+  "extrude", "loft", "revolve", "sweep", "boolean",
+  "shell", "fillet", "chamfer", "mirror",
+]);
+
+function collectRecipeIssues(recipe: any): string[] {
+  if (!recipe || typeof recipe !== "object") return ["Recipe must be a JSON object."];
+  if (!Array.isArray(recipe.features) || recipe.features.length === 0) {
+    return ["Recipe must include a non-empty features array."];
+  }
+
+  const issues: string[] = [];
+  const ids = new Set<string>();
+
+  for (const feature of recipe.features) {
+    if (!feature || typeof feature !== "object") {
+      issues.push("Every feature must be an object.");
+      continue;
+    }
+
+    const id = typeof feature.id === "string" ? feature.id : "(missing id)";
+    const type = typeof feature.type === "string" ? feature.type : "(missing type)";
+
+    if (typeof feature.id !== "string" || !feature.id) {
+      issues.push(`Feature ${id} is missing a string id.`);
+    } else if (ids.has(feature.id)) {
+      issues.push(`Feature ${feature.id} is duplicated.`);
+    } else {
+      ids.add(feature.id);
+    }
+
+    if (typeof feature.type !== "string" || !feature.type) {
+      issues.push(`Feature ${id} is missing a string type.`);
+      continue;
+    }
+
+    if (type === "sketch") {
+      if (!NAMED_PLANES.has(feature.plane)) {
+        issues.push(`Sketch ${id} must use plane XY, YZ, or XZ.`);
+      }
+      for (const curve of Array.isArray(feature.curves) ? feature.curves : []) {
+        if (
+          curve?.type === "arc" &&
+          typeof curve.start_deg === "number" &&
+          typeof curve.end_deg === "number" &&
+          Math.abs(curve.end_deg - curve.start_deg) >= 360
+        ) {
+          issues.push(`Sketch ${id} contains a full-circle arc, which the worker cannot build safely.`);
+        }
+      }
+    }
+
+    if (type === "extrude") {
+      if (
+        typeof feature.depth_mm !== "number" ||
+        !Number.isFinite(feature.depth_mm) ||
+        feature.depth_mm <= 0
+      ) {
+        issues.push(`Extrude ${id} must use a positive depth_mm.`);
+      }
+      if (feature.origin !== undefined) {
+        issues.push(`Extrude ${id} uses unsupported origin placement.`);
+      }
+    }
+
+    if (type === "shell") {
+      if (
+        typeof feature.thickness_mm !== "number" ||
+        !Number.isFinite(feature.thickness_mm) ||
+        feature.thickness_mm <= 0
+      ) {
+        issues.push(`Shell ${id} must use a positive thickness_mm.`);
+      }
+    }
+
+    if (type === "mirror") {
+      const plane = feature.plane ?? "YZ";
+      if (!NAMED_PLANES.has(plane)) {
+        issues.push(`Mirror ${id} must use plane XY, YZ, or XZ.`);
+      }
+    }
+  }
+
+  const hasBody = recipe.features.some(
+    (f: any) => f && typeof f.type === "string" && BODY_PRODUCING.has(f.type),
+  );
+  if (!hasBody) {
+    issues.push(
+      "Recipe has no body-producing feature (need at least one extrude / loft / revolve / sweep).",
+    );
+  }
+
+  return issues;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -138,25 +237,12 @@ Deno.serve(async (req) => {
       return json({ error: "AI returned invalid JSON", raw: raw.slice(0, 500) }, 500);
     }
 
-    if (!recipe || typeof recipe !== "object" || !Array.isArray(recipe.features)) {
-      return json({ error: "Recipe missing features[]", recipe }, 422);
-    }
-
-    // Hard guarantee: at least one feature that actually produces a 3D body.
-    // Without this the CAD worker returns IndexError on `bodies[-1]`.
-    const BODY_PRODUCING = new Set([
-      "extrude", "loft", "revolve", "sweep", "boolean",
-      "shell", "fillet", "chamfer", "mirror",
-    ]);
-    const hasBody = recipe.features.some(
-      (f: any) => f && typeof f.type === "string" && BODY_PRODUCING.has(f.type),
-    );
-    if (!hasBody) {
+    const issues = collectRecipeIssues(recipe);
+    if (issues.length) {
       return json(
         {
-          error:
-            "Recipe has no body-producing feature (need at least one extrude / loft / revolve / sweep). " +
-            "Try regenerating with more specific designer notes.",
+          error: `Recipe is not CAD-worker-safe: ${issues[0]}`,
+          issues,
           recipe,
         },
         422,
