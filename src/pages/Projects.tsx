@@ -41,6 +41,7 @@ export default function Projects() {
   const del = useDeleteProject();
   const update = useUpdateProject();
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [templateCar, setTemplateCar] = useState<Car | null>(null);
 
   const [openNew, setOpenNew] = useState(false);
   const [newName, setNewName] = useState("");
