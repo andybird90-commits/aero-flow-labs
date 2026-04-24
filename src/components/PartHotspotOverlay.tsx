@@ -406,7 +406,7 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
           kind={preview.kind}
           label={preview.label}
           filenameBase={preview.filenameBase}
-          sourceImageUrl={sourceImageUrl}
+          sourceImageUrl={preview.sourceUrl || sourceImageUrl}
           bbox={preview.bbox}
         />
       )}
