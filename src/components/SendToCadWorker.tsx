@@ -216,8 +216,13 @@ export function SendToCadWorker({
               <div className="rounded-md border border-success/40 bg-success/10 text-xs p-3 inline-flex items-start gap-2">
                 <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-success" />
                 <div>
-                  Recipe ready — <span className="font-mono">{recipe?.features?.length ?? 0}</span> features.
-                  Step 2: dispatch to the Onshape worker.
+                  {recipe.builder ? (
+                    <>Builder <span className="font-mono">{recipe.builder}</span> ready —{" "}
+                    <span className="font-mono">{Object.keys(recipe.params ?? {}).length}</span> validated params.</>
+                  ) : (
+                    <>Recipe ready — <span className="font-mono">{recipe?.features?.length ?? 0}</span> features.</>
+                  )}{" "}
+                  Step 2: dispatch to the CAD worker.
                 </div>
               </div>
             )}
