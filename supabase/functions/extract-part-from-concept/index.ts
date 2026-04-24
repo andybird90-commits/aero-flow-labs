@@ -204,7 +204,9 @@ Deno.serve(async (req) => {
     const widthMm  = Number(meta?.bounds?.width_mm  ?? 1780);
     const lengthMm = Number(meta?.bounds?.length_mm ?? 4400);
 
-    const partProps = PARAM_SCHEMA[kind];
+    // Bolt-on path — guarded by the PANEL_KINDS short-circuit above, so this
+    // lookup is always defined for non-panel kinds.
+    const partProps = PARAM_SCHEMA[kind]!;
     const paramSchema = {
       type: "object",
       properties: {
