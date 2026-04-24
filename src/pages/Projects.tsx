@@ -10,7 +10,9 @@ import {
   useGarageCars,
 } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Hexagon, Sparkles, Trash2, ArrowRight, Clock, Car as CarIcon } from "lucide-react";
+import { Plus, Hexagon, Sparkles, Trash2, ArrowRight, Clock, Car as CarIcon, Boxes } from "lucide-react";
+import { CarTemplatePickerDialog } from "@/components/CarTemplatePickerDialog";
+import type { Car } from "@/lib/repo";
 import { formatDistanceToNow } from "date-fns";
 import { StatusChip } from "@/components/StatusChip";
 import { useState } from "react";
