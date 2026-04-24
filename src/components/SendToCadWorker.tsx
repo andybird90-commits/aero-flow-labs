@@ -124,11 +124,13 @@ export function SendToCadWorker({
         notes,
       });
       setRecipe(r.recipe);
+      const builder = r.recipe?.builder ?? "(legacy recipe)";
+      const paramCount = r.recipe?.params ? Object.keys(r.recipe.params).length : (r.recipe?.features?.length ?? 0);
       toast({
-        title: r.fallback_used ? "Recipe ready (fallback)" : "Recipe ready",
+        title: r.fallback_used ? "Params ready (defaults)" : "Params ready",
         description: r.fallback_used
-          ? `AI output failed worker safety checks — using a conservative template (${r.recipe?.features?.length ?? 0} features).`
-          : `${r.recipe?.features?.length ?? 0} CAD features.`,
+          ? `AI couldn't fit valid params — using safe defaults for ${builder} (${paramCount} params).`
+          : `${builder}: ${paramCount} validated params.`,
       });
     } catch (e: any) {
       toast({ title: "Recipe failed", description: String(e.message ?? e), variant: "destructive" });
