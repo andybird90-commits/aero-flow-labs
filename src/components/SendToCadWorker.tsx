@@ -25,6 +25,8 @@ import {
   useCadJob,
   useRefreshCadJob,
 } from "@/lib/cad-jobs";
+import { useCadWorkerStatus } from "@/lib/cad-worker-status";
+import { CadWorkerSetupCard } from "@/components/CadWorkerSetupCard";
 
 interface Props {
   open: boolean;
@@ -49,6 +51,8 @@ export function SendToCadWorker({
   const generate = useGenerateCadRecipe();
   const dispatch = useDispatchCadJob();
   const refresh = useRefreshCadJob();
+  const workerStatus = useCadWorkerStatus(open);
+  const ready = workerStatus.data?.state === "ok";
   const [notes, setNotes] = useState("");
   const [recipe, setRecipe] = useState<Record<string, any> | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -169,6 +173,21 @@ export function SendToCadWorker({
 
         {!jobId ? (
           <div className="space-y-4 text-sm">
+            <CadWorkerSetupCard
+              status={workerStatus.data}
+              loading={workerStatus.isLoading}
+              onAddSecrets={(names) => {
+                const list = names.join(", ");
+                if (typeof navigator !== "undefined" && navigator.clipboard) {
+                  navigator.clipboard.writeText(list).catch(() => {});
+                }
+                toast({
+                  title: "Ask the AI to add these secrets",
+                  description: `Copied to clipboard: ${list}. In chat, ask: "Add ${list} as Lovable Cloud secrets" — then click Re-check here.`,
+                });
+              }}
+            />
+
             <div className="space-y-1.5">
               <Label className="text-xs uppercase tracking-widest font-mono text-muted-foreground">
                 Designer notes (optional)
@@ -178,6 +197,7 @@ export function SendToCadWorker({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
+                disabled={!ready}
               />
             </div>
 
@@ -271,14 +291,14 @@ export function SendToCadWorker({
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Close</Button>
           {!jobId && !recipe && (
-            <Button onClick={onGenerate} disabled={generate.isPending}>
+            <Button onClick={onGenerate} disabled={generate.isPending || !ready}>
               {generate.isPending
                 ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Generating recipe…</>
                 : <><Wrench className="h-4 w-4 mr-1" /> Generate CAD recipe</>}
             </Button>
           )}
           {!jobId && recipe && (
-            <Button onClick={onDispatch} disabled={dispatch.isPending}>
+            <Button onClick={onDispatch} disabled={dispatch.isPending || !ready}>
               {dispatch.isPending
                 ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Dispatching…</>
                 : <><Send className="h-4 w-4 mr-1" /> Send to CAD worker</>}
