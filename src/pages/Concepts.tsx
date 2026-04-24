@@ -522,9 +522,9 @@ function ConceptCard({
       {/* Click-to-extract hotspots overlay (AI pick mode).
           In body-swap mode the detector returns body-panel boxes instead of
           bolt-on aero parts (fender, door skin, rear quarter, etc.). */}
-      {current && pickMode && (
+      {current && pickMode && (!zoomOpen || variant === "zoom") && (
         <PartHotspotOverlay
-          active={pickMode}
+          active={pickMode && (!zoomOpen || variant === "zoom")}
           view={current.key}
           projectId={projectId}
           conceptId={concept.id}
