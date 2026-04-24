@@ -160,13 +160,17 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
   const onPick = useCallback((zone: Box) => {
     const safeTitle = conceptTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "concept";
     const safeLabel = zone.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    // Prefer the URL the AI actually analyzed; only fall back to the on-screen
+    // image when we don't have one (older cached entries).
+    const pinned = analyzedUrlRef.current.get(cacheKey) ?? sourceImageUrl ?? "";
     setPreview({
       kind: zone.kind,
       label: zone.label,
       filenameBase: `${safeTitle}__${safeLabel || zone.kind}`,
       bbox: { x: zone.x, y: zone.y, w: zone.w, h: zone.h },
+      sourceUrl: pinned,
     });
-  }, [conceptTitle]);
+  }, [conceptTitle, cacheKey, sourceImageUrl]);
 
   const updateBox = useCallback((idx: number, next: Box) => {
     setBoxes((prev) => {
