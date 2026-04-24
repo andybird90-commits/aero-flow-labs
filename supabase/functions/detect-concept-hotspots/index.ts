@@ -322,7 +322,15 @@ Deno.serve(async (req) => {
     // detections coexist on the same concept row.
     const nextHotspots = {
       ...existing,
-      [cacheKey]: { boxes, detected_at: new Date().toISOString(), mode: swapMode ? "body_swap" : "bolt_on" },
+      [cacheKey]: {
+        boxes,
+        detected_at: new Date().toISOString(),
+        mode: swapMode ? "body_swap" : "bolt_on",
+        // Pin the exact image the boxes were measured against, so downstream
+        // crop/extract uses the same pixels — otherwise carbon-vs-regular
+        // framing offsets cause boxes to land on the wrong part.
+        analyzed_url: renderUrl,
+      },
     };
     const { error: upErr } = await admin
       .from("concepts")
@@ -330,7 +338,7 @@ Deno.serve(async (req) => {
       .eq("id", concept_id);
     if (upErr) console.error("hotspot cache write failed", upErr);
 
-    return json({ boxes, cached: false });
+    return json({ boxes, analyzed_url: renderUrl, cached: false });
   } catch (e) {
     console.error("detect-concept-hotspots error", e);
     return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
