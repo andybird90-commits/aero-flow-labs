@@ -747,8 +747,34 @@ async function renderAngle({
           ? `image #${firstRefIdx}`
           : `images #${firstRefIdx}–#${lastRefIdx}`;
         const carClause = userCarRefAttached
-          ? `Image #1 is the SUBJECT CAR (use its body, colour, wheels, identity). `
+          ? `Image #1 is the SUBJECT CAR / DONOR (use it ONLY for chassis identity, wheelbase, greenhouse, glass, headlight position, wheels and overall scale). `
           : ``;
+
+        if (bodySwapMode) {
+          // Body-swap kit: refs ARE the new bodywork (Vale, Old & New, RWB-style).
+          // The donor car is just the chassis underneath.
+          return (
+            `\n\nBODY-SWAP KIT MODE — STRICT REPLICATION: ${carClause}` +
+            `${range} show the EXACT BODY-SWAP KIT the user wants applied to the donor car ` +
+            `(think Vale GT1 over a 986 Boxster, or Old & New slantnose over a 996 — the kit ` +
+            `replaces the entire visible bodywork: front bumper, fenders, hood, side skirts, ` +
+            `rear bumper, ducktail/wing). ` +
+            `\n\nYour job is to render the donor car WEARING this kit. The kit silhouette in the ` +
+            `references is AUTHORITATIVE: match the front fascia profile, headlight cutouts, ` +
+            `intake shapes, fender flare width and curvature, hood vents and bulges, A-pillar-to-roof ` +
+            `transition, side skirt geometry, rear deck/ducktail shape, wing mount and chord, ` +
+            `diffuser strake count, ride height and wheel offset. ` +
+            `\n\nDO NOT keep the donor car's stock front bumper, stock fenders, stock hood, stock ` +
+            `rear bumper or stock side skirts — those panels are REPLACED by the kit. The only ` +
+            `things preserved from the donor are: greenhouse/cabin/doors/glass, factory headlights ` +
+            `IF the kit reuses them (otherwise match the kit's lights), wheelbase, and overall scale. ` +
+            `\n\nDO NOT freestyle. DO NOT mix in aero parts that aren't in the references. ` +
+            `Brief text and variation flavour are IGNORED whenever they conflict with the kit photos. ` +
+            `Only the camera angle, the carbon material finish, and the donor car's identity tells (badge, ` +
+            `paint colour if not specified by the kit) are yours to control.`
+          );
+        }
+
         return (
           `\n\nBODY KIT MATCH MODE — STRICT: ${carClause}` +
           `${range} are user-supplied REFERENCE PHOTOS of the exact body kit / aero parts the user wants. ` +
