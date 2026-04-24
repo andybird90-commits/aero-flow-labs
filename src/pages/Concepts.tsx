@@ -493,7 +493,10 @@ function ConceptCard({
               key={current.url}
               src={current.url}
               alt={`${concept.title} — ${current.label}`}
-              className="absolute inset-0 h-full w-full object-cover animate-fade-in"
+              className={cn(
+                "absolute inset-0 h-full w-full animate-fade-in",
+                anyPartMode ? "object-contain" : "object-cover",
+              )}
             />
             {!anyPartMode && (
               <span className="absolute bottom-2 right-2 rounded-md bg-surface-0/85 backdrop-blur px-2 py-1 border border-border text-mono text-[10px] uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

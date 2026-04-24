@@ -11,7 +11,7 @@
  * move and the corner/edge handles to resize for a tighter crop before
  * extracting via the "Use this crop" confirm button.
  */
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Loader2, Wand2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExtractedPartPreview } from "@/components/ExtractedPartPreview";
@@ -94,6 +94,30 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
   const analyzedUrlRef = useRef<Map<string, string>>(new Map());
   const modeKey = bodySwapMode ? "swap" : "bolton";
   const cacheKey = `${conceptId}:${view}:${modeKey}`;
+  const [imageRect, setImageRect] = useState({ left: 0, top: 0, width: 1, height: 1 });
+
+  // Measure the actual rendered <img> bounds inside the container. This is
+  // critical when the image uses object-contain: the visible pixels are
+  // letterboxed inside the viewer, so overlay coordinates must be relative to
+  // the fitted image rect, not the full container.
+  useEffect(() => {
+    if (!active || !containerRef.current) return;
+    const update = () => {
+      const img = containerRef.current?.parentElement?.querySelector("img") as HTMLImageElement | null;
+      const parent = containerRef.current?.getBoundingClientRect();
+      const box = img?.getBoundingClientRect();
+      if (!img || !parent || !box) return;
+      setImageRect({
+        left: Math.max(0, box.left - parent.left),
+        top: Math.max(0, box.top - parent.top),
+        width: Math.max(1, box.width),
+        height: Math.max(1, box.height),
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [active, sourceImageUrl, view, bodySwapMode, boxes?.length]);
 
   // Drag state lives in a ref so listeners don't cause rerenders mid-drag.
   const dragRef = useRef<{
@@ -101,11 +125,10 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
     handle: Handle;
     startX: number;
     startY: number;
-    rect: DOMRect;
+    rect: { width: number; height: number };
     startBox: Box;
     moved: boolean;
   } | null>(null);
-
   useEffect(() => {
     if (!active) return;
 
@@ -264,7 +287,7 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
       handle,
       startX: e.clientX,
       startY: e.clientY,
-      rect: containerRef.current.getBoundingClientRect(),
+      rect: { width: imageRect.width, height: imageRect.height },
       startBox: { ...box },
       moved: false,
     };
@@ -307,10 +330,10 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
                 onMouseEnter={() => setHoverIdx(i)}
                 onMouseLeave={() => setHoverIdx((h) => (h === i ? null : h))}
                 style={{
-                  left:   `${z.x * 100}%`,
-                  top:    `${z.y * 100}%`,
-                  width:  `${z.w * 100}%`,
-                  height: `${z.h * 100}%`,
+                  left:   `${imageRect.left + z.x * imageRect.width}px`,
+                  top:    `${imageRect.top + z.y * imageRect.height}px`,
+                  width:  `${z.w * imageRect.width}px`,
+                  height: `${z.h * imageRect.height}px`,
                 }}
                 className={cn(
                   "absolute pointer-events-auto rounded-md border-2 border-dashed transition-colors group/box",
