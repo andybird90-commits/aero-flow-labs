@@ -560,7 +560,13 @@ async function runSingleVariation({
   const otherAngles = ANGLES.filter((a) => a.key !== "front_three_quarter");
 
   const userFrontRef = context.snaps.front_three_quarter;
-  const frontRefs = isImageRef(userFrontRef) ? [userFrontRef] : [];
+  const frontRefs: string[] = [];
+  if (isImageRef(userFrontRef)) frontRefs.push(userFrontRef);
+  // Brief-uploaded body kit references go on the FRONT 3/4 hero render so the
+  // AI can match the requested kit. Other angles inherit the look from the
+  // generated front concept image, so we don't re-attach them downstream.
+  for (const u of context.briefReferenceUrls) frontRefs.push(u);
+
   const frontResult = await renderAngle({
     admin,
     userId,
@@ -573,6 +579,8 @@ async function runSingleVariation({
     aggression: context.aggression,
     discipline: context.discipline,
     extraModifier: body.extra_modifier ?? null,
+    briefReferenceCount: context.briefReferenceUrls.length,
+    userCarRefAttached: isImageRef(userFrontRef),
   });
   if (!frontResult) {
     console.warn("Front 3/4 render failed for variation:", v.title);
