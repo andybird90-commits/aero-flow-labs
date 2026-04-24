@@ -14,6 +14,10 @@
  */
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+declare const EdgeRuntime: {
+  waitUntil(promise: Promise<unknown>): void;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -116,7 +120,7 @@ async function runBuildInBackground({ conceptId, authHeader }: { conceptId: stri
   }
 }
 
-async function markFailed(admin: ReturnType<typeof createClient>, conceptId: string, message: string) {
+async function markFailed(admin: any, conceptId: string, message: string) {
   await admin.from("concepts").update({ aero_kit_status: "failed", aero_kit_error: message }).eq("id", conceptId);
 }
 
