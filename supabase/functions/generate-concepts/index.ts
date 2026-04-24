@@ -374,19 +374,35 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   const rawCount = Number((brief as any).variation_count);
   const variationCount = Number.isFinite(rawCount) ? Math.max(1, Math.min(5, Math.trunc(rawCount))) : 4;
 
+  // SURGICAL MODE: a short, focused brief like "25mm wider arches all around".
+  // Bypass discipline/aggression baselines so the AI doesn't bolt on a wing,
+  // diffuser, vents, splitter etc. that the user never asked for.
+  const surgicalMode = !presetMode && sniffSurgical(briefText, mustInclude, mustAvoid);
+
   // Build the master style prompt with discipline/aggression up front.
   const disciplineLine =
-    discipline !== "auto"
+    !surgicalMode && discipline !== "auto"
       ? `BUILD DISCIPLINE (highest priority): ${disciplineHumanLabel(discipline)}. Baseline aero/styling expected for this discipline: ${DISCIPLINE_AERO[discipline].join("; ")}.`
       : "";
   const aggressionLine =
-    aggression !== "auto"
+    !surgicalMode && aggression !== "auto"
       ? `AGGRESSION LEVEL: ${aggression}. ${AGGRESSION_TONE[aggression]}`
       : "";
   const includeLine = mustInclude.length ? `MUST INCLUDE: ${mustInclude.join(", ")}.` : "";
   const avoidLine = mustAvoid.length ? `MUST AVOID: ${mustAvoid.join(", ")}.` : "";
 
+  const surgicalHeader = surgicalMode
+    ? `SURGICAL CHANGE MODE — STRICT: The user has requested a small, ` +
+      `focused modification. Apply ONLY the change described in the brief. ` +
+      `Do NOT add wings, splitters, diffusers, canards, side skirts, vents, ` +
+      `ducktails, hood scoops, fender flares, lower the ride height, or change ` +
+      `wheels unless the brief explicitly asks for them. Every other panel, ` +
+      `body line, ride height, wheel and detail must remain identical to the ` +
+      `reference car. Treat this as a precise edit, not a re-design.`
+    : "";
+
   const stylePrompt = [
+    surgicalHeader,
     disciplineLine,
     aggressionLine,
     briefText
@@ -394,10 +410,10 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
       : "",
     includeLine,
     avoidLine,
-    preset?.prompt ? `Style DNA — ${preset.name}: ${preset.prompt}` : "",
-    buildType ? `Build type: ${buildType}.` : "",
-    styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
-    styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
+    !surgicalMode && preset?.prompt ? `Style DNA — ${preset.name}: ${preset.prompt}` : "",
+    !surgicalMode && buildType ? `Build type: ${buildType}.` : "",
+    !surgicalMode && styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
+    !surgicalMode && styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
     vehicleLabel
       ? `SUBJECT VEHICLE (lowest styling priority; only identity/proportions): ${vehicleLabel}.`
       : "",
@@ -408,6 +424,15 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   let variations: Variation[];
   if (body.variation_seed) {
     variations = [body.variation_seed];
+  } else if (surgicalMode) {
+    // ONE concept, literal change only. No "alternate direction" tiles —
+    // the user asked for a precise tweak, not a styling exploration.
+    variations = [{
+      title: "Literal change",
+      direction: `Apply only the brief: "${briefText}". Keep everything else identical.`,
+      modifier: briefText,
+      emphasis: `The ONLY visible difference from the reference car must be: ${briefText}. Do not add any other parts.`,
+    }];
   } else if (presetMode) {
     variations = presetVariations(preset).slice(0, variationCount);
     // If user requested more than the preset offers, pad by repeating the last entry.
