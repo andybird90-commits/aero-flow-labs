@@ -38,6 +38,7 @@ import {
   Camera,
   FolderOpen,
   Boxes,
+  Magnet,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -52,6 +53,8 @@ import {
   useDuplicatePlacedPart,
   type PlacedPart,
 } from "@/lib/build-studio/placed-parts";
+import { useSnapZones } from "@/lib/build-studio/snap-zones";
+import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
 
 import { BuildStudioViewport, type CameraPreset, type TransformMode } from "@/components/build-studio/BuildStudioViewport";
 import { PartLibraryRail } from "@/components/build-studio/PartLibraryRail";
@@ -75,7 +78,20 @@ export default function BuildStudio() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<TransformMode>("translate");
   const [showGrid, setShowGrid] = useState(true);
+  const [showSnapZones, setShowSnapZones] = useState(true);
   const [preset, setPreset] = useState<CameraPreset>("free");
+
+  // Resolve real meshes for placed parts
+  const libraryItemIds = useMemo(
+    () => parts.map((p) => p.library_item_id).filter(Boolean) as string[],
+    [parts],
+  );
+  const { data: libraryItemsById = new Map() } = useLibraryItemsByIds(libraryItemIds);
+
+  // Snap zones for the project's car template (if assigned)
+  const carTemplateId = (project?.car as any)?.template_id ?? null;
+  const { data: snapZones = [] } = useSnapZones(carTemplateId);
+
 
   const selected = useMemo(
     () => parts.find((p) => p.id === selectedId) ?? null,
@@ -231,6 +247,17 @@ export default function BuildStudio() {
                   <Grid3x3 className="h-3.5 w-3.5" />
                 </Toggle>
 
+                <Toggle
+                  pressed={showSnapZones}
+                  onPressedChange={setShowSnapZones}
+                  size="sm"
+                  className="h-7 px-2"
+                  aria-label="Toggle snap zones"
+                  disabled={!carTemplateId}
+                >
+                  <Magnet className="h-3.5 w-3.5" />
+                </Toggle>
+
                 <Select value={preset} onValueChange={(v) => setPreset(v as CameraPreset)}>
                   <SelectTrigger className="h-7 w-[140px] text-xs">
                     <Camera className="mr-1 h-3 w-3" />
@@ -270,6 +297,9 @@ export default function BuildStudio() {
                     template={template}
                     heroStlUrl={heroStlUrl}
                     parts={parts}
+                    libraryItemsById={libraryItemsById}
+                    snapZones={snapZones}
+                    showSnapZones={showSnapZones}
                     selectedId={selectedId}
                     onSelect={setSelectedId}
                     transformMode={mode}
