@@ -287,7 +287,7 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
       handle,
       startX: e.clientX,
       startY: e.clientY,
-      rect: containerRef.current.getBoundingClientRect(),
+      rect: { width: imageRect.width, height: imageRect.height },
       startBox: { ...box },
       moved: false,
     };
