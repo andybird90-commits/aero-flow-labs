@@ -3,9 +3,9 @@
  *
  * Dialog opened from `ExtractedPartPreview` when the user picks "Build with
  * CAD". Generates a parametric recipe via Gemini, then dispatches it to the
- * external Onshape worker via `dispatch-cad-job`. Polls `cad-job-status`
- * until the worker returns STEP / STL / GLB / preview, then surfaces
- * download links.
+ * external CAD worker (CadQuery reference impl) via `dispatch-cad-job`. Polls
+ * `cad-job-status` until the worker returns STEP / STL / GLB / preview, then
+ * surfaces download links.
  *
  * The result also lands in `/library` automatically via the
  * `sync_cad_job_library_items` trigger.
@@ -138,7 +138,7 @@ export function SendToCadWorker({
         inputs: { base_mesh_url: baseMeshUrl ?? null },
       });
       setJobId(id);
-      toast({ title: "CAD job queued", description: "Sent to the Onshape worker." });
+      toast({ title: "CAD job queued", description: "Sent to the CadQuery worker." });
     } catch (e: any) {
       toast({ title: "Dispatch failed", description: String(e.message ?? e), variant: "destructive" });
     }
@@ -162,7 +162,7 @@ export function SendToCadWorker({
             </span>
           </DialogTitle>
           <DialogDescription>
-            Parametric Onshape build. Generates a feature recipe (sketches, extrudes, fillets), dispatches
+            Parametric CadQuery build. Generates a feature recipe (sketches, extrudes, fillets), dispatches
             it to the CAD worker, and re-hosts the resulting STEP / STL / GLB.
           </DialogDescription>
         </DialogHeader>

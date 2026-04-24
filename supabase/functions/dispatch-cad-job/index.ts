@@ -2,8 +2,8 @@
  * dispatch-cad-job
  *
  * Records a parametric CAD build request in `cad_jobs`, then forwards the
- * recipe to the external Onshape worker. Returns the inserted row id so the
- * client can poll `cad-job-status`.
+ * recipe to the external CAD worker (CadQuery reference impl). Returns the
+ * inserted row id so the client can poll `cad-job-status`.
  *
  * Body:
  *   {
@@ -26,8 +26,12 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const ONSHAPE_WORKER_URL = Deno.env.get("ONSHAPE_WORKER_URL");
-const ONSHAPE_WORKER_TOKEN = Deno.env.get("ONSHAPE_WORKER_TOKEN");
+// Engine-agnostic worker secrets. Falls back to the legacy ONSHAPE_* names
+// for backward compatibility if those are still set.
+const CAD_WORKER_URL =
+  Deno.env.get("CAD_WORKER_URL") ?? Deno.env.get("ONSHAPE_WORKER_URL");
+const CAD_WORKER_TOKEN =
+  Deno.env.get("CAD_WORKER_TOKEN") ?? Deno.env.get("ONSHAPE_WORKER_TOKEN");
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -80,18 +84,18 @@ Deno.serve(async (req) => {
     }
     const jobId = inserted.id as string;
 
-    if (!ONSHAPE_WORKER_URL || !ONSHAPE_WORKER_TOKEN) {
+    if (!CAD_WORKER_URL || !CAD_WORKER_TOKEN) {
       const msg =
-        "Onshape CAD worker not configured. Set ONSHAPE_WORKER_URL and ONSHAPE_WORKER_TOKEN in Lovable Cloud secrets.";
+        "CAD worker not configured. Set CAD_WORKER_URL and CAD_WORKER_TOKEN in Lovable Cloud secrets.";
       await admin.from("cad_jobs").update({ status: "failed", error: msg }).eq("id", jobId);
       return json({ job_id: jobId, error: msg }, 503);
     }
 
     try {
-      const workerResp = await fetch(`${ONSHAPE_WORKER_URL.replace(/\/$/, "")}/jobs`, {
+      const workerResp = await fetch(`${CAD_WORKER_URL.replace(/\/$/, "")}/jobs`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${ONSHAPE_WORKER_TOKEN}`,
+          Authorization: `Bearer ${CAD_WORKER_TOKEN}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ recipe, inputs, part_kind }),

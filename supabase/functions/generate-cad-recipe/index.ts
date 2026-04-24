@@ -2,8 +2,10 @@
  * generate-cad-recipe
  *
  * Uses Lovable AI (Gemini) to convert a part kind + label + optional reference
- * image set into a strict-JSON parametric CAD recipe the Onshape worker can
- * execute (sketches, extrudes, lofts, fillets, mirrors, etc.).
+ * image set into a strict-JSON parametric CAD recipe the CadQuery worker can
+ * execute (sketches, extrudes, lofts, fillets, mirrors, etc.). Engine-agnostic
+ * — any kernel (CadQuery, Build123d, OpenCascade.js, Onshape) that consumes
+ * the schema documented in `docs/cad-worker.md` works.
  *
  * Body:
  *   { concept_id?, part_kind, part_label, reference_image_urls?: string[], notes?: string }
@@ -23,9 +25,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
-const SYSTEM = `You are a CAD recipe generator for an Onshape parametric build worker. Output STRICT JSON only — no prose.
+const SYSTEM = `You are a CAD recipe generator for a CadQuery (OpenCascade) parametric build worker. Output STRICT JSON only — no prose, no markdown fences.
 
-The recipe schema (all dimensions in millimetres, vehicle-local coords: forward = -Z, up = +Y, right = +X):
+Recipe schema. All dimensions in millimetres. Vehicle-local coords: forward = -Z, up = +Y, right = +X.
 
 {
   "version": 1,
@@ -42,20 +44,28 @@ The recipe schema (all dimensions in millimetres, vehicle-local coords: forward 
     },
     { "type": "extrude", "id":"e1", "sketch":"s1", "depth_mm": 20, "symmetric": false },
     { "type": "loft",    "id":"l1", "sketches":["s1","s2"] },
-    { "type": "shell",   "id":"sh1", "target":"e1", "thickness_mm": 2.0, "open_faces":["+Z"] },
+    { "type": "revolve", "id":"r1", "sketch":"s1", "axis":"Y", "angle_deg": 360 },
+    { "type": "sweep",   "id":"sw1","profile":"s1", "path":"s2" },
+    { "type": "shell",   "id":"sh1","target":"e1", "thickness_mm": 2.0, "open_faces":["+Z"] },
     { "type": "fillet",  "id":"f1", "target":"e1", "edges":"all"|["edge_id"], "radius_mm": 3 },
-    { "type": "mirror",  "id":"m1", "target":"e1", "plane":"YZ" }
+    { "type": "chamfer", "id":"c1", "target":"e1", "edges":"all", "distance_mm": 1.5 },
+    { "type": "mirror",  "id":"m1", "target":"e1", "plane":"YZ" },
+    { "type": "boolean", "id":"b1", "op":"union"|"cut"|"intersect", "targets":["e1","m1"] },
+    { "type": "import_mesh", "id":"car", "url":"<base_mesh_url>" }
   ],
   "outputs": ["step", "stl", "glb"]
 }
 
 Rules:
 - Always set units to "mm".
-- For aero parts (wings, splitters, canards) prefer NACA airfoil sketches with sensible chord/AoA.
-- For arches/skirts/lips reference a base mesh import: { "type":"import_mesh", "id":"car", "url":"<base_mesh_url>" } and project sketches onto it.
-- Default wall thickness 2mm via shell unless caller specifies otherwise.
-- Keep the recipe under 30 features. Prefer simplicity.
-- Return ONLY the JSON object. No commentary, no markdown fences.`;
+- Every feature MUST have a unique "id". Later features reference earlier ones by id.
+- The LAST body produced is what gets exported, so finish with the final composite (boolean union or the dressed-up extrude).
+- For aero parts (wings, splitters, canards, diffuser fins) prefer NACA airfoil sketches with sensible chord (150-300mm) and AoA (-2 to -6 deg).
+- For arches/skirts/lips that must conform to the car body, FIRST emit { "type":"import_mesh", "id":"car", "url":"<base_mesh_url>" }, THEN sketch the part profile and the worker will project it against the car surface.
+- Default wall thickness 2mm via shell on hollow aero parts.
+- Use mirror across "YZ" for any part that has a left/right pair (canards, side skirts) — sketch one side, mirror the other.
+- Keep the recipe under 25 features. Prefer simplicity over cleverness.
+- Return ONLY the JSON object.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });

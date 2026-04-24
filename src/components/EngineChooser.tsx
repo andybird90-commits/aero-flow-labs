@@ -4,7 +4,7 @@
  * Three-button picker shown after a part has been picked + AI-rendered. Lets
  * the user explicitly choose which build engine to dispatch to:
  *
- *   - CAD       (Onshape, parametric, clean B-rep)
+ *   - CAD       (CadQuery, parametric, clean B-rep, real STEP)
  *   - Mesh AI   (Rodin, image-to-3D, fast & lumpy)
  *   - Blender   (surface-fit against the saved base car mesh)
  *
@@ -42,7 +42,7 @@ export function EngineChooser({ partKind, hasBaseMesh, onPick, disabled }: Props
       id: "cad",
       label: "Build with CAD",
       icon: Wrench,
-      blurb: "Parametric Onshape build. Clean B-rep, sharp edges.",
+      blurb: "Parametric CadQuery build. Clean B-rep, sharp edges, real STEP.",
       eta: "~3 min",
       formats: "STEP · STL · GLB",
     },
