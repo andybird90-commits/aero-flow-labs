@@ -82,6 +82,13 @@ type GenerationContext = {
   briefReferenceUrls: string[];
   /** When true, references are the literal target silhouette (full body-swap kit, e.g. Vale GT1 over a Boxster). */
   bodySwapMode: boolean;
+  /**
+   * SURGICAL MODE — the user's brief is a small, focused, "change only X"
+   * request (e.g. "25mm wider arches all around", "add a ducktail", "lower
+   * by 30mm"). When true we bypass discipline/aggression baselines, skip
+   * variations, and emit a single render that changes ONLY what was asked.
+   */
+  surgicalMode: boolean;
 };
 
 /* ─── Discipline & aggression baselines ─────────────────────── */
@@ -159,6 +166,30 @@ function sniffDiscipline(text: string, buildType: string | null): Discipline {
   if (/\bshow[-\s]?car|sema\b/.test(t)) return "show";
   if (/\b(daily|street|road)\b/.test(t)) return "street";
   return "auto";
+}
+
+/**
+ * Surgical mode = the brief is a small, focused, literal change request.
+ * Example triggers: "25mm wider arches all around", "add a ducktail",
+ * "lower 20mm", "tint the windows".
+ *
+ * We deliberately keep this conservative — only flip on if the brief is
+ * short AND looks like a parametric tweak rather than a build description.
+ */
+function sniffSurgical(text: string, mustInclude: string[], mustAvoid: string[]): boolean {
+  const t = (text || "").trim().toLowerCase();
+  if (!t) return false;
+  if (t.length > 200) return false;
+  // If the user described a build discipline, it's not surgical.
+  if (/\b(time[-\s]?attack|drift|stance|gt[-\s]?3|rally|show car|sema|silhouette|widebody|wide[-\s]?body|track build|race build)\b/.test(t)) return false;
+  // Multiple distinct asks via " and " / commas → still surgical only if short.
+  const looksParametric =
+    /\b\d+\s?(mm|cm|in|"|inch|degree|deg|°)\b/.test(t) ||                                // has a measurement
+    /\b(add|fit|install|swap|tint|lower|raise|widen|wider|narrower|extend|shorten|paint|wrap|change|recolour|recolor)\b/.test(t);
+  if (!looksParametric) return false;
+  // Long must-include lists imply a full kit, not a surgical tweak.
+  if (mustInclude.length + mustAvoid.length > 4) return false;
+  return true;
 }
 
 function sniffAggression(text: string, styleTags: string[]): Aggression {
@@ -343,19 +374,35 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   const rawCount = Number((brief as any).variation_count);
   const variationCount = Number.isFinite(rawCount) ? Math.max(1, Math.min(5, Math.trunc(rawCount))) : 4;
 
+  // SURGICAL MODE: a short, focused brief like "25mm wider arches all around".
+  // Bypass discipline/aggression baselines so the AI doesn't bolt on a wing,
+  // diffuser, vents, splitter etc. that the user never asked for.
+  const surgicalMode = !presetMode && sniffSurgical(briefText, mustInclude, mustAvoid);
+
   // Build the master style prompt with discipline/aggression up front.
   const disciplineLine =
-    discipline !== "auto"
+    !surgicalMode && discipline !== "auto"
       ? `BUILD DISCIPLINE (highest priority): ${disciplineHumanLabel(discipline)}. Baseline aero/styling expected for this discipline: ${DISCIPLINE_AERO[discipline].join("; ")}.`
       : "";
   const aggressionLine =
-    aggression !== "auto"
+    !surgicalMode && aggression !== "auto"
       ? `AGGRESSION LEVEL: ${aggression}. ${AGGRESSION_TONE[aggression]}`
       : "";
   const includeLine = mustInclude.length ? `MUST INCLUDE: ${mustInclude.join(", ")}.` : "";
   const avoidLine = mustAvoid.length ? `MUST AVOID: ${mustAvoid.join(", ")}.` : "";
 
+  const surgicalHeader = surgicalMode
+    ? `SURGICAL CHANGE MODE — STRICT: The user has requested a small, ` +
+      `focused modification. Apply ONLY the change described in the brief. ` +
+      `Do NOT add wings, splitters, diffusers, canards, side skirts, vents, ` +
+      `ducktails, hood scoops, fender flares, lower the ride height, or change ` +
+      `wheels unless the brief explicitly asks for them. Every other panel, ` +
+      `body line, ride height, wheel and detail must remain identical to the ` +
+      `reference car. Treat this as a precise edit, not a re-design.`
+    : "";
+
   const stylePrompt = [
+    surgicalHeader,
     disciplineLine,
     aggressionLine,
     briefText
@@ -363,10 +410,10 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
       : "",
     includeLine,
     avoidLine,
-    preset?.prompt ? `Style DNA — ${preset.name}: ${preset.prompt}` : "",
-    buildType ? `Build type: ${buildType}.` : "",
-    styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
-    styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
+    !surgicalMode && preset?.prompt ? `Style DNA — ${preset.name}: ${preset.prompt}` : "",
+    !surgicalMode && buildType ? `Build type: ${buildType}.` : "",
+    !surgicalMode && styleTags.length ? `Style tags: ${styleTags.join(", ")}.` : "",
+    !surgicalMode && styleConstraints.length ? `Constraints: ${styleConstraints.join("; ")}.` : "",
     vehicleLabel
       ? `SUBJECT VEHICLE (lowest styling priority; only identity/proportions): ${vehicleLabel}.`
       : "",
@@ -377,6 +424,15 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   let variations: Variation[];
   if (body.variation_seed) {
     variations = [body.variation_seed];
+  } else if (surgicalMode) {
+    // ONE concept, literal change only. No "alternate direction" tiles —
+    // the user asked for a precise tweak, not a styling exploration.
+    variations = [{
+      title: "Literal change",
+      direction: `Apply only the brief: "${briefText}". Keep everything else identical.`,
+      modifier: briefText,
+      emphasis: `The ONLY visible difference from the reference car must be: ${briefText}. Do not add any other parts.`,
+    }];
   } else if (presetMode) {
     variations = presetVariations(preset).slice(0, variationCount);
     // If user requested more than the preset offers, pad by repeating the last entry.
@@ -458,7 +514,8 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
   console.log("generate-concepts: discipline=", discipline, "aggression=", aggression,
     "variations=", variations.map(v => v.title),
     "briefRefs=", briefReferenceUrls.length,
-    "bodySwap=", bodySwapMode);
+    "bodySwap=", bodySwapMode,
+    "surgical=", surgicalMode);
 
   return {
     conceptSetId: cs?.id ?? null,
@@ -474,6 +531,7 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
     presetMode,
     briefReferenceUrls,
     bodySwapMode,
+    surgicalMode,
   };
 }
 
@@ -613,6 +671,8 @@ async function runSingleVariation({
     bodySwapMode: context.bodySwapMode,
     // In body-swap mode the kit refs are first, donor car (if any) is last.
     bodySwapKitFirst: context.bodySwapMode,
+    surgicalMode: context.surgicalMode,
+    briefText: context.briefText,
   });
   if (!frontResult) {
     console.warn("Front 3/4 render failed for variation:", v.title);
@@ -647,6 +707,8 @@ async function runSingleVariation({
       userCarRefAttached: isImageRef(userAngleRef),
       bodySwapMode: context.bodySwapMode,
       bodySwapKitFirst: false, // front concept is image #1 here
+      surgicalMode: context.surgicalMode,
+      briefText: context.briefText,
     });
     return { key: a.key, result };
   }));
@@ -708,6 +770,8 @@ async function renderAngle({
   userCarRefAttached,
   bodySwapMode,
   bodySwapKitFirst,
+  surgicalMode,
+  briefText,
 }: {
   admin: any;
   userId: string;
@@ -728,19 +792,27 @@ async function renderAngle({
   bodySwapMode: boolean;
   /** When true, the first N images are kit refs and the donor car (if any) is at the end. */
   bodySwapKitFirst?: boolean;
+  /** Surgical mode — apply ONLY the literal change in the brief. */
+  surgicalMode?: boolean;
+  /** Raw user brief text (used by surgical-mode prompt). */
+  briefText?: string;
 }): Promise<{ publicUrl: string; dataUrl: string; promptUsed: string } | null> {
   const hasRef = referenceImages.length > 0;
   const hasBriefRefs = briefReferenceCount > 0;
 
-  const carbonFinish =
-    `MATERIAL FINISH: every added/modified aero or styling part — splitter, ` +
-    `lip, canards, side skirts, arch flares, diffuser, ducktail, wing, hood/wing vents — ` +
-    `MUST be finished in glossy 2x2 twill carbon fibre with a clearly visible black weave. ` +
-    `OEM body panels (doors, roof, fenders above the splitter) MUST stay in their original ` +
-    `factory paint colour. The carbon parts should visually pop against the painted body.`;
+  const carbonFinish = surgicalMode
+    // In surgical mode we don't force a carbon finish — the user only asked
+    // for a small change and shouldn't get random carbon panels added.
+    ? ``
+    : `MATERIAL FINISH: every added/modified aero or styling part — splitter, ` +
+      `lip, canards, side skirts, arch flares, diffuser, ducktail, wing, hood/wing vents — ` +
+      `MUST be finished in glossy 2x2 twill carbon fibre with a clearly visible black weave. ` +
+      `OEM body panels (doors, roof, fenders above the splitter) MUST stay in their original ` +
+      `factory paint colour. The carbon parts should visually pop against the painted body.`;
 
   // For aggressive/extreme builds we explicitly relax the "preserve identity" rule.
-  const identityRule = aggression === "aggressive" || aggression === "extreme"
+  // Surgical mode ALWAYS uses the strict identity rule.
+  const identityRule = (!surgicalMode && (aggression === "aggressive" || aggression === "extreme"))
     ? `IDENTITY: keep the same make/model/silhouette so it is still recognisable as the ` +
       `subject car, but factory identity is SECONDARY to the brief. You ARE allowed to ` +
       `flare the arches, add a large rear wing, deepen the splitter, vent the hood, and ` +
@@ -750,12 +822,58 @@ async function renderAngle({
       `same overall proportions. Do NOT replace the car with a different model.`;
 
   const disciplineMusts = discipline !== "auto" ? DISCIPLINE_AERO[discipline] : [];
-  const intensityRule = aggression === "aggressive" || aggression === "extreme"
+  const intensityRule = (!surgicalMode && (aggression === "aggressive" || aggression === "extreme"))
     ? `\nNON-NEGOTIABLE INTENSITY: this must NOT look OEM, OEM+, stock, mild, clean street, or subtly modified. ` +
       `It must read as a heavily modified motorsport build at thumbnail size. Required visible features: ${disciplineMusts.join(", ") || variation.modifier}. ` +
       `If the reference image is stock, transform it aggressively rather than preserving stock bumpers, arches or ride height.`
     : "";
   const steerLine = extraModifier ? `\nADDITIONAL STEER (apply on top): ${extraModifier}` : "";
+
+  // ─── SURGICAL MODE: minimal-change prompt override ───────────────────────
+  // Take the user's car photo and apply ONLY the literal change in the brief.
+  // Skip variation flavour, discipline baselines, intensity, carbon finish.
+  if (surgicalMode && mode === "from_user_car" && hasRef) {
+    const change = (briefText && briefText.trim()) || variation.modifier;
+    const surgicalPrompt =
+      `PRECISE PHOTO EDIT — ${angle.framing}.\n\n` +
+      `Take the EXACT car shown in the first reference image and apply ONLY ` +
+      `this single change: ${change}.\n\n` +
+      `STRICT PRESERVATION — every one of these must remain pixel-faithful to the reference:\n` +
+      `• Same make, model, year, trim, silhouette, greenhouse, A/B/C-pillars\n` +
+      `• Same paint colour and finish\n` +
+      `• Same wheels, wheel design, tyre profile and ride height (unless the brief asks otherwise)\n` +
+      `• Same front bumper, splitter, hood, headlights, grille, badges\n` +
+      `• Same side skirts, mirrors, door handles, glass tint\n` +
+      `• Same rear bumper, taillights, exhaust, diffuser, wing/spoiler\n\n` +
+      `DO NOT ADD any of these unless the brief explicitly says so:\n` +
+      `• No new wing, splitter, canards, dive planes, diffuser, side skirts\n` +
+      `• No hood vents, fender vents, roof scoops\n` +
+      `• No ducktail, no swan-neck wing, no GT3 / time-attack styling\n` +
+      `• No carbon-fibre panels, no colour change, no wheel swap\n` +
+      `• No ride-height change, no stance/camber change\n\n` +
+      `The output should look like the same photograph of the same car, ` +
+      `with ONLY the requested change visible. Treat this as a precise edit, ` +
+      `NOT a redesign or styling exploration.\n\n` +
+      `Studio lighting and backdrop should match the reference photo. ` +
+      `Photorealistic, sharp focus, no text, no watermark.`;
+
+    const messages: any[] = [{
+      role: "user",
+      content: [{ type: "text", text: surgicalPrompt }],
+    }];
+    for (const ref of referenceImages) {
+      messages[0].content.push({ type: "image_url", image_url: { url: ref } });
+    }
+
+    return await callImageModel({
+      admin, userId, projectId, variation, angle,
+      messages, promptText: surgicalPrompt,
+      // Pro image model is more obedient to "change only X" instructions.
+      model: "google/gemini-3-pro-image-preview",
+    });
+  }
+  // ─── END SURGICAL MODE ───────────────────────────────────────────────────
+
 
   // ─── BODY-SWAP MODE: full prompt override ────────────────────────────────
   // The kit reference photos are the AUTHORITY. Brief flavour, variation
