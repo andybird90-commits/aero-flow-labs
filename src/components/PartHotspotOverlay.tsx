@@ -330,10 +330,10 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
                 onMouseEnter={() => setHoverIdx(i)}
                 onMouseLeave={() => setHoverIdx((h) => (h === i ? null : h))}
                 style={{
-                  left:   `${z.x * 100}%`,
-                  top:    `${z.y * 100}%`,
-                  width:  `${z.w * 100}%`,
-                  height: `${z.h * 100}%`,
+                  left:   `${imageRect.left + z.x * imageRect.width}px`,
+                  top:    `${imageRect.top + z.y * imageRect.height}px`,
+                  width:  `${z.w * imageRect.width}px`,
+                  height: `${z.h * imageRect.height}px`,
                 }}
                 className={cn(
                   "absolute pointer-events-auto rounded-md border-2 border-dashed transition-colors group/box",
