@@ -44,7 +44,8 @@ Recipe schema. All dimensions in millimetres. Vehicle-local coords: forward = -Z
     { "type": "fillet",  "id":"f1", "target":"e1", "edges":"all", "radius_mm": 3 },
     { "type": "chamfer", "id":"c1", "target":"e1", "edges":"all", "distance_mm": 1.5 },
     { "type": "mirror",  "id":"m1", "target":"e1", "plane":"YZ" },
-    { "type": "boolean", "id":"b1", "op":"union"|"cut"|"intersect", "targets":["e1","m1"] }
+    { "type": "boolean", "id":"b1", "op":"union"|"cut"|"intersect", "targets":["e1","m1"] },
+    { "type": "import_mesh", "id":"car", "url":"<base_mesh_url>" }
   ],
   "outputs": ["step", "stl", "glb"]
 }
@@ -62,6 +63,7 @@ WORKER-SAFE RULES (the worker WILL crash if any are violated):
 - Shell with negative thickness is forbidden.
 - Revolve angle_deg MUST be in (0, 360); prefer values <= 180 for body parts.
 - For body panels (fenders, arches, skirts, lips, splitters, diffusers): DO NOT loft between sketches on different planes; instead use ONE closed sketch on YZ or XZ + a single positive extrude + optional fillet. Body-panel recipes MUST stay under 8 features.
+- BODY-CONFORMING RULE: when a base car mesh URL is provided AND the part is a body-conforming panel (arch, fender, skirt, lip, splitter, diffuser), the recipe MUST include an "import_mesh" feature with that exact URL, and the FINAL feature MUST be a boolean "intersect" between the freshly-extruded panel body and the imported car mesh — so the panel is trimmed to the car's actual surface. Without this, the part will not fit the car.
 - For aero parts (wings, canards): NACA airfoil sketch + symmetric extrude is preferred.
 - Use mirror across "YZ" for left/right pairs.
 - Total features MUST be <= 20. Prefer simplicity over cleverness.
