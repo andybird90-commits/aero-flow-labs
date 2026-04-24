@@ -16,7 +16,7 @@
  *   { action: "start",  concept_id, part_kind, image_urls }
  *   { action: "status", concept_id, part_kind, task_id }
  */
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

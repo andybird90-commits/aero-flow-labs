@@ -19,7 +19,7 @@
  * The result becomes the source of truth for downstream fit + clay + mesh —
  * because it actually came from the user's real pixels, not a hallucination.
  */
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { decode as decodePng, encode as encodePng } from "https://deno.land/x/pngs@0.1.1/mod.ts";
 import { lovableGenerateImageWithFallback } from "../_shared/lovable-image.ts";
 

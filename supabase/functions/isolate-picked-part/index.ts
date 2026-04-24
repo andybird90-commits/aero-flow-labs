@@ -16,7 +16,7 @@
  * Body: { concept_id, part_kind, part_label?, source_image_url, bbox: {x,y,w,h} }
  * Returns: { isolated_url }
  */
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
