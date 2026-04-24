@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
     const userId = userRes.user.id;
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY) as any;
 
     await admin.from("prototypes").update({ render_status: "rendering", render_error: null }).eq("id", prototype_id);
 
@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
 });
 
 async function runRender(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   prototype_id: string,
   userId: string,
   revisionNote: string,
@@ -123,12 +123,13 @@ async function runRender(
   let carLabel = "";
   let carColor = "";
   if ((proto as any).garage_car_id) {
-    const { data: car } = await admin
+      const { data: carRow } = await admin
       .from("garage_cars")
       .select("make, model, year, trim, color, ref_side_url, ref_front34_url, ref_rear34_url, ref_front_url, ref_rear_url")
       .eq("id", (proto as any).garage_car_id)
       .eq("user_id", userId)
       .maybeSingle();
+      const car = carRow as Record<string, any> | null;
     if (car) {
       carLabel = [car.year, car.make, car.model, car.trim].filter(Boolean).join(" ");
       carColor = car.color ?? "";
@@ -399,7 +400,7 @@ async function runWithRetry(prompt: string, refs: string[]): Promise<{ ok: boole
 }
 
 async function uploadDataUrl(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   dataUrl: string,
   userId: string,
   prototypeId: string,
