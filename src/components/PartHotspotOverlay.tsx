@@ -54,6 +54,9 @@ interface Preview {
   label: string;
   filenameBase: string;
   bbox: { x: number; y: number; w: number; h: number };
+  /** The exact image the bbox was measured against — must match what the
+   *  cropper sees, otherwise the crop lands on the wrong part. */
+  sourceUrl: string;
 }
 
 type Handle = "move" | "n" | "s" | "e" | "w" | "nw" | "ne" | "sw" | "se";
@@ -84,6 +87,11 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
   /** Original AI-detected boxes per cache key — used so users can reset their
    *  manual edits back to what the model proposed. */
   const originalRef = useRef<Map<string, Box[]>>(new Map());
+  /** The exact image URL the AI analyzed when producing these boxes. We pin
+   *  it so extraction crops from the same pixels — carbon-shell vs regular
+   *  renders are independently generated and aren't pixel-aligned, so using
+   *  the on-screen URL would cause boxes to land on the wrong part. */
+  const analyzedUrlRef = useRef<Map<string, string>>(new Map());
   const modeKey = bodySwapMode ? "swap" : "bolton";
   const cacheKey = `${conceptId}:${view}:${modeKey}`;
 
@@ -122,8 +130,10 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
         if (fnErr) throw fnErr;
         if ((data as any)?.error) throw new Error((data as any).error);
         const got: Box[] = Array.isArray((data as any)?.boxes) ? (data as any).boxes : [];
+        const analyzed = (data as any)?.analyzed_url as string | undefined;
         cacheRef.current.set(cacheKey, got);
         originalRef.current.set(cacheKey, got.map((b) => ({ ...b })));
+        if (analyzed) analyzedUrlRef.current.set(cacheKey, analyzed);
         setBoxes(got);
       } catch (e: any) {
         if (cancelled) return;
@@ -150,13 +160,17 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
   const onPick = useCallback((zone: Box) => {
     const safeTitle = conceptTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "concept";
     const safeLabel = zone.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    // Prefer the URL the AI actually analyzed; only fall back to the on-screen
+    // image when we don't have one (older cached entries).
+    const pinned = analyzedUrlRef.current.get(cacheKey) ?? sourceImageUrl ?? "";
     setPreview({
       kind: zone.kind,
       label: zone.label,
       filenameBase: `${safeTitle}__${safeLabel || zone.kind}`,
       bbox: { x: zone.x, y: zone.y, w: zone.w, h: zone.h },
+      sourceUrl: pinned,
     });
-  }, [conceptTitle]);
+  }, [conceptTitle, cacheKey, sourceImageUrl]);
 
   const updateBox = useCallback((idx: number, next: Box) => {
     setBoxes((prev) => {
@@ -392,7 +406,7 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
           kind={preview.kind}
           label={preview.label}
           filenameBase={preview.filenameBase}
-          sourceImageUrl={sourceImageUrl}
+          sourceImageUrl={preview.sourceUrl || sourceImageUrl}
           bbox={preview.bbox}
         />
       )}
