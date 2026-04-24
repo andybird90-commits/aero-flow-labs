@@ -74,8 +74,10 @@ const DEFAULT_PARAMS: Record<Kind, Record<string, number>> = {
   deck_panel:        { ...PANEL_DEFAULT_PARAMS, panel_thickness_mm: 3 },
 };
 
-/** Per-part hint about which renders matter most. */
-const PART_VIEW_HINT: Record<Kind, string> = {
+/** Per-part hint about which renders matter most.
+ *  Only populated for bolt-on kinds — body-swap PANEL kinds short-circuit
+ *  before this lookup is used. */
+const PART_VIEW_HINT: Partial<Record<Kind, string>> = {
   splitter:    "Look at the FRONT 3/4 view. The splitter is the flat blade protruding forward at the bottom of the front bumper.",
   lip:         "Look at the FRONT 3/4 view. The lip is a thin extension below the splitter / front bumper.",
   canard:      "Look at the FRONT 3/4 view. Canards are small angled foils on the lower front bumper sides.",
@@ -88,7 +90,7 @@ const PART_VIEW_HINT: Record<Kind, string> = {
   wing_vent:   "Look at the FRONT 3/4 or SIDE view. A wing vent (fender vent) is a louvred opening on the front fender/wing panel behind the wheel arch.",
 };
 
-const PARAM_SCHEMA: Record<Kind, Record<string, { type: "number"; description: string }>> = {
+const PARAM_SCHEMA: Partial<Record<Kind, Record<string, { type: "number"; description: string }>>> = {
   splitter: {
     depth:        { type: "number", description: "Forward protrusion in mm (30-200)" },
     fence_height: { type: "number", description: "Side-fence height in mm (0-80)" },
