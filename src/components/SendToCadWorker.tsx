@@ -123,8 +123,13 @@ export function SendToCadWorker({
         base_mesh_url: baseMeshUrl ?? null,
         notes,
       });
-      setRecipe(r);
-      toast({ title: "Recipe ready", description: `${r?.features?.length ?? 0} CAD features.` });
+      setRecipe(r.recipe);
+      toast({
+        title: r.fallback_used ? "Recipe ready (fallback)" : "Recipe ready",
+        description: r.fallback_used
+          ? `AI output failed worker safety checks — using a conservative template (${r.recipe?.features?.length ?? 0} features).`
+          : `${r.recipe?.features?.length ?? 0} CAD features.`,
+      });
     } catch (e: any) {
       toast({ title: "Recipe failed", description: String(e.message ?? e), variant: "destructive" });
     }
