@@ -199,6 +199,7 @@ function CameraRig({ preset, template }: { preset: CameraPreset; template?: CarT
 
 export function BuildStudioViewport({
   template,
+  heroStlUrl,
   parts,
   selectedId,
   onSelect,
@@ -254,7 +255,13 @@ export function BuildStudioViewport({
 
       <ContactShadows position={[0, 0.001, 0]} opacity={0.45} scale={14} blur={2.5} far={4} />
 
-      <CarPlaceholder template={template} />
+      {heroStlUrl ? (
+        <Suspense fallback={<CarPlaceholder template={template} />}>
+          <HeroStlCar url={heroStlUrl} template={template} />
+        </Suspense>
+      ) : (
+        <CarPlaceholder template={template} />
+      )}
 
       <SceneParts
         parts={parts}
