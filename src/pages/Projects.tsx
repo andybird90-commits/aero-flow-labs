@@ -165,6 +165,25 @@ export default function Projects() {
                       </Select>
                     </div>
 
+                    <div className="mt-3">
+                      <label className="text-mono text-[9px] uppercase tracking-widest text-muted-foreground/80 flex items-center gap-1.5 mb-1">
+                        <Boxes className="h-3 w-3" /> Donor template
+                      </label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-full justify-between text-xs"
+                        onClick={() => setTemplateCar((p.car as Car) ?? null)}
+                      >
+                        <span className="truncate">
+                          {(p.car as any)?.template
+                            ? `${(p.car as any).template.make} ${(p.car as any).template.model}`
+                            : "Not set"}
+                        </span>
+                        <ArrowRight className="h-3 w-3 opacity-60" />
+                      </Button>
+                    </div>
+
                     <div className="mt-3 flex items-center gap-1 text-mono text-[10px] text-muted-foreground">
                       <Clock className="h-3 w-3" />
                       {p.updated_at ? formatDistanceToNow(new Date(p.updated_at), { addSuffix: true }) : "—"}
