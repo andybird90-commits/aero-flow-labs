@@ -95,16 +95,23 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
   const modeKey = bodySwapMode ? "swap" : "bolton";
   const cacheKey = `${conceptId}:${view}:${modeKey}`;
 
+
+  const imageRect = useMemo(() => {
+    if (!containerRef.current) return { left: 0, top: 0, width: 1, height: 1 };
+    const img = containerRef.current.parentElement?.querySelector("img") as HTMLImageElement | null;
+    if (!img) return { left: 0, top: 0, width: 1, height: 1 };
+    const box = img.getBoundingClientRect();
+    const parent = containerRef.current.getBoundingClientRect();
+    return {
+      left: Math.max(0, box.left - parent.left),
+      top: Math.max(0, box.top - parent.top),
+      width: Math.max(1, box.width),
+      height: Math.max(1, box.height),
+    };
+  }, [active, sourceImageUrl, view, bodySwapMode, boxes?.length]);
+
   // Drag state lives in a ref so listeners don't cause rerenders mid-drag.
   const dragRef = useRef<{
-    idx: number;
-    handle: Handle;
-    startX: number;
-    startY: number;
-    rect: DOMRect;
-    startBox: Box;
-    moved: boolean;
-  } | null>(null);
 
   useEffect(() => {
     if (!active) return;
