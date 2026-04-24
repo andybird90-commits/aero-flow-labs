@@ -102,18 +102,19 @@ Deno.serve(async (req) => {
     }
 
     try {
-      // The worker still speaks v1 (`recipe.features[]`). Wrap a v2 builder
-      // call as a single `builder` feature so existing workers accept it,
-      // while also forwarding the v2 fields at top-level for newer workers.
+      // v2 builder protocol. The worker MUST implement build_front_arch (and
+      // any future builders) — see docs/cad-worker.md.
+      // We also include a legacy-shaped `recipe.features[]` wrapper so older
+      // workers that gate on `recipe.features[]` accept the request, but the
+      // actual build is driven by the top-level `builder` + `params` fields.
       const workerPayload = isBuilderRecipe
         ? {
             recipe: {
               part_type: recipe.part_type ?? part_kind,
+              builder: recipe.builder,
+              params: recipe.params,
               features: [
                 {
-                  // Legacy worker iterates features and reads `type`. Use
-                  // "builder" so a builder-aware worker can dispatch, and
-                  // also include `op` for the same reason.
                   type: "builder",
                   op: "builder",
                   builder: recipe.builder,
@@ -121,17 +122,14 @@ Deno.serve(async (req) => {
                   params: recipe.params,
                 },
               ],
-              builder: recipe.builder,
-              params: recipe.params,
             },
-            // v2 fields at top-level for builder-aware workers
             builder: recipe.builder,
             part_type: recipe.part_type ?? part_kind,
             params: recipe.params,
             inputs,
             part_kind,
           }
-        : { recipe, inputs, part_kind }; // v1 legacy passthrough
+        : { recipe, inputs, part_kind };
       const workerResp = await fetch(`${CAD_WORKER_URL.replace(/\/$/, "")}/jobs`, {
         method: "POST",
         headers: {
@@ -142,7 +140,10 @@ Deno.serve(async (req) => {
       });
       if (!workerResp.ok) {
         const t = await workerResp.text();
-        const msg = `Worker ${workerResp.status}: ${t.slice(0, 300)}`;
+        let msg = `Worker ${workerResp.status}: ${t.slice(0, 300)}`;
+        if (/KeyError.*['"]type['"]/i.test(t) || /unknown feature/i.test(t)) {
+          msg += ` — The CAD worker has not been updated to the v2 builder protocol. It must implement build_front_arch (see docs/cad-worker.md).`;
+        }
         await admin.from("cad_jobs").update({ status: "failed", error: msg }).eq("id", jobId);
         return json({ job_id: jobId, error: msg }, 502);
       }
