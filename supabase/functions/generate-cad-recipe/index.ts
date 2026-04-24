@@ -354,9 +354,12 @@ Deno.serve(async (req) => {
     const userPrompt = [
       `Part kind: ${part_kind}`,
       part_label ? `Part label: ${part_label}` : null,
-      base_mesh_url ? `Base car mesh URL (you MAY use import_mesh with this exact URL): ${base_mesh_url}` : `No base car mesh available — DO NOT use import_mesh.`,
+      base_mesh_url ? `Base car mesh URL (use this EXACT url for import_mesh): ${base_mesh_url}` : `No base car mesh available — DO NOT use import_mesh.`,
       isBodyPanel
         ? `This is a BODY PANEL. Output a single closed sketch on YZ + one positive extrude + optional fillet. Do NOT use loft. Do NOT use multiple sketches on different planes. Stay under 8 features.`
+        : null,
+      isBodyPanel && base_mesh_url
+        ? `BODY-CONFORMING REQUIREMENT: include an import_mesh feature using the URL above (id "m_car"), and end the recipe with { "type":"boolean", "id":"b_fit", "op":"intersect", "targets":[<extruded panel id>, "m_car"] } so the panel is trimmed to the actual car surface. Without this final intersect, the part will not fit.`
         : null,
       notes ? `Designer notes: ${notes}` : null,
       reference_image_urls.length
