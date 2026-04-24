@@ -73,10 +73,12 @@ Deno.serve(async (req) => {
     }
 
     if (wStatus === "failed" || wStatus === "canceled" || wStatus === "error") {
-      const errMsg = (w?.error ?? `Worker reported ${wStatus}`) as string;
+      const rawErr = String(w?.error ?? `Worker reported ${wStatus}`);
+      const friendly = humanizeWorkerError(rawErr);
+      const errMsg = friendly === rawErr ? rawErr : `${friendly}\n(worker said: ${rawErr})`;
       await admin
         .from("cad_jobs")
-        .update({ status: "failed", error: String(errMsg).slice(0, 500) })
+        .update({ status: "failed", error: errMsg.slice(0, 500) })
         .eq("id", job_id);
       return json({ status: "failed", error: errMsg });
     }
