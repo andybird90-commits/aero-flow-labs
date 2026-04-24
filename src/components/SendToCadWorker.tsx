@@ -51,6 +51,8 @@ export function SendToCadWorker({
   const generate = useGenerateCadRecipe();
   const dispatch = useDispatchCadJob();
   const refresh = useRefreshCadJob();
+  const workerStatus = useCadWorkerStatus(open);
+  const ready = workerStatus.data?.state === "ok";
   const [notes, setNotes] = useState("");
   const [recipe, setRecipe] = useState<Record<string, any> | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
