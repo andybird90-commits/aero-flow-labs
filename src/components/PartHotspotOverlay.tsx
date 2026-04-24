@@ -94,25 +94,41 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
   const analyzedUrlRef = useRef<Map<string, string>>(new Map());
   const modeKey = bodySwapMode ? "swap" : "bolton";
   const cacheKey = `${conceptId}:${view}:${modeKey}`;
+  const [imageRect, setImageRect] = useState({ left: 0, top: 0, width: 1, height: 1 });
 
-
-  const imageRect = useMemo(() => {
-    if (!containerRef.current) return { left: 0, top: 0, width: 1, height: 1 };
-    const img = containerRef.current.parentElement?.querySelector("img") as HTMLImageElement | null;
-    if (!img) return { left: 0, top: 0, width: 1, height: 1 };
-    const box = img.getBoundingClientRect();
-    const parent = containerRef.current.getBoundingClientRect();
-    return {
-      left: Math.max(0, box.left - parent.left),
-      top: Math.max(0, box.top - parent.top),
-      width: Math.max(1, box.width),
-      height: Math.max(1, box.height),
+  // Measure the actual rendered <img> bounds inside the container. This is
+  // critical when the image uses object-contain: the visible pixels are
+  // letterboxed inside the viewer, so overlay coordinates must be relative to
+  // the fitted image rect, not the full container.
+  useEffect(() => {
+    if (!active || !containerRef.current) return;
+    const update = () => {
+      const img = containerRef.current?.parentElement?.querySelector("img") as HTMLImageElement | null;
+      const parent = containerRef.current?.getBoundingClientRect();
+      const box = img?.getBoundingClientRect();
+      if (!img || !parent || !box) return;
+      setImageRect({
+        left: Math.max(0, box.left - parent.left),
+        top: Math.max(0, box.top - parent.top),
+        width: Math.max(1, box.width),
+        height: Math.max(1, box.height),
+      });
     };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, [active, sourceImageUrl, view, bodySwapMode, boxes?.length]);
 
   // Drag state lives in a ref so listeners don't cause rerenders mid-drag.
   const dragRef = useRef<{
-
+    idx: number;
+    handle: Handle;
+    startX: number;
+    startY: number;
+    rect: { width: number; height: number };
+    startBox: Box;
+    moved: boolean;
+  } | null>(null);
   useEffect(() => {
     if (!active) return;
 
