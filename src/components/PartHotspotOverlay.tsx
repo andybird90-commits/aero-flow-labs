@@ -96,27 +96,45 @@ export function PartHotspotOverlay({ active, view, projectId, conceptId, concept
   const cacheKey = `${conceptId}:${view}:${modeKey}`;
   const [imageRect, setImageRect] = useState({ left: 0, top: 0, width: 1, height: 1 });
 
-  // Measure the actual rendered <img> bounds inside the container. This is
-  // critical when the image uses object-contain: the visible pixels are
-  // letterboxed inside the viewer, so overlay coordinates must be relative to
-  // the fitted image rect, not the full container.
+  // Measure the ACTUAL drawn image rectangle inside the container.
+  // With object-contain the <img> element itself still fills the whole viewer,
+  // so getBoundingClientRect() gives the container bounds, not the fitted
+  // bitmap bounds. We must derive the visible image rect from the natural image
+  // size and the container size.
   useEffect(() => {
     if (!active || !containerRef.current) return;
+
+    const container = containerRef.current;
+    const img = container.parentElement?.querySelector("img") as HTMLImageElement | null;
+    if (!img) return;
+
     const update = () => {
-      const img = containerRef.current?.parentElement?.querySelector("img") as HTMLImageElement | null;
-      const parent = containerRef.current?.getBoundingClientRect();
-      const box = img?.getBoundingClientRect();
-      if (!img || !parent || !box) return;
+      const parent = container.getBoundingClientRect();
+      const naturalWidth = img.naturalWidth || 0;
+      const naturalHeight = img.naturalHeight || 0;
+      if (!parent.width || !parent.height || !naturalWidth || !naturalHeight) return;
+
+      const scale = Math.min(parent.width / naturalWidth, parent.height / naturalHeight);
+      const width = Math.max(1, naturalWidth * scale);
+      const height = Math.max(1, naturalHeight * scale);
+
       setImageRect({
-        left: Math.max(0, box.left - parent.left),
-        top: Math.max(0, box.top - parent.top),
-        width: Math.max(1, box.width),
-        height: Math.max(1, box.height),
+        left: (parent.width - width) / 2,
+        top: (parent.height - height) / 2,
+        width,
+        height,
       });
     };
+
     update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    const onLoad = () => update();
+    img.addEventListener("load", onLoad);
+    const ro = new ResizeObserver(update);
+    ro.observe(container);
+    return () => {
+      img.removeEventListener("load", onLoad);
+      ro.disconnect();
+    };
   }, [active, sourceImageUrl, view, bodySwapMode, boxes?.length]);
 
   // Drag state lives in a ref so listeners don't cause rerenders mid-drag.
