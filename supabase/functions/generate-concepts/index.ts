@@ -80,6 +80,8 @@ type GenerationContext = {
   presetMode: boolean;
   /** Signed URLs of user-uploaded reference body kit images from the brief. */
   briefReferenceUrls: string[];
+  /** When true, references are the literal target silhouette (full body-swap kit, e.g. Vale GT1 over a Boxster). */
+  bodySwapMode: boolean;
 };
 
 /* ─── Discipline & aggression baselines ─────────────────────── */
@@ -451,9 +453,12 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
     }
   }
 
+  const bodySwapMode = !!(brief as any).body_swap_mode && briefReferenceUrls.length > 0;
+
   console.log("generate-concepts: discipline=", discipline, "aggression=", aggression,
     "variations=", variations.map(v => v.title),
-    "briefRefs=", briefReferenceUrls.length);
+    "briefRefs=", briefReferenceUrls.length,
+    "bodySwap=", bodySwapMode);
 
   return {
     conceptSetId: cs?.id ?? null,
@@ -468,6 +473,7 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
     briefText,
     presetMode,
     briefReferenceUrls,
+    bodySwapMode,
   };
 }
 
@@ -596,6 +602,7 @@ async function runSingleVariation({
     extraModifier: body.extra_modifier ?? null,
     briefReferenceCount: context.briefReferenceUrls.length,
     userCarRefAttached: isImageRef(userFrontRef),
+    bodySwapMode: context.bodySwapMode,
   });
   if (!frontResult) {
     console.warn("Front 3/4 render failed for variation:", v.title);
@@ -620,6 +627,7 @@ async function runSingleVariation({
       extraModifier: body.extra_modifier ?? null,
       briefReferenceCount: 0,
       userCarRefAttached: isImageRef(userAngleRef),
+      bodySwapMode: context.bodySwapMode,
     });
     return { key: a.key, result };
   }));
@@ -679,6 +687,7 @@ async function renderAngle({
   extraModifier,
   briefReferenceCount,
   userCarRefAttached,
+  bodySwapMode,
 }: {
   admin: any;
   userId: string;
@@ -695,6 +704,8 @@ async function renderAngle({
   briefReferenceCount: number;
   /** Whether the FIRST reference is the user's car (the canvas to repaint). */
   userCarRefAttached: boolean;
+  /** Body-swap kit mode — refs ARE the new bodywork, not just style cues. */
+  bodySwapMode: boolean;
 }): Promise<{ publicUrl: string; dataUrl: string; promptUsed: string } | null> {
   const hasRef = referenceImages.length > 0;
   const hasBriefRefs = briefReferenceCount > 0;
