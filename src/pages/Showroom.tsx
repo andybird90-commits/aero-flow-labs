@@ -145,13 +145,21 @@ export default function Showroom() {
 
   // Showroom state
   const sceneRef = useRef<ShowroomSceneHandle | null>(null);
+  const arOverlayRef = useRef<HTMLDivElement | null>(null);
   const [autoOrbitRpm, setAutoOrbitRpm] = useState(0);
   const [presentationMode, setPresentationMode] = useState(false);
   const [arActive, setArActive] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordProgress, setRecordProgress] = useState(0);
+  const [exportingUsdz, setExportingUsdz] = useState(false);
 
   const { bookmarks, add, remove } = useCameraBookmarks(projectId);
+
+  /** Approx car length (m) used by AR rig + HUD readout. */
+  const carLengthMeters = useMemo(
+    () => ((template?.wheelbase_mm ?? 2575) / 1000) + 1.45,
+    [template?.wheelbase_mm],
+  );
 
   // ESC exits Presentation Mode + fullscreen
   useEffect(() => {
