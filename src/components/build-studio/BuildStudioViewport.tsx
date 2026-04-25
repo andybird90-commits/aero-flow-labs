@@ -604,11 +604,18 @@ function PartTransformGizmo({
 
     controls.addEventListener("dragging-changed", handleDragging as any);
     controls.addEventListener("change", handleChange);
+    const handlePointerDownCapture = (event: PointerEvent) => {
+      const c = controls as any;
+      c.pointerHover?.(c.getPointer?.(event));
+      if (c.axis) interactionRef.current = true;
+    };
+    gl.domElement.addEventListener("pointerdown", handlePointerDownCapture, true);
     scene.add(controls);
 
     return () => {
       controls.removeEventListener("dragging-changed", handleDragging as any);
       controls.removeEventListener("change", handleChange);
+      gl.domElement.removeEventListener("pointerdown", handlePointerDownCapture, true);
       controls.detach();
       scene.remove(controls);
       controls.dispose();
