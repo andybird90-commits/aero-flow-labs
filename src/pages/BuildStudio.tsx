@@ -40,6 +40,8 @@ import {
   Boxes,
   Magnet,
   Layers,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -66,6 +68,7 @@ import { PartLibraryRail } from "@/components/build-studio/PartLibraryRail";
 import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
 import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
+import { useHistory, useHistoryShortcuts } from "@/lib/build-studio/history";
 
 export default function BuildStudio() {
   const { user } = useAuth();
@@ -80,6 +83,14 @@ export default function BuildStudio() {
   const updatePart = useUpdatePlacedPart();
   const deletePart = useDeletePlacedPart();
   const duplicatePart = useDuplicatePlacedPart();
+
+  // ─── Undo / redo history ───
+  const history = useHistory();
+  // Reset history whenever the active project changes — operations are project-scoped.
+  useEffect(() => {
+    history.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<TransformMode>("translate");
@@ -175,6 +186,32 @@ export default function BuildStudio() {
         onSuccess: (p) => {
           setSelectedId(p.id);
           toast.success(`Added ${p.part_name}`);
+          // History: undo = delete; redo = re-create with same payload.
+          const partSnapshot = p;
+          history.push({
+            label: `Add ${p.part_name ?? "part"}`,
+            undo: () =>
+              new Promise<void>((resolve) =>
+                deletePart.mutate(
+                  { id: partSnapshot.id, project_id: projectId },
+                  { onSettled: () => resolve() },
+                ),
+              ),
+            redo: () =>
+              new Promise<void>((resolve) =>
+                addPart.mutate(
+                  {
+                    user_id: partSnapshot.user_id,
+                    project_id: partSnapshot.project_id,
+                    library_item_id: partSnapshot.library_item_id,
+                    part_name: partSnapshot.part_name ?? "Part",
+                    position: partSnapshot.position,
+                    metadata: partSnapshot.metadata ?? {},
+                  },
+                  { onSettled: () => resolve() },
+                ),
+              ),
+          });
         },
         onError: (e: any) => toast.error(e.message ?? "Add failed"),
       },
@@ -185,22 +222,104 @@ export default function BuildStudio() {
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "locked" | "hidden" | "mirrored" | "part_name">>,
   ) => {
     if (!selected || !projectId) return;
+    const before = {
+      position: selected.position,
+      rotation: selected.rotation,
+      scale: selected.scale,
+      locked: selected.locked,
+      hidden: selected.hidden,
+      mirrored: selected.mirrored,
+      part_name: selected.part_name,
+    };
+    const beforePatch: typeof patch = {};
+    for (const k of Object.keys(patch) as (keyof typeof patch)[]) {
+      (beforePatch as any)[k] = (before as any)[k];
+    }
+    const targetId = selected.id;
     updatePart.mutate({ id: selected.id, project_id: projectId, patch });
+    history.push({
+      label: "Edit part",
+      undo: () =>
+        new Promise<void>((resolve) =>
+          updatePart.mutate(
+            { id: targetId, project_id: projectId, patch: beforePatch },
+            { onSettled: () => resolve() },
+          ),
+        ),
+      redo: () =>
+        new Promise<void>((resolve) =>
+          updatePart.mutate(
+            { id: targetId, project_id: projectId, patch },
+            { onSettled: () => resolve() },
+          ),
+        ),
+    });
   };
 
   const handleCommit = (id: string, patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale">>) => {
     if (!projectId) return;
+    const part = parts.find((p) => p.id === id);
+    const beforePatch: typeof patch = {};
+    if (part) {
+      for (const k of Object.keys(patch) as (keyof typeof patch)[]) {
+        (beforePatch as any)[k] = (part as any)[k];
+      }
+    }
     updatePart.mutate({ id, project_id: projectId, patch });
+    if (part) {
+      history.push({
+        label: "Transform part",
+        undo: () =>
+          new Promise<void>((resolve) =>
+            updatePart.mutate(
+              { id, project_id: projectId, patch: beforePatch },
+              { onSettled: () => resolve() },
+            ),
+          ),
+        redo: () =>
+          new Promise<void>((resolve) =>
+            updatePart.mutate(
+              { id, project_id: projectId, patch },
+              { onSettled: () => resolve() },
+            ),
+          ),
+      });
+    }
   };
 
   const handleDelete = () => {
     if (!selected || !projectId) return;
+    const partSnapshot = selected;
     deletePart.mutate(
-      { id: selected.id, project_id: projectId },
+      { id: partSnapshot.id, project_id: projectId },
       {
         onSuccess: () => {
           setSelectedId(null);
           toast.success("Part deleted");
+          history.push({
+            label: `Delete ${partSnapshot.part_name ?? "part"}`,
+            undo: () =>
+              new Promise<void>((resolve) =>
+                addPart.mutate(
+                  {
+                    user_id: partSnapshot.user_id,
+                    project_id: partSnapshot.project_id,
+                    library_item_id: partSnapshot.library_item_id,
+                    part_name: partSnapshot.part_name ?? "Part",
+                    position: partSnapshot.position,
+                    metadata: partSnapshot.metadata ?? {},
+                  },
+                  { onSettled: () => resolve() },
+                ),
+              ),
+            redo: () =>
+              new Promise<void>((resolve) =>
+                deletePart.mutate(
+                  { id: partSnapshot.id, project_id: projectId },
+                  { onSettled: () => resolve() },
+                ),
+              ),
+          });
         },
       },
     );
@@ -209,12 +328,39 @@ export default function BuildStudio() {
   /** Delete by id (used by bottom strip quick-delete). */
   const handleDeleteById = (id: string) => {
     if (!projectId) return;
+    const partSnapshot = parts.find((p) => p.id === id);
     deletePart.mutate(
       { id, project_id: projectId },
       {
         onSuccess: () => {
           if (selectedId === id) setSelectedId(null);
           toast.success("Part deleted");
+          if (partSnapshot) {
+            history.push({
+              label: `Delete ${partSnapshot.part_name ?? "part"}`,
+              undo: () =>
+                new Promise<void>((resolve) =>
+                  addPart.mutate(
+                    {
+                      user_id: partSnapshot.user_id,
+                      project_id: partSnapshot.project_id,
+                      library_item_id: partSnapshot.library_item_id,
+                      part_name: partSnapshot.part_name ?? "Part",
+                      position: partSnapshot.position,
+                      metadata: partSnapshot.metadata ?? {},
+                    },
+                    { onSettled: () => resolve() },
+                  ),
+                ),
+              redo: () =>
+                new Promise<void>((resolve) =>
+                  deletePart.mutate(
+                    { id: partSnapshot.id, project_id: projectId },
+                    { onSettled: () => resolve() },
+                  ),
+                ),
+            });
+          }
         },
         onError: (e: any) => toast.error(e.message ?? "Delete failed"),
       },
@@ -244,6 +390,32 @@ export default function BuildStudio() {
       onSuccess: (p) => {
         setSelectedId(p.id);
         toast.success("Duplicated");
+        if (projectId) {
+          history.push({
+            label: "Duplicate part",
+            undo: () =>
+              new Promise<void>((resolve) =>
+                deletePart.mutate(
+                  { id: p.id, project_id: projectId },
+                  { onSettled: () => resolve() },
+                ),
+              ),
+            redo: () =>
+              new Promise<void>((resolve) =>
+                addPart.mutate(
+                  {
+                    user_id: p.user_id,
+                    project_id: p.project_id,
+                    library_item_id: p.library_item_id,
+                    part_name: p.part_name ?? "Part",
+                    position: p.position,
+                    metadata: p.metadata ?? {},
+                  },
+                  { onSettled: () => resolve() },
+                ),
+              ),
+          });
+        }
       },
     });
   };
@@ -310,6 +482,17 @@ export default function BuildStudio() {
   const handleSaveDesign = () => {
     toast.success(`Design saved (${parts.length} parts)`);
   };
+
+  /** Wrappers that surface a subtle toast on success. */
+  const doUndo = async () => {
+    const entry = await history.undo();
+    if (entry) toast.message(`Undid: ${entry.label}`);
+  };
+  const doRedo = async () => {
+    const entry = await history.redo();
+    if (entry) toast.message(`Redid: ${entry.label}`);
+  };
+  useHistoryShortcuts({ undo: doUndo, redo: doRedo, enabled: !!projectId });
 
   const handleShellCommit = (t: ShellTransform) => {
     if (!user || !projectId || !shellSkinId) return;
@@ -385,6 +568,33 @@ export default function BuildStudio() {
                     <Maximize2 className="h-4 w-4" />
                   </ToggleGroupItem>
                 </ToggleGroup>
+
+                <Separator orientation="vertical" className="h-7" />
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9 px-2.5"
+                    onClick={doUndo}
+                    disabled={!history.canUndo}
+                    aria-label="Undo (⌘Z)"
+                    title="Undo (⌘Z / Ctrl+Z)"
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9 px-2.5"
+                    onClick={doRedo}
+                    disabled={!history.canRedo}
+                    aria-label="Redo (⇧⌘Z)"
+                    title="Redo (⇧⌘Z / Ctrl+Y)"
+                  >
+                    <Redo2 className="h-4 w-4" />
+                  </Button>
+                </div>
 
                 <Separator orientation="vertical" className="h-7" />
 
