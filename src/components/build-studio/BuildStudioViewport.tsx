@@ -12,14 +12,13 @@ import { Canvas, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   Grid,
-  TransformControls,
   Environment,
   ContactShadows,
   GizmoHelper,
   GizmoViewcube,
 } from "@react-three/drei";
 import * as THREE from "three";
-import { STLLoader, GLTFLoader } from "three-stdlib";
+import { STLLoader, GLTFLoader, TransformControls as TransformControlsImpl } from "three-stdlib";
 import type { CarTemplate, LibraryItem } from "@/lib/repo";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import type { SnapZone } from "@/lib/build-studio/snap-zones";
