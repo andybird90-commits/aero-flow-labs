@@ -627,7 +627,7 @@ export default function Showroom() {
                 variant="outline"
                 size="sm"
                 className="h-8 gap-2 text-xs"
-                onClick={handleTurntable}
+                onClick={() => handleTurntable("webm")}
                 disabled={!isReady || recording}
               >
                 {recording ? (
