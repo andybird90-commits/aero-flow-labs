@@ -1,12 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* APEX NEXT — Aero Design Studio
-   Premium motorsport CAD configurator UI: graphite/black surfaces with
-   electric orange accent. All colors are HSL.
+/* APEX | NEXT — subdomain theme
+   Pure black command-centre look with a cyan → violet neon brand gradient.
+   All colors are HSL.
 */
 
 @layer base {
