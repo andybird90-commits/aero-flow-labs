@@ -53,6 +53,7 @@ import {
   useDeletePlacedPart,
   useDuplicatePlacedPart,
   type PlacedPart,
+  type Vec3,
 } from "@/lib/build-studio/placed-parts";
 import { useSnapZones } from "@/lib/build-studio/snap-zones";
 import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
