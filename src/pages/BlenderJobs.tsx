@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -12,6 +12,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Hammer, ShieldAlert, RefreshCw, Trash2, Download, ExternalLink } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/lib/repo";
@@ -28,6 +29,8 @@ import {
   type BlenderJob,
   type BlenderJobType,
 } from "@/lib/blender-jobs";
+import { BLENDER_OP_SCHEMA, coerceValues, validate } from "@/lib/blender-jobs-schema";
+import { TypedFieldGroup } from "@/components/blender-jobs/TypedFieldGroup";
 
 const STATUS_TONES: Record<string, string> = {
   queued: "bg-muted text-muted-foreground",
@@ -39,8 +42,8 @@ const STATUS_TONES: Record<string, string> = {
 /**
  * Blender Jobs — admin queue for the external Blender worker. Lets admins
  * pick one of the 14 supported operations, fill in its parameters + input
- * mesh URLs, dispatch the job, and watch it through to completed outputs
- * (re-hosted into the `blender-outputs` storage bucket).
+ * mesh URLs via typed forms (no JSON required), dispatch the job, and watch
+ * it through to completed outputs (re-hosted into `blender-outputs`).
  */
 export default function BlenderJobs() {
   const { user } = useAuth();
@@ -53,9 +56,19 @@ export default function BlenderJobs() {
 
   const [open, setOpen] = useState(false);
   const [op, setOp] = useState<BlenderJobType>("trim_part_to_car");
-  const [paramsText, setParamsText] = useState(JSON.stringify(defaultParamsFor("trim_part_to_car"), null, 2));
-  const [inputUrlsText, setInputUrlsText] = useState(`{\n  "input_mesh_url": ""\n}`);
+  const [paramValues, setParamValues] = useState<Record<string, unknown>>(() =>
+    defaultParamsFor("trim_part_to_car"),
+  );
+  const [inputValues, setInputValues] = useState<Record<string, unknown>>({});
   const [projectId, setProjectId] = useState("");
+
+  const schema = BLENDER_OP_SCHEMA[op];
+
+  // Reset values whenever operation changes.
+  useEffect(() => {
+    setParamValues(defaultParamsFor(op));
+    setInputValues({});
+  }, [op]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, BlenderJobType[]>();
@@ -76,26 +89,18 @@ export default function BlenderJobs() {
   }
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
-  function selectOp(next: BlenderJobType) {
-    setOp(next);
-    setParamsText(JSON.stringify(defaultParamsFor(next), null, 2));
-  }
-
   async function submit() {
-    let parameters: Record<string, unknown>;
-    let input_mesh_urls: Record<string, string>;
-    try {
-      parameters = JSON.parse(paramsText || "{}");
-    } catch (e) {
-      toast({ title: "Invalid parameters JSON", description: String(e), variant: "destructive" });
+    const inputProblems = validate(schema.inputs, inputValues);
+    const paramProblems = validate(schema.params, paramValues);
+    const problems = [...inputProblems, ...paramProblems];
+    if (problems.length > 0) {
+      toast({ title: "Missing required fields", description: problems.join(" • "), variant: "destructive" });
       return;
     }
-    try {
-      input_mesh_urls = JSON.parse(inputUrlsText || "{}");
-    } catch (e) {
-      toast({ title: "Invalid input URLs JSON", description: String(e), variant: "destructive" });
-      return;
-    }
+
+    const parameters = coerceValues(schema.params, paramValues);
+    const input_mesh_urls = coerceValues(schema.inputs, inputValues) as Record<string, string>;
+
     try {
       const res = await dispatch.mutateAsync({
         operation_type: op,
@@ -133,7 +138,7 @@ export default function BlenderJobs() {
                   <Hammer className="h-4 w-4 mr-1.5" /> New job
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl">
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Dispatch Blender job</DialogTitle>
                   <DialogDescription>
@@ -146,7 +151,7 @@ export default function BlenderJobs() {
                 <div className="space-y-4">
                   <div className="space-y-1.5">
                     <Label>Operation</Label>
-                    <Select value={op} onValueChange={(v) => selectOp(v as BlenderJobType)}>
+                    <Select value={op} onValueChange={(v) => setOp(v as BlenderJobType)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent className="max-h-[400px]">
                         {grouped.map(([group, ops]) => (
@@ -171,26 +176,49 @@ export default function BlenderJobs() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Input mesh URLs (JSON)</Label>
-                      <textarea
-                        value={inputUrlsText}
-                        onChange={(e) => setInputUrlsText(e.target.value)}
-                        rows={8}
-                        className="w-full rounded-md border bg-background px-3 py-2 text-xs font-mono"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Parameters (JSON)</Label>
-                      <textarea
-                        value={paramsText}
-                        onChange={(e) => setParamsText(e.target.value)}
-                        rows={8}
-                        className="w-full rounded-md border bg-background px-3 py-2 text-xs font-mono"
-                      />
-                    </div>
-                  </div>
+                  <Tabs defaultValue="form" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="form">Form</TabsTrigger>
+                      <TabsTrigger value="raw">Raw JSON</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="form" className="space-y-5 mt-4">
+                      <section className="space-y-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Inputs</h4>
+                        {schema.inputs.length === 0 ? (
+                          <p className="text-xs text-muted-foreground italic">No inputs required.</p>
+                        ) : (
+                          <TypedFieldGroup
+                            fields={schema.inputs}
+                            values={inputValues}
+                            onChange={setInputValues}
+                          />
+                        )}
+                      </section>
+                      <section className="space-y-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Parameters</h4>
+                        <TypedFieldGroup
+                          fields={schema.params}
+                          values={paramValues}
+                          onChange={setParamValues}
+                        />
+                      </section>
+                    </TabsContent>
+
+                    <TabsContent value="raw" className="space-y-3 mt-4">
+                      <p className="text-xs text-muted-foreground">
+                        Read-only preview of what will be POSTed to the worker.
+                      </p>
+                      <pre className="rounded-md border bg-muted/30 px-3 py-2 text-[11px] font-mono overflow-x-auto">
+{JSON.stringify({
+  operation_type: op,
+  input_mesh_urls: coerceValues(schema.inputs, inputValues),
+  parameters: coerceValues(schema.params, paramValues),
+  project_id: projectId.trim() || null,
+}, null, 2)}
+                      </pre>
+                    </TabsContent>
+                  </Tabs>
                 </div>
 
                 <DialogFooter>
