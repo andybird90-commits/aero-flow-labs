@@ -28,9 +28,18 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { decimateClientSide } from "@/lib/decimate-client";
 import {
-  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles, Palette,
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles, Palette, Scissors, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  useCarPanels,
+  useRunAutoSplit,
+  useUpdateCarPanelSlot,
+  panelDisplayLabel,
+  PANEL_SLOT_LABELS,
+  type CarPanel,
+} from "@/lib/build-studio/car-panels";
+import { CarPanelsPreview } from "@/components/admin/CarPanelsPreview";
 
 // Anything above this gets quadric-edge-collapse decimated in a Web Worker
 // before upload so the edge worker can repair it within its 256 MB cap.
