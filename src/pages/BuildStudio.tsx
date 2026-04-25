@@ -862,6 +862,17 @@ export default function BuildStudio() {
                   onStretchChange={handleStretchChange}
                 />
 
+                <BakeBodyKitButton
+                  projectId={projectId}
+                  userId={user?.id ?? null}
+                  bodySkinId={shellSkinId}
+                  donorCarTemplateId={carTemplateIdForHp}
+                  shellAlignmentId={alignment?.id ?? null}
+                  shellTransform={shellTransform}
+                  stretchEnabled={stretchEnabled}
+                />
+
+
                 <div className="ml-auto flex items-center gap-2">
                   <Button asChild size="sm" variant="outline" className="h-9 px-3 text-xs" title="Open in Showroom (AR/VR & presentation)">
                     <Link to={`/showroom?project=${projectId}`}>
