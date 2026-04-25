@@ -81,13 +81,21 @@ Deno.serve(async (req) => {
     admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
     // --- Load body_kits row ---
-    const { data: kit, error: kitErr } = await admin
+    const { data: kitData, error: kitErr } = await admin
       .from("body_kits")
       .select("*")
       .eq("id", bodyKitId)
       .maybeSingle();
     if (kitErr) return json({ error: kitErr.message }, 500);
-    if (!kit) return json({ error: "body_kits row not found" }, 404);
+    if (!kitData) return json({ error: "body_kits row not found" }, 404);
+    const kit = kitData as {
+      id: string;
+      user_id: string;
+      status: string;
+      body_skin_id: string;
+      donor_car_template_id: string | null;
+      baked_transform: unknown;
+    };
     if (kit.user_id !== userRes.user.id) return json({ error: "Forbidden" }, 403);
 
     // Idempotency: skip if already terminal.
@@ -100,13 +108,18 @@ Deno.serve(async (req) => {
       .eq("id", kit.id);
 
     // --- Load body skin ---
-    const { data: skin, error: skinErr } = await admin
+    const { data: skinData, error: skinErr } = await admin
       .from("body_skins")
       .select("file_url_stl, file_url_glb, name")
       .eq("id", kit.body_skin_id)
       .maybeSingle();
     if (skinErr) throw new Error(`Skin lookup failed: ${skinErr.message}`);
-    if (!skin) throw new Error("Body skin not found");
+    if (!skinData) throw new Error("Body skin not found");
+    const skin = skinData as {
+      file_url_stl: string | null;
+      file_url_glb: string | null;
+      name: string;
+    };
     if (!skin.file_url_stl) {
       throw new Error(
         "This body skin only has a GLB file. Re-export it as STL (or run the GLB→STL conversion) before baking a kit.",
@@ -117,13 +130,14 @@ Deno.serve(async (req) => {
     if (!kit.donor_car_template_id) {
       throw new Error("No donor car template attached to this kit.");
     }
-    const { data: carStl, error: carErr } = await admin
+    const { data: carStlData, error: carErr } = await admin
       .from("car_stls")
       .select("*")
       .eq("car_template_id", kit.donor_car_template_id)
       .maybeSingle();
     if (carErr) throw new Error(`Donor lookup failed: ${carErr.message}`);
-    if (!carStl) throw new Error("Donor car has no STL configured.");
+    if (!carStlData) throw new Error("Donor car has no STL configured.");
+    const carStl = carStlData as { repaired_stl_path: string | null; stl_path: string };
     const donorPath = carStl.repaired_stl_path ?? carStl.stl_path;
     if (!donorPath) throw new Error("Donor car STL path missing.");
 
