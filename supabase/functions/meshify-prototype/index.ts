@@ -1,12 +1,12 @@
 /**
  * meshify-prototype
  *
- * Prototyper meshing step. Takes the cached front/back render URLs from a
- * prototype row and runs Hyper3D Rodin via Replicate to produce a GLB.
+ * Prototyper meshing step. Takes the cached front/side render URLs from a
+ * prototype row and runs Meshy 6 image-to-3d to produce a textured GLB.
  *
  * Two actions:
- *   action: "start"  → kicks off Rodin, stores task_id on the prototype.
- *   action: "status" → polls Replicate. On success: downloads GLB, re-hosts in
+ *   action: "start"  → kicks off Meshy task, stores task_id on the prototype.
+ *   action: "status" → polls Meshy. On success: downloads GLB, re-hosts in
  *                      our bucket, writes glb_url, AND auto-creates a
  *                      library_items row (prototype_part_mesh) so the part
  *                      shows up in the Library with a Prototype badge.
@@ -14,6 +14,7 @@
  * Body: { action, prototype_id }
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createImageTo3dTask, getImageTo3dTask } from "../_shared/meshy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,17 +24,13 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
-const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const MESH_MODEL_VERSION = "0602bae6db1ce420f2690339bf2feb47e18c0c722a1f02e9db9abd774abaff5d";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   try {
-    if (!REPLICATE_API_TOKEN) return json({ error: "REPLICATE_API_TOKEN not configured" }, 500);
-
     const body = (await req.json()) as { action?: "start" | "status"; prototype_id?: string };
     const action = body.action ?? "start";
     const { prototype_id } = body;
@@ -57,71 +54,62 @@ Deno.serve(async (req) => {
     if (!proto) return json({ error: "Prototype not found" }, 404);
 
     if (action === "start") {
-      const renders = ((proto.render_urls as Array<{ angle: string; url: string }>) ?? []).map((r) => r.url);
+      const renders = ((proto.render_urls as Array<{ angle: string; url: string }>) ?? []);
       if (!renders.length) return json({ error: "No renders yet — run render-prototype-views first" }, 400);
 
-      // Hunyuan3D-2 takes a SINGLE image. Use the first render (typically front).
-      const primaryImage = renders[0];
+      // Meshy 6 takes a single primary image. Use the front 3/4 if present,
+      // otherwise the first render. Use side as the texture reference if available.
+      const primary = renders.find((r) => r.angle === "front34")?.url
+        ?? renders.find((r) => r.angle === "front")?.url
+        ?? renders[0].url;
+      const textureRef = renders.find((r) => r.angle === "side")?.url
+        ?? renders.find((r) => r.angle === "rear34")?.url
+        ?? null;
 
-      const createResp = await fetch(`https://api.replicate.com/v1/predictions`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          version: MESH_MODEL_VERSION,
-          input: {
-            image: primaryImage,
-            steps: 50,
-            guidance_scale: 5.5,
-            octree_resolution: 256,
-            remove_background: true,
-            seed: 1234,
-          },
-        }),
-      });
-      if (!createResp.ok) {
-        const t = await createResp.text();
-        await admin.from("prototypes").update({ mesh_status: "failed", mesh_error: `Hunyuan3D ${createResp.status}` }).eq("id", prototype_id);
-        return json({ error: `Hunyuan3D ${createResp.status}: ${t.slice(0, 300)}` }, 500);
+      try {
+        const { task_id } = await createImageTo3dTask({
+          image_url: primary,
+          texture_image_url: textureRef ?? undefined,
+          ai_model: "latest",
+          enable_pbr: true,
+          should_remesh: true,
+          target_polycount: 30000,
+          symmetry_mode: "auto",
+          remove_lighting: true,
+          target_formats: ["glb", "stl"],
+        });
+        await admin.from("prototypes")
+          .update({ mesh_status: "meshing", mesh_task_id: task_id, mesh_error: null })
+          .eq("id", prototype_id);
+        return json({ task_id, status: "IN_PROGRESS", progress: 0 });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Meshy create failed";
+        await admin.from("prototypes")
+          .update({ mesh_status: "failed", mesh_error: msg.slice(0, 500) })
+          .eq("id", prototype_id);
+        return json({ error: msg }, 500);
       }
-      const pred = await createResp.json();
-      const taskId: string | undefined = pred.id;
-      if (!taskId) return json({ error: "Hunyuan3D returned no prediction id" }, 500);
-
-      await admin.from("prototypes").update({ mesh_status: "meshing", mesh_task_id: taskId, mesh_error: null }).eq("id", prototype_id);
-      return json({ task_id: taskId, status: "IN_PROGRESS", progress: 0 });
     }
 
     // STATUS
     const taskId = (proto.mesh_task_id as string | null) ?? null;
     if (!taskId) return json({ error: "No active mesh task — start one first" }, 400);
 
-    const pollResp = await fetch(`https://api.replicate.com/v1/predictions/${taskId}`, {
-      headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}` },
-    });
-    if (!pollResp.ok) {
-      const t = await pollResp.text();
-      return json({ error: `Hunyuan3D poll ${pollResp.status}: ${t.slice(0, 200)}` }, 500);
-    }
-    const pred = await pollResp.json();
-    const status: string = pred.status;
+    const result = await getImageTo3dTask(taskId);
 
-    if (status === "failed" || status === "canceled") {
-      const msg = String(pred.error ?? `Hunyuan3D ${status}`).slice(0, 500);
-      await admin.from("prototypes").update({ mesh_status: "failed", mesh_error: msg }).eq("id", prototype_id);
+    if (result.status === "FAILED" || result.status === "CANCELED" || result.status === "EXPIRED") {
+      const msg = (result.error || `Meshy ${result.status}`).slice(0, 500);
+      await admin.from("prototypes")
+        .update({ mesh_status: "failed", mesh_error: msg })
+        .eq("id", prototype_id);
       return json({ status: "FAILED", error: msg });
     }
-    if (status !== "succeeded") {
-      const fakeProgress = status === "processing" ? 60 : status === "starting" ? 15 : 30;
-      return json({ status: "IN_PROGRESS", progress: fakeProgress });
+    if (result.status !== "SUCCEEDED") {
+      return json({ status: "IN_PROGRESS", progress: result.progress });
     }
 
-    const out = pred.output;
-    // Hunyuan3D-2 returns a single GLB url string (or array containing one).
-    const glbUrl: string | undefined =
-      typeof out === "string" ? out :
-      Array.isArray(out) ? (out.find((u: string) => typeof u === "string" && (u.endsWith(".glb") || u.endsWith(".obj"))) ?? out[0]) :
-      (out?.mesh ?? out?.glb ?? undefined);
-    if (!glbUrl) return json({ error: "Hunyuan3D returned no mesh" }, 500);
+    const glbUrl = result.glb_url;
+    if (!glbUrl) return json({ error: "Meshy returned no GLB url" }, 500);
 
     const glbResp = await fetch(glbUrl);
     if (!glbResp.ok) return json({ error: `Failed to fetch GLB: ${glbResp.status}` }, 500);
@@ -150,7 +138,7 @@ Deno.serve(async (req) => {
       .eq("id", prototype_id)
       .maybeSingle();
     const renders = (refreshed?.render_urls as Array<{ angle: string; url: string }>) ?? [];
-    const thumb = renders[0]?.url ?? null;
+    const thumb = renders[0]?.url ?? result.thumbnail_url ?? null;
 
     // Auto-add to library (idempotent: don't duplicate if there's already
     // an entry for this prototype).
@@ -170,7 +158,7 @@ Deno.serve(async (req) => {
         asset_mime: "model/gltf-binary",
         thumbnail_url: thumb,
         visibility: "private",
-        metadata: { prototype_id },
+        metadata: { prototype_id, source: "meshy_image_to_3d" },
       });
     } else {
       await admin.from("library_items").update({
