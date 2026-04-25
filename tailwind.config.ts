@@ -33,6 +33,11 @@ export default {
           glow: "hsl(var(--primary-glow))",
           dim: "hsl(var(--primary-dim))",
         },
+        brand: {
+          cyan: "hsl(var(--brand-cyan))",
+          violet: "hsl(var(--brand-violet))",
+          magenta: "hsl(var(--brand-magenta))",
+        },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
