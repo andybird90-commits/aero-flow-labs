@@ -17,6 +17,28 @@ const MESH_KINDS = new Set([
   "cad_part_mesh",
 ]);
 
+/**
+ * A library row is only "addable" if it has a real, downloadable mesh asset.
+ * Anything pointing at localhost (dev artefacts), or with no URL / no mesh
+ * extension, would render as an orange placeholder box and break Live Fit —
+ * so we hide them from the picker entirely.
+ */
+function hasUsableMesh(item: LibraryItem): boolean {
+  const url = item.asset_url?.trim();
+  if (!url) return false;
+  if (/^https?:\/\/(localhost|127\.)/i.test(url)) return false;
+  const path = url.toLowerCase().split("?")[0];
+  const mime = (item.asset_mime ?? "").toLowerCase();
+  return (
+    path.endsWith(".glb") ||
+    path.endsWith(".gltf") ||
+    path.endsWith(".stl") ||
+    mime.includes("gltf") ||
+    mime.includes("glb") ||
+    mime.includes("stl")
+  );
+}
+
 interface Props {
   items: LibraryItem[] | undefined;
   isLoading: boolean;
@@ -25,7 +47,7 @@ interface Props {
 }
 
 export function PartLibraryRail({ items, isLoading, onAdd, onAddBlank }: Props) {
-  const meshes = (items ?? []).filter((i) => MESH_KINDS.has(i.kind));
+  const meshes = (items ?? []).filter((i) => MESH_KINDS.has(i.kind) && hasUsableMesh(i));
 
   return (
     <div className="flex h-full flex-col">
