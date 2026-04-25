@@ -413,11 +413,12 @@ function CarStlRow({
     try {
       const res = await runSplit.mutateAsync({ car_stl_id: row.id });
       if (!res.ok) {
+        const failed = res as { ok: false; reason: string; message: string };
         toast({
-          title: res.reason === "no_shut_lines_detected"
+          title: failed.reason === "no_shut_lines_detected"
             ? "No shut lines detected"
             : "Couldn't auto-split",
-          description: res.message,
+          description: failed.message,
           variant: "destructive",
         });
         return;
