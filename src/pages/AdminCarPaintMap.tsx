@@ -654,6 +654,8 @@ function PaintMesh({
 
   // Brush drag
   const draggingRef = useRef(false);
+  const brushFrameRef = useRef<number | null>(null);
+  const pendingBrushEventRef = useRef<PointerEvent | null>(null);
 
   // Load STL once
   useEffect(() => {
@@ -804,6 +806,17 @@ function PaintMesh({
       if (painted > 0 || mirrorMode) onPaint(next);
     };
 
+    const schedulePaintBrush = (e: PointerEvent) => {
+      pendingBrushEventRef.current = e;
+      if (brushFrameRef.current != null) return;
+      brushFrameRef.current = requestAnimationFrame(() => {
+        brushFrameRef.current = null;
+        const latest = pendingBrushEventRef.current;
+        pendingBrushEventRef.current = null;
+        if (latest) paintBrush(latest);
+      });
+    };
+
     const paintWheel = (e: PointerEvent) => {
       const tags = tagsRef.current;
       if (!tags || !centroidsRef.current) return;
@@ -856,7 +869,7 @@ function PaintMesh({
         e.preventDefault();
         draggingRef.current = true;
         try { dom.setPointerCapture(e.pointerId); } catch {}
-        paintBrush(e);
+        schedulePaintBrush(e);
       } else if (tool === "wheel") {
         e.preventDefault();
         paintWheel(e);
