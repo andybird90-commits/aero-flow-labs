@@ -10,7 +10,7 @@
  * Persists every transform / flag change to placed_parts. Loads the user's
  * current project (or the project from ?project=).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
