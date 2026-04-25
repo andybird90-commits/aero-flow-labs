@@ -104,6 +104,7 @@ export default function BuildStudio() {
   const [showGrid, setShowGrid] = useState(true);
   const [showSnapZones, setShowSnapZones] = useState(true);
   const [preset, setPreset] = useState<CameraPreset>("free");
+  const { quality, setQuality } = useRenderQuality();
 
   // Paint Studio finish — local for live preview, debounced-saved to project.
   const updateProject = useUpdateProject();
