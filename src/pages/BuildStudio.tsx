@@ -11,6 +11,7 @@
  * current project (or the project from ?project=).
  */
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -89,6 +90,7 @@ import {
 
 export default function BuildStudio() {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const { projectId, project, isLoading: projectLoading, isEmpty } = useCurrentProject();
   const { data: templates = [] } = useCarTemplates();
   const { data: library, isLoading: libLoading } = useMyLibrary(user?.id);
