@@ -233,6 +233,67 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
     }
   };
 
+  const onAiDetect = async () => {
+    if (!carStlId || !tags) return;
+    setAiDetecting(true);
+    setProposedTags(null);
+    setProposedStats(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-classify-car-materials", {
+        body: { car_stl_id: carStlId, base_tags_b64: encodeTagsB64(tags) },
+      });
+      if (error) throw error;
+      if (!data?.tags_b64) throw new Error("No tags returned by AI");
+      const proposed = decodeTagBlob(data.tags_b64);
+      if (proposed.length !== tags.length) {
+        throw new Error(`Triangle count mismatch (got ${proposed.length}, expected ${tags.length})`);
+      }
+      setProposedTags(proposed);
+      setProposedStats(data.stats ?? null);
+      const assigned = data.stats?.ai_assigned ?? 0;
+      toast({
+        title: "AI detection ready",
+        description: `Gemini tagged ${assigned.toLocaleString()} triangles. Review & choose Accept / Merge / Discard.`,
+      });
+    } catch (e: any) {
+      toast({ title: "AI detect failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setAiDetecting(false);
+    }
+  };
+
+  const onAcceptProposed = () => {
+    if (!proposedTags) return;
+    commitTags(new Uint8Array(proposedTags));
+    setProposedTags(null);
+    setProposedStats(null);
+    toast({ title: "AI tags applied", description: "Your previous map was replaced. Undo to revert." });
+  };
+
+  const onMergeProposed = () => {
+    if (!proposedTags || !tags) return;
+    // Merge: keep current map, but where AI assigned a non-body tag (glass/
+    // wheel/tyre), prefer the AI value. Body votes do not override curation.
+    const next = new Uint8Array(tags);
+    let changed = 0;
+    for (let i = 0; i < next.length; i++) {
+      const p = proposedTags[i];
+      if (p !== TAG_BODY && next[i] !== p) {
+        next[i] = p;
+        changed++;
+      }
+    }
+    commitTags(next);
+    setProposedTags(null);
+    setProposedStats(null);
+    toast({ title: "Merged AI tags", description: `${changed.toLocaleString()} triangles updated.` });
+  };
+
+  const onDiscardProposed = () => {
+    setProposedTags(null);
+    setProposedStats(null);
+  };
+
   const onMirror = () => {
     if (!tags || !geomBundle) return;
     const next = new Uint8Array(tags);
