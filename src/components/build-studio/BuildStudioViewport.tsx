@@ -467,7 +467,7 @@ export function BuildStudioViewport({
         />
       )}
 
-      <ContactShadows position={[0, 0.001, 0]} opacity={0.45} scale={14} blur={2.5} far={4} />
+      <ShowroomFloor reflector={settings.reflectorFloor} accumulative={settings.accumulativeShadows} />
 
       {heroStlUrl ? (
         <Suspense fallback={<CarPlaceholder template={template} />}>
