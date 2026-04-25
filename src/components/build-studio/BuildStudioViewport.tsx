@@ -70,8 +70,17 @@ interface ViewportProps {
 }
 
 /* ─── Real hero STL car (preferred) ─── */
-function HeroStlCar({ url, template }: { url: string; template?: CarTemplate | null }) {
+function HeroStlCar({
+  url,
+  template,
+  paintFinish,
+}: {
+  url: string;
+  template?: CarTemplate | null;
+  paintFinish: PaintFinish;
+}) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
+  const materialRef = useRef<THREE.MeshPhysicalMaterial | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,13 +93,14 @@ function HeroStlCar({ url, template }: { url: string; template?: CarTemplate | n
         if (cancelled) return;
         geo.computeVertexNormals();
         const mat = new THREE.MeshPhysicalMaterial({
-          color: "#0a1622",
-          metalness: 0.85,
-          roughness: 0.32,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.18,
-          envMapIntensity: 1.4,
+          color: paintFinish.color,
+          metalness: paintFinish.metalness,
+          roughness: paintFinish.roughness,
+          clearcoat: paintFinish.clearcoat,
+          clearcoatRoughness: paintFinish.clearcoat_roughness,
+          envMapIntensity: paintFinish.env_intensity,
         });
+        materialRef.current = mat;
         const mesh = new THREE.Mesh(geo, mat);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -124,7 +134,22 @@ function HeroStlCar({ url, template }: { url: string; template?: CarTemplate | n
     return () => {
       cancelled = true;
     };
+    // Intentionally NOT depending on paintFinish — material is mutated live below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, template?.wheelbase_mm]);
+
+  // Live-apply paint changes without reloading the STL.
+  useEffect(() => {
+    const m = materialRef.current;
+    if (!m) return;
+    m.color.set(paintFinish.color);
+    m.metalness = paintFinish.metalness;
+    m.roughness = paintFinish.roughness;
+    m.clearcoat = paintFinish.clearcoat;
+    m.clearcoatRoughness = paintFinish.clearcoat_roughness;
+    m.envMapIntensity = paintFinish.env_intensity;
+    m.needsUpdate = true;
+  }, [paintFinish]);
 
   if (!object) return null;
   return <primitive object={object} />;
