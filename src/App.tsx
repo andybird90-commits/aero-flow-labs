@@ -35,6 +35,7 @@ import BlenderJobs from "./pages/BlenderJobs";
 import SnapZonesAdmin from "./pages/SnapZonesAdmin";
 import HardpointsAdmin from "./pages/HardpointsAdmin";
 import Showroom from "./pages/Showroom";
+import SharePage from "./pages/Share";
 
 function RealtimeBridge() {
   const { user } = useAuth();
@@ -55,6 +56,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/share/:token" element={<SharePage />} />
 
             {/* APEX NEXT — primary IA */}
             <Route path="/dashboard"         element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
