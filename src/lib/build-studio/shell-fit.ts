@@ -39,6 +39,12 @@ export interface DetectedArches {
   rear: Vec3 | null;
   /** Total candidate vertices used — for diagnostics. */
   sampleCount: number;
+  /**
+   * Which axis (x/y/z) of the shell-local frame represents vehicle *length*.
+   * Needed by callers to convert arch span → wheelbase under non-uniform
+   * scale.
+   */
+  lengthAxis: "x" | "y" | "z";
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
