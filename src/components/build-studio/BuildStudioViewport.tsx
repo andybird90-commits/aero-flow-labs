@@ -71,6 +71,12 @@ interface ViewportProps {
   shellEditMode?: boolean;
   /** Called when the user releases the shell gizmo. */
   onShellCommit?: (t: ShellTransform) => void;
+  /**
+   * Called once the shell mesh is loaded into the scene. Receives the root
+   * Object3D of the loaded shell (in shell-local frame, before user transforms
+   * are applied). Used by the parent to run auto-fit / arch detection.
+   */
+  onShellMeshReady?: (root: THREE.Object3D | null) => void;
   parts: PlacedPart[];
   /** Resolved library_items for placed parts so we can render real meshes. */
   libraryItemsById: Map<string, LibraryItem>;
