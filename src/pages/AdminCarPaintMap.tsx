@@ -441,7 +441,7 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
         )}
 
         {showHotkeys && (
-          <div className="absolute right-4 top-4 z-20 w-64 rounded-lg border border-border bg-surface-1/95 p-3 text-xs shadow-lg backdrop-blur">
+          <div className="absolute right-4 top-4 z-20 w-64 rounded-lg border border-border bg-surface-1/95 p-3 text-xs shadow-lg">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-mono text-[10px] uppercase tracking-widest text-primary/80">Hotkeys</span>
               <button onClick={() => setShowHotkeys(false)} className="text-muted-foreground hover:text-foreground">×</button>
@@ -465,7 +465,7 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
         )}
 
         {/* Save bar */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 rounded-full border border-border bg-surface-1/95 px-2 py-1.5 shadow-lg backdrop-blur">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 rounded-full border border-border bg-surface-1/95 px-2 py-1.5 shadow-lg">
           {dirty ? (
             <Badge variant="outline" className="border-warning/40 text-warning text-[10px]">
               <AlertTriangle className="mr-1 h-3 w-3" /> Unsaved
@@ -654,6 +654,8 @@ function PaintMesh({
 
   // Brush drag
   const draggingRef = useRef(false);
+  const brushFrameRef = useRef<number | null>(null);
+  const pendingBrushEventRef = useRef<PointerEvent | null>(null);
 
   // Load STL once
   useEffect(() => {
@@ -804,6 +806,17 @@ function PaintMesh({
       if (painted > 0 || mirrorMode) onPaint(next);
     };
 
+    const schedulePaintBrush = (e: PointerEvent) => {
+      pendingBrushEventRef.current = e;
+      if (brushFrameRef.current != null) return;
+      brushFrameRef.current = requestAnimationFrame(() => {
+        brushFrameRef.current = null;
+        const latest = pendingBrushEventRef.current;
+        pendingBrushEventRef.current = null;
+        if (latest) paintBrush(latest);
+      });
+    };
+
     const paintWheel = (e: PointerEvent) => {
       const tags = tagsRef.current;
       if (!tags || !centroidsRef.current) return;
@@ -856,7 +869,7 @@ function PaintMesh({
         e.preventDefault();
         draggingRef.current = true;
         try { dom.setPointerCapture(e.pointerId); } catch {}
-        paintBrush(e);
+        schedulePaintBrush(e);
       } else if (tool === "wheel") {
         e.preventDefault();
         paintWheel(e);
@@ -874,29 +887,13 @@ function PaintMesh({
 
     const onPointerMove = (e: PointerEvent) => {
       const p = ndc(e);
-      // Update cursor preview (worldR for wheel previews via raycast distance)
-      let worldR: number | undefined;
-      if (tool === "wheel") {
-        const hit = raycastTriangle(e);
-        if (hit && meshRef.current) {
-          // Project a point at the radius distance into screen pixels.
-          const local = hit.point.clone();
-          meshRef.current.worldToLocal(local);
-          const tyreR = carLengthRef.current * (wheelOuterPct / 100);
-          // World-space r = tyreR * mesh.scale (uniform)
-          const worldScale = meshRef.current.getWorldScale(new THREE.Vector3()).x;
-          const rWorld = tyreR * worldScale;
-          // Screen-space r ≈ rWorld * (canvasH / 2) / dist / tan(fov/2)
-          const cam = camera as THREE.PerspectiveCamera;
-          const dist = camera.position.distanceTo(hit.point);
-          const fovRad = (cam.fov * Math.PI) / 180;
-          worldR = (rWorld * (size.height / 2)) / (dist * Math.tan(fovRad / 2));
-        }
-      }
+      // Keep hover lightweight: avoid raycasting the full high-poly STL on
+      // every mousemove. The actual wheel click still raycasts precisely.
+      const worldR = tool === "wheel" ? Math.max(18, Math.min(160, size.height * (wheelOuterPct / 180))) : undefined;
       onCursor({ x: p.x, y: p.y, worldR, visible: true });
 
       if (tool === "brush" && draggingRef.current) {
-        paintBrush(e);
+        schedulePaintBrush(e);
       }
     };
 
@@ -947,6 +944,7 @@ function PaintMesh({
       dom.removeEventListener("pointerleave", onPointerLeave);
       dom.removeEventListener("dblclick", onDblClick);
       window.removeEventListener("keydown", onKey);
+      if (brushFrameRef.current != null) cancelAnimationFrame(brushFrameRef.current);
     };
   }, [tool, activeTag, brushRadius, wheelOuterPct, wandAngleDeg, mirrorMode, camera, gl, size.width, size.height, onPaint, onPickTag, onCursor, onLasso]);
 
