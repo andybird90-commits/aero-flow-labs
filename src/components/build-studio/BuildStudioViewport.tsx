@@ -479,78 +479,43 @@ export function BuildStudioViewport({
       />
 
       {!shellEditMode && selected && meshNode && !selected.locked && (
-        <TransformControls
-          ref={transformRef}
+        <PartTransformGizmo
           object={meshNode}
           mode={transformMode}
-          size={0.7}
-          onMouseDown={() => {
-            if (orbitRef.current) orbitRef.current.enabled = false;
-          }}
-          onMouseUp={() => {
-            if (orbitRef.current) orbitRef.current.enabled = true;
-          }}
-          onObjectChange={() => {
-            // No-op: we commit on dragging-changed=false below for reliability.
-          }}
-          // drei's TransformControls forwards `dragging-changed` from three's TransformControls.
-          // This fires reliably on mouse release across all three transform modes.
-          // @ts-expect-error - drei types omit this event but it's forwarded by three.
-          onDraggingChanged={(event: { value: boolean }) => {
-            if (orbitRef.current) orbitRef.current.enabled = !event.value;
-            if (event.value) return; // dragging started
+          orbitRef={orbitRef}
+          onRelease={() => {
             if (!meshNode || !selected) return;
-
             const pos: Vec3 = {
               x: meshNode.position.x,
               y: meshNode.position.y,
               z: meshNode.position.z,
             };
-
-            // Snap-to-zone on release (translate only).
-            let snapPatch: Partial<Pick<PlacedPart, "position" | "snap_zone_id">> = {
-              position: pos,
-            };
+            let snapPatch: Partial<Pick<PlacedPart, "position" | "snap_zone_id">> = { position: pos };
             if (transformMode === "translate" && snapZones.length > 0) {
               const nearest = nearestSnapZone(pos, snapZones, 0.35);
               if (nearest) {
-                snapPatch = {
-                  position: { ...nearest.position },
-                  snap_zone_id: nearest.id,
-                };
+                snapPatch = { position: { ...nearest.position }, snap_zone_id: nearest.id };
                 meshNode.position.set(nearest.position.x, nearest.position.y, nearest.position.z);
               } else {
                 snapPatch = { position: pos, snap_zone_id: null };
               }
             }
-
             onCommit(selected.id, {
               ...snapPatch,
-              rotation: {
-                x: meshNode.rotation.x,
-                y: meshNode.rotation.y,
-                z: meshNode.rotation.z,
-              },
-              scale: {
-                x: meshNode.scale.x,
-                y: meshNode.scale.y,
-                z: meshNode.scale.z,
-              },
+              rotation: { x: meshNode.rotation.x, y: meshNode.rotation.y, z: meshNode.rotation.z },
+              scale: { x: meshNode.scale.x, y: meshNode.scale.y, z: meshNode.scale.z },
             });
           }}
         />
       )}
 
       {showShellGizmo && shellGroupRef.current && (
-        <TransformControls
-          ref={shellTransformRef}
+        <PartTransformGizmo
           object={shellGroupRef.current}
           mode={transformMode}
           size={0.9}
-          // @ts-expect-error - drei types omit this event but it's forwarded by three.
-          onDraggingChanged={(event: { value: boolean }) => {
-            if (orbitRef.current) orbitRef.current.enabled = !event.value;
-            if (event.value) return;
+          orbitRef={orbitRef}
+          onRelease={() => {
             const g = shellGroupRef.current;
             if (!g || !onShellCommit) return;
             onShellCommit({
