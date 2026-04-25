@@ -689,6 +689,85 @@ export default function BuildStudio() {
 
                 <Separator orientation="vertical" className="h-7" />
 
+                {/* ─── Tier 2 interaction tools ─── */}
+                <ToggleGroup
+                  type="single"
+                  value={tool}
+                  onValueChange={(v) => v && setTool(v as ViewportTool)}
+                  className="gap-0"
+                >
+                  <ToggleGroupItem value="select" size="sm" className="h-9 px-3" aria-label="Select / move parts" title="Select (V)">
+                    <MousePointer2 className="h-4 w-4" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="measure" size="sm" className="h-9 px-3" aria-label="Measure distance" title="Measure (M) — click two points">
+                    <Ruler className="h-4 w-4" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="clip" size="sm" className="h-9 px-3" aria-label="Section / clipping plane" title="Section plane (C)">
+                    <Scissors className="h-4 w-4" />
+                  </ToggleGroupItem>
+                </ToggleGroup>
+
+                {tool === "clip" && (
+                  <Select value={clipAxis} onValueChange={(v) => setClipAxis(v as "x" | "y" | "z")}>
+                    <SelectTrigger className="h-9 w-[90px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="x">Slice X</SelectItem>
+                      <SelectItem value="y">Slice Y</SelectItem>
+                      <SelectItem value="z">Slice Z</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {tool === "measure" && measureLines.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setMeasureLines([])}
+                    className="h-9 px-2.5 text-xs"
+                    title="Clear measurements"
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    {measureLines.length}
+                  </Button>
+                )}
+
+                <Toggle
+                  pressed={snapEnabled}
+                  onPressedChange={setSnapEnabled}
+                  size="sm"
+                  className="h-9 px-3"
+                  aria-label="Snap to grid (5 cm / 15°)"
+                  title="Snap: 5 cm translate · 15° rotate"
+                >
+                  <Magnet className="h-4 w-4" />
+                </Toggle>
+
+                <Toggle
+                  pressed={showLabels}
+                  onPressedChange={setShowLabels}
+                  size="sm"
+                  className="h-9 px-3"
+                  aria-label="Toggle part labels"
+                  title="Floating part labels"
+                >
+                  <Tag className="h-4 w-4" />
+                </Toggle>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => frameReset()}
+                  className="h-9 px-2.5"
+                  aria-label="Frame all (F)"
+                  title="Frame all — double-click a part to frame it"
+                >
+                  <Focus className="h-4 w-4" />
+                </Button>
+
+                <Separator orientation="vertical" className="h-7" />
+
                 <PaintStudioPopover
                   finish={paintFinish}
                   onChange={setPaintFinish}
