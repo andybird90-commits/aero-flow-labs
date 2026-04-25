@@ -26,6 +26,10 @@ export interface RenderedView {
   mask: Uint8Array;
   /** Per-pixel depth in world units (Infinity where no triangle hit). */
   depth: Float32Array;
+  /** Per-pixel triangle index (-1 where no hit). Length = size*size. Optional. */
+  triIndex?: Int32Array;
+  /** Per-pixel shaded grayscale (0–255). Optional. Only present when shaded=true. */
+  shade?: Uint8Array;
   /** Combined view-projection matrix (4x4, column-major) we used. */
   viewProj: Float32Array;
   /** Inverse view matrix — camera basis in world space (cam→world). */
@@ -137,9 +141,14 @@ function lookAt(eye: [number, number, number], target: [number, number, number],
   return { view, camToWorld };
 }
 
-export function renderAngle(mesh: Mesh, angle: AngleKey, size = 512, fovYDeg = 28): RenderedView {
+export function renderAngle(
+  mesh: Mesh,
+  angle: AngleKey,
+  size = 512,
+  fovYDeg = 28,
+  opts: { shaded?: boolean; triIndex?: boolean } = {},
+): RenderedView {
   const bb = meshBbox(mesh);
-  // Centre-shift the mesh into origin space for camera math (don't mutate input).
   const cx = bb.centre[0], cy = bb.centre[1], cz = bb.centre[2];
 
   const cfg = ANGLES[angle];
@@ -150,8 +159,6 @@ export function renderAngle(mesh: Mesh, angle: AngleKey, size = 512, fovYDeg = 2
     bb.height * cfg.yOffset + (cy - bb.height / 2) + cy,
     (cfg.dir[2] / dl) * dist + cz,
   ];
-  // Recentre y to match three.js client renderer (mesh centred at origin then camera y = height * yOffset).
-  // The above "eye.y" matches camera.position.y from client code (which uses centred mesh); we apply same offset relative to bbox centre.
   eye[1] = cy + bb.height * cfg.yOffset;
 
   const target: [number, number, number] = [cx, cy, cz];
@@ -166,9 +173,10 @@ export function renderAngle(mesh: Mesh, angle: AngleKey, size = 512, fovYDeg = 2
   const mask = new Uint8Array(size * size);
   const depth = new Float32Array(size * size);
   for (let i = 0; i < depth.length; i++) depth[i] = Infinity;
+  const wantIdx = opts.triIndex || opts.shaded;
+  const triIndex = wantIdx ? new Int32Array(size * size).fill(-1) : undefined;
 
   const triCount = mesh.indices.length / 3;
-  // Pre-allocate scratch.
   const sx = [0, 0, 0], sy = [0, 0, 0], sz = [0, 0, 0];
 
   for (let t = 0; t < triCount; t++) {
@@ -185,7 +193,6 @@ export function renderAngle(mesh: Mesh, angle: AngleKey, size = 512, fovYDeg = 2
     let behindNear = false;
     for (let k = 0; k < 3; k++) {
       const wx = verts[k * 3], wy = verts[k * 3 + 1], wz = verts[k * 3 + 2];
-      // Apply viewProj (column-major mat * vec4(x,y,z,1)).
       const cx_ = viewProj[0] * wx + viewProj[4] * wy + viewProj[8]  * wz + viewProj[12];
       const cy_ = viewProj[1] * wx + viewProj[5] * wy + viewProj[9]  * wz + viewProj[13];
       const cz_ = viewProj[2] * wx + viewProj[6] * wy + viewProj[10] * wz + viewProj[14];
@@ -193,21 +200,59 @@ export function renderAngle(mesh: Mesh, angle: AngleKey, size = 512, fovYDeg = 2
       if (cw_ <= 0) { behindNear = true; break; }
       const ndcX = cx_ / cw_;
       const ndcY = cy_ / cw_;
-      // Convert NDC [-1,1] → pixel [0,size).
       sx[k] = (ndcX * 0.5 + 0.5) * size;
       sy[k] = (1 - (ndcY * 0.5 + 0.5)) * size;
       sz[k] = cz_ / cw_;
     }
     if (behindNear) continue;
 
-    rasteriseTri(sx[0], sy[0], sz[0], sx[1], sy[1], sz[1], sx[2], sy[2], sz[2], size, mask, depth);
+    rasteriseTri(sx[0], sy[0], sz[0], sx[1], sy[1], sz[1], sx[2], sy[2], sz[2], size, mask, depth, t, triIndex);
+  }
+
+  // Optional shading pass: derive grayscale per-pixel from the triangle's
+  // face normal (Lambert with two fixed lights). Cheap because we have
+  // triIndex already.
+  let shade: Uint8Array | undefined;
+  if (opts.shaded && triIndex) {
+    shade = new Uint8Array(size * size);
+    // Light dirs in world space
+    const L1 = normalize3(0.5, 1.0, 0.6);
+    const L2 = normalize3(-0.4, 0.7, -0.5);
+    for (let i = 0; i < triIndex.length; i++) {
+      const t = triIndex[i];
+      if (t < 0) { shade[i] = 16; continue; } // dark background
+      const ia = mesh.indices[t * 3]     * 3;
+      const ib = mesh.indices[t * 3 + 1] * 3;
+      const ic = mesh.indices[t * 3 + 2] * 3;
+      const ax = mesh.positions[ia], ay = mesh.positions[ia + 1], az = mesh.positions[ia + 2];
+      const bx = mesh.positions[ib], by = mesh.positions[ib + 1], bz = mesh.positions[ib + 2];
+      const cxv = mesh.positions[ic], cyv = mesh.positions[ic + 1], czv = mesh.positions[ic + 2];
+      const ux = bx - ax, uy = by - ay, uz = bz - az;
+      const vx = cxv - ax, vy = cyv - ay, vz = czv - az;
+      let nx = uy * vz - uz * vy;
+      let ny = uz * vx - ux * vz;
+      let nz = ux * vy - uy * vx;
+      const ln = Math.hypot(nx, ny, nz) || 1;
+      nx /= ln; ny /= ln; nz /= ln;
+      const d1 = Math.max(0, nx * L1[0] + ny * L1[1] + nz * L1[2]);
+      const d2 = Math.max(0, nx * L2[0] + ny * L2[1] + nz * L2[2]);
+      const v = 28 + 180 * d1 + 50 * d2;
+      shade[i] = Math.min(255, Math.max(0, Math.round(v)));
+    }
   }
 
   return {
     mask, depth, viewProj, camToWorld, size,
     halfFovY: fovY / 2,
     eye,
+    triIndex,
+    shade,
   };
+}
+
+function normalize3(x: number, y: number, z: number): [number, number, number] {
+  const l = Math.hypot(x, y, z) || 1;
+  return [x / l, y / l, z / l];
 }
 
 function rasteriseTri(
@@ -215,6 +260,7 @@ function rasteriseTri(
   x1: number, y1: number, z1: number,
   x2: number, y2: number, z2: number,
   size: number, mask: Uint8Array, depth: Float32Array,
+  triId?: number, triIndex?: Int32Array,
 ): void {
   const minX = Math.max(0, Math.floor(Math.min(x0, x1, x2)));
   const maxX = Math.min(size - 1, Math.ceil(Math.max(x0, x1, x2)));
@@ -237,6 +283,7 @@ function rasteriseTri(
       if (z < depth[idx]) {
         depth[idx] = z;
         mask[idx] = 1;
+        if (triIndex && triId !== undefined) triIndex[idx] = triId;
       }
     }
   }

@@ -49,7 +49,7 @@ export function useCarMaterialMap(carStlId: string | null | undefined) {
   // Auto-trigger classification if missing OR if cached at an older method
   // version. Manual (admin-curated) maps are NEVER auto-replaced — admins
   // own them; bump this string only when the *automatic* classifier improves.
-  const CURRENT_METHOD = "geometric-v2";
+  const CURRENT_METHOD = "geometric-v3";
 
   useEffect(() => {
     if (!carStlId || query.isLoading) return;
