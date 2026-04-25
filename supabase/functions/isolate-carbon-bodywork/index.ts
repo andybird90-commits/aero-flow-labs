@@ -281,7 +281,7 @@ async function isolateOne(sourceUrl: string, prompt: string): Promise<{ bytes: U
   const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const ext = mime.includes("jpeg") ? "jpg" : "png";
 
-  // Pad/letterbox onto a uniform NxN grey canvas so all four carbon views
+  // Pad/letterbox onto a uniform NxN white canvas so all four carbon views
   // share the exact same pixel scale before they hit Rodin. This is what
   // keeps the kit's inter-view proportions truthful when reconstructed.
   try {
@@ -293,7 +293,7 @@ async function isolateOne(sourceUrl: string, prompt: string): Promise<{ bytes: U
   }
 }
 
-/** Letterbox a PNG/JPG onto a square `size` canvas with neutral grey backdrop. */
+/** Letterbox a PNG/JPG onto a square `size` canvas with a plain white backdrop. */
 async function padToSquareCanvas(bytes: Uint8Array, size: number): Promise<Uint8Array> {
   const decoded = await decodeImg(bytes);
   // imagescript returns Image | GIF — for our purposes we coerce to Image.
