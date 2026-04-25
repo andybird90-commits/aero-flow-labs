@@ -743,6 +743,7 @@ export default function BuildStudio() {
                     transformMode={mode}
                     showGrid={showGrid}
                     preset={preset}
+                    quality={quality}
                     paintFinish={paintFinish}
                     onCommit={handleCommit}
                   />
