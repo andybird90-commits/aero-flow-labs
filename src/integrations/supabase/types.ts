@@ -99,6 +99,170 @@ export type Database = {
           },
         ]
       }
+      body_kit_parts: {
+        Row: {
+          anchor_position: Json | null
+          area_m2: number
+          bbox: Json
+          body_kit_id: string
+          confidence: number
+          created_at: string
+          glb_url: string | null
+          id: string
+          label: string | null
+          library_item_id: string | null
+          slot: string
+          stl_path: string
+          thumbnail_url: string | null
+          triangle_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          anchor_position?: Json | null
+          area_m2?: number
+          bbox?: Json
+          body_kit_id: string
+          confidence?: number
+          created_at?: string
+          glb_url?: string | null
+          id?: string
+          label?: string | null
+          library_item_id?: string | null
+          slot: string
+          stl_path: string
+          thumbnail_url?: string | null
+          triangle_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          anchor_position?: Json | null
+          area_m2?: number
+          bbox?: Json
+          body_kit_id?: string
+          confidence?: number
+          created_at?: string
+          glb_url?: string | null
+          id?: string
+          label?: string | null
+          library_item_id?: string | null
+          slot?: string
+          stl_path?: string
+          thumbnail_url?: string | null
+          triangle_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "body_kit_parts_body_kit_id_fkey"
+            columns: ["body_kit_id"]
+            isOneToOne: false
+            referencedRelation: "body_kits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "body_kit_parts_library_item_id_fkey"
+            columns: ["library_item_id"]
+            isOneToOne: false
+            referencedRelation: "library_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      body_kits: {
+        Row: {
+          baked_transform: Json
+          body_skin_id: string
+          combined_glb_url: string | null
+          combined_stl_path: string | null
+          created_at: string
+          donor_car_template_id: string | null
+          error: string | null
+          id: string
+          name: string
+          notes: string | null
+          panel_count: number
+          preview_thumbnail_url: string | null
+          project_id: string
+          shell_alignment_id: string | null
+          status: Database["public"]["Enums"]["body_kit_bake_status"]
+          triangle_count: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          baked_transform?: Json
+          body_skin_id: string
+          combined_glb_url?: string | null
+          combined_stl_path?: string | null
+          created_at?: string
+          donor_car_template_id?: string | null
+          error?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          panel_count?: number
+          preview_thumbnail_url?: string | null
+          project_id: string
+          shell_alignment_id?: string | null
+          status?: Database["public"]["Enums"]["body_kit_bake_status"]
+          triangle_count?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          baked_transform?: Json
+          body_skin_id?: string
+          combined_glb_url?: string | null
+          combined_stl_path?: string | null
+          created_at?: string
+          donor_car_template_id?: string | null
+          error?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          panel_count?: number
+          preview_thumbnail_url?: string | null
+          project_id?: string
+          shell_alignment_id?: string | null
+          status?: Database["public"]["Enums"]["body_kit_bake_status"]
+          triangle_count?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "body_kits_body_skin_id_fkey"
+            columns: ["body_skin_id"]
+            isOneToOne: false
+            referencedRelation: "body_skins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "body_kits_donor_car_template_id_fkey"
+            columns: ["donor_car_template_id"]
+            isOneToOne: false
+            referencedRelation: "car_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "body_kits_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "body_kits_shell_alignment_id_fkey"
+            columns: ["shell_alignment_id"]
+            isOneToOne: false
+            referencedRelation: "shell_alignments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       body_skins: {
         Row: {
           concept_project_id: string | null
@@ -1957,6 +2121,14 @@ export type Database = {
         | "panelise_body_skin"
         | "export_stl"
         | "export_glb_preview"
+      body_kit_bake_status:
+        | "idle"
+        | "queued"
+        | "baking"
+        | "subtracting"
+        | "splitting"
+        | "ready"
+        | "failed"
       body_skin_fit_status: "raw" | "aligned" | "panelised" | "printable"
       car_hardpoint_type:
         | "front_wheel_centre"
@@ -2175,6 +2347,15 @@ export const Constants = {
         "panelise_body_skin",
         "export_stl",
         "export_glb_preview",
+      ],
+      body_kit_bake_status: [
+        "idle",
+        "queued",
+        "baking",
+        "subtracting",
+        "splitting",
+        "ready",
+        "failed",
       ],
       body_skin_fit_status: ["raw", "aligned", "panelised", "printable"],
       car_hardpoint_type: [
