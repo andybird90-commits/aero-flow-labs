@@ -689,6 +689,11 @@ export function BuildStudioViewport({
 
   const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellNode;
 
+  // Forward the loaded shell to the parent so it can run auto-fit / arch detection.
+  useEffect(() => {
+    onShellMeshReady?.(shellNode ?? null);
+  }, [shellNode, onShellMeshReady]);
+
   // mm per scene-unit. We scale the car so its longest side ≈ wheelbase + 1.45m,
   // so 1 scene unit = 1 metre = 1000 mm.
   const worldToMm = 1000;
