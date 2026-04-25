@@ -570,6 +570,16 @@ export default function BuildStudio() {
     );
   };
 
+  const handleStretchChange = (enabled: boolean) => {
+    if (!user || !projectId || !shellSkinId) return;
+    upsertAlignment.mutate({
+      user_id: user.id,
+      project_id: projectId,
+      body_skin_id: shellSkinId,
+      scale_to_wheelbase: !enabled,
+    });
+  };
+
   /* ─── render ─── */
   return (
     <SidebarProvider defaultOpen={false}>
