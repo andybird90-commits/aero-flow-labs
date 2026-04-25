@@ -119,10 +119,9 @@ Deno.serve(async (req) => {
       // by that pixel.
       for (const [name, polys] of Object.entries(masks)) {
         const tag = nameToTag(name);
-        if (tag == null) continue;
-        for (const poly of polys) {
-          if (poly.length < 3) continue;
-          // Rasterise the polygon and stamp its tag onto every covered tri.
+        if (tag == null || !Array.isArray(polys)) continue;
+        for (const poly of polys as number[][][]) {
+          if (!Array.isArray(poly) || poly.length < 3) continue;
           stampPolygon(poly, view.size, view.triIndex, votes, seen, tag);
         }
       }
