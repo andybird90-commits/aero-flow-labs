@@ -24,7 +24,15 @@ import type { SnapZone } from "@/lib/build-studio/snap-zones";
 import { nearestSnapZone } from "@/lib/build-studio/snap-zones";
 import { PartMesh } from "@/components/build-studio/PartMesh";
 import { SnapZoneViz } from "@/components/build-studio/SnapZoneViz";
-import { DEFAULT_PAINT_FINISH, type EnvPreset, type PaintFinish } from "@/lib/build-studio/paint-finish";
+import {
+  DEFAULT_PAINT_FINISH,
+  DEFAULT_GLASS_FINISH,
+  DEFAULT_TYRE_FINISH,
+  DEFAULT_WHEEL_FINISH,
+  type EnvPreset,
+  type MaterialFinish,
+  type PaintFinish,
+} from "@/lib/build-studio/paint-finish";
 import { PostFX } from "@/components/build-studio/PostFX";
 import { ShowroomFloor } from "@/components/build-studio/ShowroomFloor";
 import { QUALITY_PRESETS, type RenderQuality } from "@/lib/build-studio/render-quality";
