@@ -3,12 +3,16 @@
  * tags on a hero STL. Admins use this once per car so end-users get correctly
  * tagged wheels/tyres/glass with zero work on their side.
  *
- * Tools:
+ * Pro tools:
  *   - Brush      — drag a circular NDC region, paints front-facing tris.
- *   - Wheel ring — click on a wheel hub: paints inner disc as wheel, outer
- *                  ring as tyre using a single 3D sphere query.
- *   - Glass lasso — click to drop polygon points, double-click closes.
- *   - Reset to auto — re-runs the geometric classifier.
+ *                  Live cursor ring; size on `[` and `]`.
+ *   - Wheel ring — click on a wheel hub: inner disc → wheel, outer ring →
+ *                  tyre. Adjustable outer-radius slider (% of car length).
+ *   - Lasso      — click to drop polygon points, double-click closes.
+ *                  Live polyline preview while drawing.
+ *   - Wand       — flood-fill connected triangles whose normals stay within
+ *                  an angle threshold (great for one body panel or a window).
+ *   - Eyedropper — Alt+click any triangle to set the active material.
  *
  * Save persists `method = 'manual'`; the consumer hook respects it and never
  * overwrites a manual map.
@@ -36,15 +40,17 @@ import {
   type Tag,
   TagHistory, encodeTagsB64, computeStats,
   computeCentroids, paintByPolygon, paintBySphere, mirrorPaint,
+  floodFillByNormal,
 } from "@/lib/build-studio/paint-map-edit";
 import type { CarStl, CarTemplate } from "@/lib/repo";
 import {
   Loader2, ArrowLeft, Save, Undo2, Redo2, Check, AlertTriangle,
-  Brush, CircleDashed, Lasso, Sparkles, FlipHorizontal,
+  Brush, CircleDashed, Lasso, Sparkles, FlipHorizontal, Wand2, Pipette,
+  Eye, EyeOff, Keyboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type ToolKind = "brush" | "wheel" | "lasso";
+type ToolKind = "brush" | "wheel" | "lasso" | "wand";
 
 export default function AdminCarPaintMap() {
   const { carStlId = "" } = useParams<{ carStlId: string }>();
@@ -95,6 +101,7 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
   // Local working tags + history
   const [tags, setTags] = useState<Uint8Array | null>(null);
   const historyRef = useRef(new TagHistory(40));
+  const [, force] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reclassifying, setReclassifying] = useState(false);
@@ -102,8 +109,12 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
   // Tool state
   const [tool, setTool] = useState<ToolKind>("brush");
   const [activeTag, setActiveTag] = useState<Tag>(TAG_BODY);
-  const [brushRadius, setBrushRadius] = useState(40); // px (NDC mapped)
+  const [brushRadius, setBrushRadius] = useState(40);     // px (NDC mapped)
+  const [wheelOuterPct, setWheelOuterPct] = useState(16); // % of car length
+  const [wandAngleDeg, setWandAngleDeg] = useState(30);   // normal-angle threshold
   const [mirrorMode, setMirrorMode] = useState(false);
+  const [hiddenTags, setHiddenTags] = useState<Set<Tag>>(new Set());
+  const [showHotkeys, setShowHotkeys] = useState(false);
 
   // Geometry data once STL loads
   const [geomBundle, setGeomBundle] = useState<{
@@ -126,20 +137,31 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
     setTags(next);
     historyRef.current.push(next);
     setDirty(true);
+    force((n) => n + 1);
   };
 
   const undo = () => {
     const t = historyRef.current.undo();
-    if (t) { setTags(t); setDirty(true); }
+    if (t) { setTags(t); setDirty(true); force((n) => n + 1); }
   };
   const redo = () => {
     const t = historyRef.current.redo();
-    if (t) { setTags(t); setDirty(true); }
+    if (t) { setTags(t); setDirty(true); force((n) => n + 1); }
+  };
+
+  const toggleTagVisibility = (t: Tag) => {
+    setHiddenTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t); else next.add(t);
+      return next;
+    });
   };
 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
       else if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
       else if (e.key === "1") setActiveTag(TAG_BODY);
@@ -149,6 +171,11 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
       else if (e.key.toLowerCase() === "b") setTool("brush");
       else if (e.key.toLowerCase() === "w") setTool("wheel");
       else if (e.key.toLowerCase() === "l") setTool("lasso");
+      else if (e.key.toLowerCase() === "f") setTool("wand");
+      else if (e.key.toLowerCase() === "m") setMirrorMode((v) => !v);
+      else if (e.key === "[") setBrushRadius((r) => Math.max(10, r - 5));
+      else if (e.key === "]") setBrushRadius((r) => Math.min(200, r + 5));
+      else if (e.key === "?") setShowHotkeys((v) => !v);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -218,6 +245,8 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
 
   const stats = tags ? computeStats(tags) : null;
   const ready = !!stlUrl && !!tags && !!geomBundle;
+  const canUndo = historyRef.current.canUndo();
+  const canRedo = historyRef.current.canRedo();
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] w-full overflow-hidden">
@@ -247,23 +276,40 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
           )}
         </div>
 
-        {/* Tag picker */}
+        {/* Tag picker + visibility */}
         <div className="space-y-1.5">
-          <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Active material (1–4)</div>
-          {([TAG_BODY, TAG_GLASS, TAG_WHEEL, TAG_TYRE] as Tag[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setActiveTag(t)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition",
-                activeTag === t ? "border-primary bg-primary/10" : "border-border hover:bg-surface-2/50",
-              )}
-            >
-              <span className="h-3 w-3 rounded-full border border-border/60" style={{ backgroundColor: TAG_COLORS[t] }} />
-              <span className="font-medium">{TAG_LABELS[t]}</span>
-              <span className="ml-auto text-mono text-[10px] text-muted-foreground">{t + 1}</span>
-            </button>
-          ))}
+          <div className="flex items-center justify-between text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            <span>Active material (1–4)</span>
+            <span className="opacity-70">solo</span>
+          </div>
+          {([TAG_BODY, TAG_GLASS, TAG_WHEEL, TAG_TYRE] as Tag[]).map((t) => {
+            const hidden = hiddenTags.has(t);
+            return (
+              <div key={t} className="flex items-stretch gap-1">
+                <button
+                  onClick={() => setActiveTag(t)}
+                  className={cn(
+                    "flex flex-1 items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition",
+                    activeTag === t ? "border-primary bg-primary/10" : "border-border hover:bg-surface-2/50",
+                  )}
+                >
+                  <span className="h-3 w-3 rounded-full border border-border/60" style={{ backgroundColor: TAG_COLORS[t] }} />
+                  <span className="font-medium">{TAG_LABELS[t]}</span>
+                  <span className="ml-auto text-mono text-[10px] text-muted-foreground">{t + 1}</span>
+                </button>
+                <button
+                  onClick={() => toggleTagVisibility(t)}
+                  title={hidden ? "Show" : "Hide"}
+                  className={cn(
+                    "grid w-7 place-items-center rounded-md border transition",
+                    hidden ? "border-warning/40 bg-warning/10 text-warning" : "border-border hover:bg-surface-2/50 text-muted-foreground",
+                  )}
+                >
+                  {hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         {/* Tool picker */}
@@ -272,44 +318,73 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
           <ToolButton active={tool === "brush"} onClick={() => setTool("brush")} icon={<Brush className="h-3.5 w-3.5" />} label="Brush" hotkey="B" />
           <ToolButton active={tool === "wheel"} onClick={() => setTool("wheel")} icon={<CircleDashed className="h-3.5 w-3.5" />} label="Wheel ring" hotkey="W" />
           <ToolButton active={tool === "lasso"} onClick={() => setTool("lasso")} icon={<Lasso className="h-3.5 w-3.5" />} label="Lasso" hotkey="L" />
+          <ToolButton active={tool === "wand"} onClick={() => setTool("wand")} icon={<Wand2 className="h-3.5 w-3.5" />} label="Magic wand" hotkey="F" />
         </div>
 
         {tool === "brush" && (
           <div className="mt-3 space-y-1">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Brush size</span>
-              <span className="text-mono text-[10px]">{brushRadius}px</span>
+              <span className="text-mono text-[10px]">{brushRadius}px · [ ]</span>
             </div>
             <Slider value={[brushRadius]} min={10} max={200} step={5} onValueChange={(v) => setBrushRadius(v[0])} />
           </div>
         )}
 
         {tool === "wheel" && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Click on a wheel hub. Inner disc → wheel, outer ring → tyre. Active tag is ignored for this tool.
-          </p>
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Outer (tyre)</span>
+              <span className="text-mono text-[10px]">{wheelOuterPct}% of length</span>
+            </div>
+            <Slider value={[wheelOuterPct]} min={6} max={28} step={1} onValueChange={(v) => setWheelOuterPct(v[0])} />
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Click a wheel hub. Inner disc → wheel, outer ring → tyre.
+            </p>
+          </div>
         )}
+
         {tool === "lasso" && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Click to add polygon points around glass / a region. Double-click to apply the active material.
+            Click to add polygon points. Double-click to close & apply. Esc to cancel.
           </p>
         )}
 
-        <div className="mt-4 flex items-center justify-between rounded-md border border-border px-2 py-1.5">
-          <div className="flex items-center gap-1.5 text-xs">
-            <FlipHorizontal className="h-3.5 w-3.5" /> Mirror L/R
+        {tool === "wand" && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Edge sensitivity</span>
+              <span className="text-mono text-[10px]">{wandAngleDeg}°</span>
+            </div>
+            <Slider value={[wandAngleDeg]} min={5} max={75} step={1} onValueChange={(v) => setWandAngleDeg(v[0])} />
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Click any triangle. Spreads across connected faces while normals stay within {wandAngleDeg}°.
+            </p>
           </div>
-          <Switch checked={mirrorMode} onCheckedChange={setMirrorMode} />
+        )}
+
+        <div className="mt-4 space-y-1.5">
+          <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Helpers</div>
+          <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
+            <div className="flex items-center gap-1.5 text-xs">
+              <FlipHorizontal className="h-3.5 w-3.5" /> Mirror L/R
+              <span className="text-mono text-[10px] text-muted-foreground">M</span>
+            </div>
+            <Switch checked={mirrorMode} onCheckedChange={setMirrorMode} />
+          </div>
+          <Button variant="outline" size="sm" className="w-full" onClick={onMirror} disabled={!ready}>
+            Apply mirror to all tags
+          </Button>
+          <div className="rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground flex items-center gap-1.5">
+            <Pipette className="h-3.5 w-3.5" /> Alt+click to pick a material
+          </div>
         </div>
-        <Button variant="outline" size="sm" className="mt-2 w-full" onClick={onMirror} disabled={!ready}>
-          Apply mirror to all tags
-        </Button>
 
         <div className="mt-4 flex items-center gap-2">
-          <Button variant="outline" size="sm" className="flex-1" onClick={undo} disabled={!historyRef.current.canUndo()}>
+          <Button variant="outline" size="sm" className="flex-1" onClick={undo} disabled={!canUndo}>
             <Undo2 className="mr-1 h-3.5 w-3.5" /> Undo
           </Button>
-          <Button variant="outline" size="sm" className="flex-1" onClick={redo} disabled={!historyRef.current.canRedo()}>
+          <Button variant="outline" size="sm" className="flex-1" onClick={redo} disabled={!canRedo}>
             <Redo2 className="mr-1 h-3.5 w-3.5" /> Redo
           </Button>
         </div>
@@ -319,20 +394,24 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
           Reset to auto
         </Button>
 
+        <Button variant="ghost" size="sm" className="mt-1 w-full" onClick={() => setShowHotkeys((v) => !v)}>
+          <Keyboard className="mr-1.5 h-3.5 w-3.5" /> {showHotkeys ? "Hide" : "Show"} hotkeys
+        </Button>
+
         {stats && (
           <div className="mt-4 space-y-1 rounded-md border border-border bg-surface-2/30 p-2 text-xs">
             <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Stats</div>
-            {(["body", "glass", "wheel", "tyre"] as const).map((k, i) => (
+            {(["body", "glass", "wheel", "tyre"] as const).map((k) => (
               <div key={k} className="flex items-center justify-between">
                 <span className="capitalize text-muted-foreground">{k}</span>
                 <span className="text-mono text-[10px]">
-                  {((stats[k] / stats.total) * 100).toFixed(1)}%
+                  {((stats[k]! / stats.total!) * 100).toFixed(1)}%
                 </span>
               </div>
             ))}
             <div className="border-t border-border pt-1 mt-1 flex items-center justify-between">
               <span className="text-muted-foreground">Triangles</span>
-              <span className="text-mono text-[10px]">{stats.total.toLocaleString()}</span>
+              <span className="text-mono text-[10px]">{stats.total!.toLocaleString()}</span>
             </div>
           </div>
         )}
@@ -351,10 +430,38 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
             tool={tool}
             activeTag={activeTag}
             brushRadius={brushRadius}
+            wheelOuterPct={wheelOuterPct}
+            wandAngleDeg={wandAngleDeg}
             mirrorMode={mirrorMode}
+            hiddenTags={hiddenTags}
             onPaint={commitTags}
+            onPickTag={setActiveTag}
             onGeomReady={setGeomBundle}
           />
+        )}
+
+        {showHotkeys && (
+          <div className="absolute right-4 top-4 z-20 w-64 rounded-lg border border-border bg-surface-1/95 p-3 text-xs shadow-lg backdrop-blur">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-mono text-[10px] uppercase tracking-widest text-primary/80">Hotkeys</span>
+              <button onClick={() => setShowHotkeys(false)} className="text-muted-foreground hover:text-foreground">×</button>
+            </div>
+            {[
+              ["1–4", "Pick material"],
+              ["B / W / L / F", "Brush / Wheel / Lasso / Wand"],
+              ["[ / ]", "Brush smaller / larger"],
+              ["Alt + click", "Eyedropper"],
+              ["M", "Toggle mirror"],
+              ["Ctrl/⌘ + Z / Y", "Undo / Redo"],
+              ["Esc", "Cancel lasso"],
+              ["?", "Toggle this panel"],
+            ].map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between py-0.5">
+                <span className="text-muted-foreground">{v}</span>
+                <span className="text-mono text-[10px]">{k}</span>
+              </div>
+            ))}
+          </div>
         )}
 
         {/* Save bar */}
@@ -405,8 +512,12 @@ interface CanvasProps {
   tool: ToolKind;
   activeTag: Tag;
   brushRadius: number;
+  wheelOuterPct: number;
+  wandAngleDeg: number;
   mirrorMode: boolean;
+  hiddenTags: Set<Tag>;
   onPaint: (next: Uint8Array) => void;
+  onPickTag: (t: Tag) => void;
   onGeomReady: (b: {
     geom: THREE.BufferGeometry;
     centroids: Float32Array;
@@ -415,33 +526,131 @@ interface CanvasProps {
   }) => void;
 }
 
+interface CursorState {
+  x: number; y: number;
+  worldR?: number; // world radius of wheel preview (after raycast)
+  visible: boolean;
+}
+
 function PaintMapCanvas(props: CanvasProps) {
+  const [cursor, setCursor] = useState<CursorState>({ x: 0, y: 0, visible: false });
+  const [lassoPath, setLassoPath] = useState<Array<[number, number]>>([]);
+  const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      setViewportSize({ w: r.width, h: r.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <Canvas shadows camera={{ position: [4, 2.5, 4], fov: 35 }} className="!h-full">
-      <color attach="background" args={["#0b0f14"]} />
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[5, 8, 5]} intensity={1.0} castShadow />
-      <directionalLight position={[-5, 4, -3]} intensity={0.4} />
-      <Environment preset="warehouse" />
-      <gridHelper args={[20, 20, "#1f2937", "#1f2937"]} />
-      <PaintMesh {...props} />
-      <OrbitControls makeDefault enableDamping />
-    </Canvas>
+    <div ref={wrapRef} className="relative h-full w-full">
+      <Canvas shadows camera={{ position: [4, 2.5, 4], fov: 35 }} className="!h-full">
+        <color attach="background" args={["#0b0f14"]} />
+        <ambientLight intensity={0.4} />
+        <directionalLight position={[5, 8, 5]} intensity={1.0} castShadow />
+        <directionalLight position={[-5, 4, -3]} intensity={0.4} />
+        <Environment preset="warehouse" />
+        <gridHelper args={[20, 20, "#1f2937", "#1f2937"]} />
+        <PaintMesh
+          {...props}
+          onCursor={setCursor}
+          onLasso={setLassoPath}
+        />
+        <OrbitControls makeDefault enableDamping />
+      </Canvas>
+
+      {/* SVG overlay: brush cursor + wheel preview + lasso */}
+      <svg
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        width={viewportSize.w}
+        height={viewportSize.h}
+      >
+        {/* Lasso polyline preview (NDC → SVG) */}
+        {lassoPath.length > 0 && (
+          <polygon
+            points={lassoPath
+              .map(([x, y]) => `${((x + 1) / 2) * viewportSize.w},${((1 - y) / 2) * viewportSize.h}`)
+              .join(" ")}
+            fill="hsl(var(--primary) / 0.12)"
+            stroke="hsl(var(--primary))"
+            strokeWidth={1.5}
+            strokeDasharray="5 4"
+          />
+        )}
+        {/* Cursor (brush or wheel preview) */}
+        {cursor.visible && props.tool === "brush" && (
+          <circle
+            cx={((cursor.x + 1) / 2) * viewportSize.w}
+            cy={((1 - cursor.y) / 2) * viewportSize.h}
+            r={props.brushRadius}
+            fill={hexToRgba(TAG_COLORS[props.activeTag], 0.18)}
+            stroke={TAG_COLORS[props.activeTag]}
+            strokeWidth={1.25}
+          />
+        )}
+        {cursor.visible && props.tool === "wheel" && cursor.worldR && (
+          <>
+            <circle
+              cx={((cursor.x + 1) / 2) * viewportSize.w}
+              cy={((1 - cursor.y) / 2) * viewportSize.h}
+              r={cursor.worldR}
+              fill="hsl(24 95% 53% / 0.12)"
+              stroke="hsl(24 95% 53%)"
+              strokeWidth={1.25}
+            />
+            <circle
+              cx={((cursor.x + 1) / 2) * viewportSize.w}
+              cy={((1 - cursor.y) / 2) * viewportSize.h}
+              r={cursor.worldR * 0.62}
+              fill="hsl(217 91% 60% / 0.16)"
+              stroke="hsl(217 91% 60%)"
+              strokeWidth={1.25}
+            />
+          </>
+        )}
+        {cursor.visible && props.tool === "wand" && (
+          <circle
+            cx={((cursor.x + 1) / 2) * viewportSize.w}
+            cy={((1 - cursor.y) / 2) * viewportSize.h}
+            r={6}
+            fill={`hsl(var(--primary) / 0.4)`}
+            stroke={`hsl(var(--primary))`}
+            strokeWidth={1.5}
+          />
+        )}
+      </svg>
+    </div>
   );
 }
 
-function PaintMesh({ stlUrl, tags, tool, activeTag, brushRadius, mirrorMode, onPaint, onGeomReady }: CanvasProps) {
+function PaintMesh({
+  stlUrl, tags, tool, activeTag, brushRadius, wheelOuterPct, wandAngleDeg,
+  mirrorMode, hiddenTags, onPaint, onPickTag, onGeomReady, onCursor, onLasso,
+}: CanvasProps & {
+  onCursor: (c: CursorState) => void;
+  onLasso: (p: Array<[number, number]>) => void;
+}) {
   const { camera, gl, size } = useThree();
   const meshRef = useRef<THREE.Mesh | null>(null);
   const wrapperRef = useRef<THREE.Group | null>(null);
   const centroidsRef = useRef<Float32Array | null>(null);
   const baseGeomRef = useRef<THREE.BufferGeometry | null>(null);
+  const carLengthRef = useRef<number>(0);
+  const tagsRef = useRef<Uint8Array | null>(null);
+
+  useEffect(() => { tagsRef.current = tags; }, [tags]);
 
   const [object, setObject] = useState<THREE.Object3D | null>(null);
 
   // Lasso state (NDC coords)
   const lassoRef = useRef<Array<[number, number]>>([]);
-  const [lassoPath, setLassoPath] = useState<Array<[number, number]>>([]);
 
   // Brush drag
   const draggingRef = useRef(false);
@@ -464,6 +673,7 @@ function PaintMesh({ stlUrl, tags, tool, activeTag, brushRadius, mirrorMode, onP
       // Wrap and normalise: STL is Z-up, scale to ~4.5m long
       const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
         vertexColors: true, metalness: 0.0, roughness: 0.85, flatShading: false,
+        transparent: true,
       }));
       meshRef.current = mesh;
       mesh.rotation.x = -Math.PI / 2;
@@ -483,10 +693,13 @@ function PaintMesh({ stlUrl, tags, tool, activeTag, brushRadius, mirrorMode, onP
       wrapper.position.y -= box3.min.y;
       wrapperRef.current = wrapper;
 
-      // Compute centroids in MESH-LOCAL coordinates (we'll transform query
-      // points instead — keeps the buffer immutable as the camera moves).
+      // Compute centroids in MESH-LOCAL coordinates.
       const c = computeCentroids(geo);
       centroidsRef.current = c.centroids;
+
+      // Cache car length in mesh-local for wheel-radius calc.
+      const lbox = new THREE.Box3().setFromBufferAttribute(geo.attributes.position as THREE.BufferAttribute);
+      carLengthRef.current = Math.max(lbox.max.x - lbox.min.x, lbox.max.y - lbox.min.y, lbox.max.z - lbox.min.z);
 
       mesh.updateMatrixWorld(true);
       onGeomReady({
@@ -501,7 +714,7 @@ function PaintMesh({ stlUrl, tags, tool, activeTag, brushRadius, mirrorMode, onP
     return () => { cancelled = true; };
   }, [stlUrl, onGeomReady]);
 
-  // Repaint vertex colours whenever tags change
+  // Repaint vertex colours whenever tags or visibility change
   useEffect(() => {
     const geo = baseGeomRef.current;
     if (!geo || !tags) return;
@@ -515,18 +728,24 @@ function PaintMesh({ stlUrl, tags, tool, activeTag, brushRadius, mirrorMode, onP
       hexToRgb(TAG_COLORS[2]),
       hexToRgb(TAG_COLORS[3]),
     ];
+    // When a tag is hidden, dim it heavily so the model still has shape but
+    // the active materials pop. Using HSL-lightness math is overkill — just
+    // multiply.
+    const dim = 0.06;
     const arr = colorAttr.array as Float32Array;
     for (let t = 0; t < triCount; t++) {
-      const [r, g, b] = palette[Math.min(3, Math.max(0, tags[t]))];
+      const tg = Math.min(3, Math.max(0, tags[t])) as Tag;
+      const [r, g, b] = palette[tg];
+      const m = hiddenTags.has(tg) ? dim : 1;
       const o = t * 9;
       for (let k = 0; k < 3; k++) {
-        arr[o + k * 3]     = r;
-        arr[o + k * 3 + 1] = g;
-        arr[o + k * 3 + 2] = b;
+        arr[o + k * 3]     = r * m;
+        arr[o + k * 3 + 1] = g * m;
+        arr[o + k * 3 + 2] = b * m;
       }
     }
     colorAttr.needsUpdate = true;
-  }, [tags]);
+  }, [tags, hiddenTags]);
 
   // Pointer interactions
   useEffect(() => {
@@ -550,13 +769,12 @@ function PaintMesh({ stlUrl, tags, tool, activeTag, brushRadius, mirrorMode, onP
       m.multiply(mesh.matrixWorld);
       const camDir = new THREE.Vector3();
       camera.getWorldDirection(camDir);
-      // Convert camDir to mesh-local space for normal-cull math
       const inv = new THREE.Matrix3().setFromMatrix4(mesh.matrixWorld).invert();
       const localCam = camDir.clone().applyMatrix3(inv).normalize();
       return { matrix: m, localCam };
     };
 
-    const raycastTriangle = (e: PointerEvent) => {
+    const raycastTriangle = (e: PointerEvent | MouseEvent) => {
       const mesh = meshRef.current;
       if (!mesh) return null;
       const p = ndc(e);
@@ -568,12 +786,12 @@ function PaintMesh({ stlUrl, tags, tool, activeTag, brushRadius, mirrorMode, onP
     };
 
     const paintBrush = (e: PointerEvent) => {
+      const tags = tagsRef.current;
       if (!tags || !centroidsRef.current) return;
       const vp = buildVP();
       if (!vp) return;
       const p = ndc(e);
       const rNDC = brushRadius / Math.min(size.width, size.height);
-      // Build small NDC circle polygon around cursor
       const N = 24;
       const poly: Array<[number, number]> = [];
       for (let i = 0; i < N; i++) {
@@ -587,34 +805,57 @@ function PaintMesh({ stlUrl, tags, tool, activeTag, brushRadius, mirrorMode, onP
     };
 
     const paintWheel = (e: PointerEvent) => {
+      const tags = tagsRef.current;
       if (!tags || !centroidsRef.current) return;
       const hit = raycastTriangle(e);
       if (!hit) return;
-      // Convert hit point to mesh-local
       const local = hit.point.clone();
       meshRef.current!.worldToLocal(local);
-      // Auto radius based on car bbox: tyre OD ≈ length * 0.16
-      const bbox = new THREE.Box3().setFromBufferAttribute(baseGeomRef.current!.attributes.position as THREE.BufferAttribute);
-      const len = Math.max(bbox.max.x - bbox.min.x, bbox.max.y - bbox.min.y, bbox.max.z - bbox.min.z);
-      const tyreR = len * 0.16;
+      const tyreR = carLengthRef.current * (wheelOuterPct / 100);
       const wheelR = tyreR * 0.62;
       const next = new Uint8Array(tags);
-      // Outer ring → tyre
       paintBySphere(next, centroidsRef.current, local, tyreR, TAG_TYRE, wheelR);
-      // Inner disc → wheel
       paintBySphere(next, centroidsRef.current, local, wheelR, TAG_WHEEL);
       if (mirrorMode) mirrorPaint(next, centroidsRef.current, "y");
       onPaint(next);
+    };
+
+    const paintWand = (e: PointerEvent) => {
+      const tags = tagsRef.current;
+      if (!tags) return;
+      const hit = raycastTriangle(e);
+      if (!hit || hit.face < 0) return;
+      const next = new Uint8Array(tags);
+      const painted = floodFillByNormal(next, baseGeomRef.current!, hit.face, activeTag, wandAngleDeg);
+      if (mirrorMode && centroidsRef.current) mirrorPaint(next, centroidsRef.current, "y");
+      if (painted > 0) onPaint(next);
+    };
+
+    const eyedrop = (e: PointerEvent) => {
+      const tags = tagsRef.current;
+      if (!tags) return;
+      const hit = raycastTriangle(e);
+      if (!hit || hit.face < 0) return;
+      const t = tags[hit.face] as Tag;
+      onPickTag(t);
     };
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
       if ((e.target as HTMLElement) !== dom) return;
       if (e.shiftKey) return; // let orbit handle pan
+
+      // Eyedropper takes precedence on any tool.
+      if (e.altKey) {
+        e.preventDefault();
+        eyedrop(e);
+        return;
+      }
+
       if (tool === "brush") {
         e.preventDefault();
         draggingRef.current = true;
-        dom.setPointerCapture(e.pointerId);
+        try { dom.setPointerCapture(e.pointerId); } catch {}
         paintBrush(e);
       } else if (tool === "wheel") {
         e.preventDefault();
@@ -624,69 +865,101 @@ function PaintMesh({ stlUrl, tags, tool, activeTag, brushRadius, mirrorMode, onP
         const p = ndc(e);
         const next = [...lassoRef.current, [p.x, p.y] as [number, number]];
         lassoRef.current = next;
-        setLassoPath(next);
+        onLasso(next);
+      } else if (tool === "wand") {
+        e.preventDefault();
+        paintWand(e);
       }
     };
+
     const onPointerMove = (e: PointerEvent) => {
+      const p = ndc(e);
+      // Update cursor preview (worldR for wheel previews via raycast distance)
+      let worldR: number | undefined;
+      if (tool === "wheel") {
+        const hit = raycastTriangle(e);
+        if (hit && meshRef.current) {
+          // Project a point at the radius distance into screen pixels.
+          const local = hit.point.clone();
+          meshRef.current.worldToLocal(local);
+          const tyreR = carLengthRef.current * (wheelOuterPct / 100);
+          // World-space r = tyreR * mesh.scale (uniform)
+          const worldScale = meshRef.current.getWorldScale(new THREE.Vector3()).x;
+          const rWorld = tyreR * worldScale;
+          // Screen-space r ≈ rWorld * (canvasH / 2) / dist / tan(fov/2)
+          const cam = camera as THREE.PerspectiveCamera;
+          const dist = camera.position.distanceTo(hit.point);
+          const fovRad = (cam.fov * Math.PI) / 180;
+          worldR = (rWorld * (size.height / 2)) / (dist * Math.tan(fovRad / 2));
+        }
+      }
+      onCursor({ x: p.x, y: p.y, worldR, visible: true });
+
       if (tool === "brush" && draggingRef.current) {
         paintBrush(e);
       }
     };
+
+    const onPointerLeave = () => onCursor({ x: 0, y: 0, visible: false });
+
     const onPointerUp = (e: PointerEvent) => {
       if (draggingRef.current) {
         draggingRef.current = false;
         try { dom.releasePointerCapture(e.pointerId); } catch {}
       }
     };
+
     const onDblClick = (e: MouseEvent) => {
       if (tool !== "lasso") return;
       if (lassoRef.current.length < 3) {
         lassoRef.current = [];
-        setLassoPath([]);
+        onLasso([]);
         return;
       }
       const vp = buildVP();
+      const tags = tagsRef.current;
       if (!vp || !tags || !centroidsRef.current) return;
       const next = new Uint8Array(tags);
       paintByPolygon(next, centroidsRef.current, baseGeomRef.current!, vp.matrix, vp.localCam, lassoRef.current, activeTag);
       if (mirrorMode) mirrorPaint(next, centroidsRef.current, "y");
       onPaint(next);
       lassoRef.current = [];
-      setLassoPath([]);
+      onLasso([]);
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && tool === "lasso" && lassoRef.current.length) {
+        lassoRef.current = [];
+        onLasso([]);
+      }
     };
 
     dom.addEventListener("pointerdown", onPointerDown);
     dom.addEventListener("pointermove", onPointerMove);
     dom.addEventListener("pointerup", onPointerUp);
+    dom.addEventListener("pointerleave", onPointerLeave);
     dom.addEventListener("dblclick", onDblClick);
+    window.addEventListener("keydown", onKey);
     return () => {
       dom.removeEventListener("pointerdown", onPointerDown);
       dom.removeEventListener("pointermove", onPointerMove);
       dom.removeEventListener("pointerup", onPointerUp);
+      dom.removeEventListener("pointerleave", onPointerLeave);
       dom.removeEventListener("dblclick", onDblClick);
+      window.removeEventListener("keydown", onKey);
     };
-  }, [tool, activeTag, brushRadius, mirrorMode, tags, camera, gl, size.width, size.height, onPaint]);
+  }, [tool, activeTag, brushRadius, wheelOuterPct, wandAngleDeg, mirrorMode, camera, gl, size.width, size.height, onPaint, onPickTag, onCursor, onLasso]);
 
-  return (
-    <>
-      {object && <primitive object={object} />}
-      {/* Lasso preview overlay (in-canvas using HTML wouldn't work; use SVG outside) */}
-      <LassoOverlay path={lassoPath} />
-    </>
-  );
-}
-
-function LassoOverlay({ path }: { path: Array<[number, number]> }) {
-  // Renders nothing in 3D; the SVG overlay is drawn outside the Canvas.
-  // Synced via a custom event for simplicity.
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent("paintmap-lasso", { detail: path }));
-  }, [path]);
-  return null;
+  return <>{object && <primitive object={object} />}</>;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
   const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},${alpha})`;
 }
