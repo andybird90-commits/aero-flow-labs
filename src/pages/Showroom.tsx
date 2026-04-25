@@ -34,6 +34,7 @@ import {
   Smartphone,
   Sparkles,
   Trash2,
+  Box,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -78,6 +79,9 @@ import {
 } from "@/components/showroom/ShowroomScene";
 import { useCameraBookmarks, type CameraBookmark } from "@/lib/showroom/bookmarks";
 import { captureCanvasPng, recordTurntable } from "@/lib/showroom/capture";
+import { exportSceneToUSDZ, isIOSDevice } from "@/lib/showroom/usdz-export";
+import { ARHud } from "@/components/showroom/ARHud";
+import { arStore } from "@/lib/showroom/ar-anchor";
 
 type CameraPreset = "front" | "rear" | "left" | "right" | "top" | "three_quarter";
 
@@ -141,13 +145,21 @@ export default function Showroom() {
 
   // Showroom state
   const sceneRef = useRef<ShowroomSceneHandle | null>(null);
+  const arOverlayRef = useRef<HTMLDivElement | null>(null);
   const [autoOrbitRpm, setAutoOrbitRpm] = useState(0);
   const [presentationMode, setPresentationMode] = useState(false);
   const [arActive, setArActive] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordProgress, setRecordProgress] = useState(0);
+  const [exportingUsdz, setExportingUsdz] = useState(false);
 
   const { bookmarks, add, remove } = useCameraBookmarks(projectId);
+
+  /** Approx car length (m) used by AR rig + HUD readout. */
+  const carLengthMeters = useMemo(
+    () => ((template?.wheelbase_mm ?? 2575) / 1000) + 1.45,
+    [template?.wheelbase_mm],
+  );
 
   // ESC exits Presentation Mode + fullscreen
   useEffect(() => {
@@ -263,6 +275,41 @@ export default function Showroom() {
     }
   };
 
+  /** Export the live three.js scene as USDZ + (on iOS) launch Quick Look. */
+  const handleQuickLook = async () => {
+    const scene = sceneRef.current?.getSceneRoot();
+    if (!scene) {
+      toast.error("Scene not ready");
+      return;
+    }
+    setExportingUsdz(true);
+    try {
+      await exportSceneToUSDZ(scene, `${projectName.replace(/\s+/g, "-")}.usdz`);
+      toast.success(isIOSDevice() ? "Launching AR Quick Look…" : "USDZ downloaded");
+    } catch (e) {
+      console.error(e);
+      toast.error("USDZ export failed", { description: String(e) });
+    } finally {
+      setExportingUsdz(false);
+    }
+  };
+
+  /** End the current XR session (used by the in-AR exit button). */
+  const exitAR = async () => {
+    const session = (navigator as any).xr?.session ?? null;
+    try {
+      // r3f-xr stores the active session on the global navigator? No — fall back
+      // to walking through document.exitFullscreen / requesting end via store.
+      const xrSession = (window as any).__activeXrSession as XRSession | undefined;
+      if (xrSession) await xrSession.end();
+      else if (session) await session.end();
+    } catch {
+      /* swallow */
+    }
+    arStore.endSession();
+    setArActive(false);
+  };
+
   const projectName = (project as any)?.name ?? "Showroom";
   const isReady = !!heroStlUrl;
 
@@ -317,9 +364,38 @@ export default function Showroom() {
             />
             <ARButton
               className="!relative !inline-flex !h-9 !items-center !gap-2 !rounded-md !border !border-border !bg-surface-1 !px-3 !text-sm !font-medium !text-foreground hover:!bg-surface-2"
-              sessionInit={{ requiredFeatures: ["hit-test"] }}
+              sessionInit={{
+                requiredFeatures: ["hit-test"],
+                optionalFeatures: arOverlayRef.current
+                  ? ["dom-overlay", "anchors", "local-floor"]
+                  : ["anchors", "local-floor"],
+                domOverlay: arOverlayRef.current ? { root: arOverlayRef.current } : undefined,
+              }}
               onClick={() => setArActive((v) => !v)}
             />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-2"
+                  onClick={handleQuickLook}
+                  disabled={!isReady || exportingUsdz}
+                >
+                  {exportingUsdz ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Box className="h-4 w-4" />
+                  )}
+                  {isIOSDevice() ? "AR Quick Look" : "USDZ"}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isIOSDevice()
+                  ? "Open in iOS AR Quick Look"
+                  : "Download .usdz for iPhone / iPad"}
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="icon" className="h-9 w-9" onClick={toggleFullscreen}>
@@ -335,6 +411,12 @@ export default function Showroom() {
           </div>
         </header>
       )}
+
+      {/* AR HUD — composited over the camera feed via WebXR dom-overlay. */}
+      <div ref={arOverlayRef} className="pointer-events-none absolute inset-0 z-50">
+        {arActive && <ARHud carLengthMeters={carLengthMeters} onExit={exitAR} />}
+      </div>
+
 
       {/* Left rail — bookmarks + camera presets */}
       {!presentationMode && (
