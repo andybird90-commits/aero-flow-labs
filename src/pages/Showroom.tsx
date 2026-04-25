@@ -163,20 +163,10 @@ export default function Showroom() {
     return () => window.removeEventListener("keydown", onKey);
   }, [presentationMode]);
 
-  // Track XR session activity to know when to make canvas transparent (AR).
-  useEffect(() => {
-    const xr = (navigator as any).xr;
-    if (!xr) return;
-    const onSessionGranted = () => {
-      const session = (window as any).__xr_session;
-      if (session?.environmentBlendMode && session.environmentBlendMode !== "opaque") {
-        setArActive(true);
-      }
-    };
-    // We can't listen on navigator.xr directly for blend mode, so fall back to
-    // a simple flag toggled by the AR button click handler below.
-    return () => onSessionGranted;
-  }, []);
+  // Note: we toggle `arActive` from the AR button click handler below.
+  // The XRSession's `environmentBlendMode` would be the proper signal, but
+  // navigator.xr doesn't expose it before session start, so a click toggle is
+  // the most reliable fallback.
 
   /* ─── handlers ─── */
 

@@ -34,6 +34,7 @@ import MeshyAdmin from "./pages/MeshyAdmin";
 import BlenderJobs from "./pages/BlenderJobs";
 import SnapZonesAdmin from "./pages/SnapZonesAdmin";
 import HardpointsAdmin from "./pages/HardpointsAdmin";
+import Showroom from "./pages/Showroom";
 
 function RealtimeBridge() {
   const { user } = useAuth();
@@ -59,6 +60,7 @@ const App = () => (
             <Route path="/dashboard"         element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/concept-studio"    element={<ProtectedRoute><Concepts /></ProtectedRoute>} />
             <Route path="/build-studio"      element={<ProtectedRoute><BuildStudio /></ProtectedRoute>} />
+            <Route path="/showroom"          element={<ProtectedRoute><Showroom /></ProtectedRoute>} />
             <Route path="/part-library"      element={<ProtectedRoute><Library /></ProtectedRoute>} />
             <Route path="/body-skin-library" element={<ProtectedRoute><BodySkinLibrary /></ProtectedRoute>} />
             <Route path="/car-library"       element={<ProtectedRoute><Garage /></ProtectedRoute>} />
