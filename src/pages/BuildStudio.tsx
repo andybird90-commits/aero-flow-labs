@@ -185,6 +185,38 @@ export default function BuildStudio() {
     );
   };
 
+  /** Delete by id (used by bottom strip quick-delete). */
+  const handleDeleteById = (id: string) => {
+    if (!projectId) return;
+    deletePart.mutate(
+      { id, project_id: projectId },
+      {
+        onSuccess: () => {
+          if (selectedId === id) setSelectedId(null);
+          toast.success("Part deleted");
+        },
+        onError: (e: any) => toast.error(e.message ?? "Delete failed"),
+      },
+    );
+  };
+
+  /** Keyboard shortcut: Delete / Backspace removes the selected part. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!selected || selected.locked) return;
+      // Don't hijack delete while typing in inputs / textareas / contenteditable.
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || t?.isContentEditable) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleDuplicate = () => {
     if (!selected) return;
     duplicatePart.mutate(selected, {
