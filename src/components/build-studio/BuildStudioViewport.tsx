@@ -581,6 +581,14 @@ export function BuildStudioViewport({
           hoverColor="#fb923c"
         />
       </GizmoHelper>
+
+      <PostFX
+        settings={settings}
+        outlineTargets={[
+          ...(meshNode && !shellEditMode ? [meshNode] : []),
+          ...(shellNode && shellEditMode ? [shellNode] : []),
+        ]}
+      />
     </Canvas>
   );
 }
