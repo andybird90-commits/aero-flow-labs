@@ -503,20 +503,55 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : (
-          <PaintMapCanvas
-            stlUrl={stlUrl}
-            tags={tags}
-            tool={tool}
-            activeTag={activeTag}
-            brushRadius={brushRadius}
-            wheelOuterPct={wheelOuterPct}
-            wandAngleDeg={wandAngleDeg}
-            mirrorMode={mirrorMode}
-            hiddenTags={hiddenTags}
-            onPaint={commitTags}
-            onPickTag={setActiveTag}
-            onGeomReady={setGeomBundle}
-          />
+          <div className={cn("h-full w-full", proposedTags && "pointer-events-none")}>
+            <PaintMapCanvas
+              stlUrl={stlUrl}
+              tags={proposedTags ?? tags}
+              tool={tool}
+              activeTag={activeTag}
+              brushRadius={brushRadius}
+              wheelOuterPct={wheelOuterPct}
+              wandAngleDeg={wandAngleDeg}
+              mirrorMode={mirrorMode}
+              hiddenTags={hiddenTags}
+              onPaint={commitTags}
+              onPickTag={setActiveTag}
+              onGeomReady={setGeomBundle}
+            />
+          </div>
+        )}
+
+        {/* AI proposal review bar */}
+        {proposedTags && (
+          <div className="pointer-events-auto absolute left-1/2 top-4 z-20 flex max-w-[min(680px,calc(100%-2rem))] -translate-x-1/2 items-center gap-3 rounded-xl border border-primary/30 bg-surface-1/95 px-3 py-2 shadow-lg backdrop-blur">
+            <div className="flex items-center gap-2">
+              <span className="grid h-7 w-7 place-items-center rounded-md bg-primary/15 text-primary">
+                <Bot className="h-4 w-4" />
+              </span>
+              <div className="leading-tight">
+                <div className="text-xs font-semibold">AI proposal preview</div>
+                <div className="text-mono text-[10px] text-muted-foreground">
+                  {proposedStats?.ai_assigned != null
+                    ? `${proposedStats.ai_assigned.toLocaleString()} tris tagged · `
+                    : ""}
+                  G {proposedStats?.glass?.toLocaleString() ?? 0} ·
+                  W {proposedStats?.wheel?.toLocaleString() ?? 0} ·
+                  T {proposedStats?.tyre?.toLocaleString() ?? 0}
+                </div>
+              </div>
+            </div>
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button variant="hero" size="sm" onClick={onAcceptProposed}>
+                <Check className="mr-1 h-3.5 w-3.5" /> Accept
+              </Button>
+              <Button variant="outline" size="sm" onClick={onMergeProposed} title="Keep current map and overlay only AI-detected glass/wheel/tyre">
+                <Layers className="mr-1 h-3.5 w-3.5" /> Merge
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onDiscardProposed}>
+                <X className="mr-1 h-3.5 w-3.5" /> Discard
+              </Button>
+            </div>
+          </div>
         )}
 
         {showHotkeys && (
