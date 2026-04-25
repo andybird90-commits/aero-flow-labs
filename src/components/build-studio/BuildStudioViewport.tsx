@@ -442,7 +442,7 @@ export function BuildStudioViewport({
 
       {heroStlUrl ? (
         <Suspense fallback={<CarPlaceholder template={template} />}>
-          <HeroStlCar url={heroStlUrl} template={template} />
+          <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} />
         </Suspense>
       ) : (
         <CarPlaceholder template={template} />
