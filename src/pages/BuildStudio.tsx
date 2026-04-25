@@ -850,6 +850,17 @@ export default function BuildStudio() {
                   <Layers className="h-4 w-4" />
                 </Toggle>
 
+                <ShellFitPanel
+                  shellRoot={shellRoot}
+                  carHardpoints={carHardpoints}
+                  lockedPairs={lockedPairs}
+                  currentTransform={shellTransform}
+                  stretchEnabled={stretchEnabled}
+                  disabled={!shellSkinId}
+                  onApplyTransform={handleShellCommit}
+                  onStretchChange={handleStretchChange}
+                />
+
                 <div className="ml-auto flex items-center gap-2">
                   <Button asChild size="sm" variant="outline" className="h-9 px-3 text-xs" title="Open in Showroom (AR/VR & presentation)">
                     <Link to={`/showroom?project=${projectId}`}>
