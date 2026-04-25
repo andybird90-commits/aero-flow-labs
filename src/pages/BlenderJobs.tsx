@@ -1,24 +1,73 @@
+import { useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Hammer, ShieldAlert } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Hammer, ShieldAlert, RefreshCw, Trash2, Download, ExternalLink } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/lib/repo";
-import { Navigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+import { formatDistanceToNow } from "date-fns";
+import {
+  useBlenderJobs,
+  useDispatchBlenderJob,
+  usePollBlenderJob,
+  useDeleteBlenderJob,
+  defaultParamsFor,
+  BLENDER_OP_META,
+  BLENDER_OPS,
+  type BlenderJob,
+  type BlenderJobType,
+} from "@/lib/blender-jobs";
+
+const STATUS_TONES: Record<string, string> = {
+  queued: "bg-muted text-muted-foreground",
+  running: "bg-primary/15 text-primary",
+  complete: "bg-emerald-500/15 text-emerald-400",
+  failed: "bg-destructive/15 text-destructive",
+};
 
 /**
- * Blender Jobs — placeholder (admin-only).
- *
- * Operational queue for the external Blender worker (trim_part_to_car,
- * thicken_shell, panelise_body_skin, cut_window_openings, etc.). The worker
- * itself lives in `blender-worker/` and is not deployed by Lovable. Phase 7
- * wires this UI to a `blender_jobs` table + dispatch / poll edge functions.
+ * Blender Jobs — admin queue for the external Blender worker. Lets admins
+ * pick one of the 14 supported operations, fill in its parameters + input
+ * mesh URLs, dispatch the job, and watch it through to completed outputs
+ * (re-hosted into the `blender-outputs` storage bucket).
  */
 export default function BlenderJobs() {
   const { user } = useAuth();
-  const { data: isAdmin, isLoading } = useIsAdmin(user?.id);
+  const { toast } = useToast();
+  const { data: isAdmin, isLoading: roleLoading } = useIsAdmin(user?.id);
+  const { data: jobs = [], isLoading } = useBlenderJobs();
+  const dispatch = useDispatchBlenderJob();
+  const poll = usePollBlenderJob();
+  const del = useDeleteBlenderJob();
 
-  if (isLoading) {
+  const [open, setOpen] = useState(false);
+  const [op, setOp] = useState<BlenderJobType>("trim_part_to_car");
+  const [paramsText, setParamsText] = useState(JSON.stringify(defaultParamsFor("trim_part_to_car"), null, 2));
+  const [inputUrlsText, setInputUrlsText] = useState(`{\n  "input_mesh_url": ""\n}`);
+  const [projectId, setProjectId] = useState("");
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, BlenderJobType[]>();
+    for (const t of BLENDER_OPS) {
+      const g = BLENDER_OP_META[t].group;
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(t);
+    }
+    return Array.from(map.entries());
+  }, []);
+
+  if (roleLoading) {
     return (
       <AppLayout>
         <div className="container mx-auto p-8 text-sm text-muted-foreground">Checking access…</div>
@@ -27,32 +76,217 @@ export default function BlenderJobs() {
   }
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
+  function selectOp(next: BlenderJobType) {
+    setOp(next);
+    setParamsText(JSON.stringify(defaultParamsFor(next), null, 2));
+  }
+
+  async function submit() {
+    let parameters: Record<string, unknown>;
+    let input_mesh_urls: Record<string, string>;
+    try {
+      parameters = JSON.parse(paramsText || "{}");
+    } catch (e) {
+      toast({ title: "Invalid parameters JSON", description: String(e), variant: "destructive" });
+      return;
+    }
+    try {
+      input_mesh_urls = JSON.parse(inputUrlsText || "{}");
+    } catch (e) {
+      toast({ title: "Invalid input URLs JSON", description: String(e), variant: "destructive" });
+      return;
+    }
+    try {
+      const res = await dispatch.mutateAsync({
+        operation_type: op,
+        parameters,
+        input_mesh_urls,
+        project_id: projectId.trim() || null,
+      });
+      toast({ title: "Job dispatched", description: `${BLENDER_OP_META[op].label} → ${res.status}` });
+      setOpen(false);
+    } catch (e) {
+      toast({ title: "Dispatch failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    }
+  }
+
+  async function refreshOne(j: BlenderJob) {
+    try {
+      const r = await poll.mutateAsync(j.id);
+      toast({ title: `Polled ${BLENDER_OP_META[j.operation_type].label}`, description: `Status: ${r.status}` });
+    } catch (e) {
+      toast({ title: "Poll failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    }
+  }
+
   return (
     <AppLayout>
-      <div className="container mx-auto px-6 py-8 max-w-5xl space-y-8">
+      <div className="container mx-auto px-6 py-8 max-w-6xl space-y-8">
         <PageHeader
           eyebrow="Admin"
           title="Blender Jobs"
-          description="Queue and monitor Blender backend operations: trim, panelise, conform, thicken, repair, export."
+          description="Queue and monitor the 14 Blender backend operations: trim, conform, thicken, panelise, repair, export."
           actions={
-            <Button disabled>
-              <Hammer className="h-4 w-4 mr-1.5" /> New job
-            </Button>
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Hammer className="h-4 w-4 mr-1.5" /> New job
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Dispatch Blender job</DialogTitle>
+                  <DialogDescription>
+                    Picks one of the 14 supported operations, packages the
+                    parameters + input mesh URLs, and POSTs to the Blender
+                    worker. Outputs are re-hosted into <code className="text-xs">blender-outputs</code>.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label>Operation</Label>
+                    <Select value={op} onValueChange={(v) => selectOp(v as BlenderJobType)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent className="max-h-[400px]">
+                        {grouped.map(([group, ops]) => (
+                          <div key={group} className="py-1">
+                            <div className="px-2 py-1 text-xs uppercase text-muted-foreground tracking-wide">{group}</div>
+                            {ops.map((t) => (
+                              <SelectItem key={t} value={t}>{BLENDER_OP_META[t].label}</SelectItem>
+                            ))}
+                          </div>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{BLENDER_OP_META[op].description}</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Project ID (optional)</Label>
+                    <Input
+                      value={projectId}
+                      onChange={(e) => setProjectId(e.target.value)}
+                      placeholder="uuid for output scoping"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>Input mesh URLs (JSON)</Label>
+                      <textarea
+                        value={inputUrlsText}
+                        onChange={(e) => setInputUrlsText(e.target.value)}
+                        rows={8}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Parameters (JSON)</Label>
+                      <textarea
+                        value={paramsText}
+                        onChange={(e) => setParamsText(e.target.value)}
+                        rows={8}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button onClick={submit} disabled={dispatch.isPending}>
+                    {dispatch.isPending ? "Dispatching…" : "Dispatch"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           }
         />
 
-        <div className="glass rounded-xl p-10 text-center">
-          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-lg bg-primary/10 text-primary mb-4">
-            <ShieldAlert className="h-7 w-7" />
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">Loading queue…</div>
+        ) : jobs.length === 0 ? (
+          <div className="glass rounded-xl p-10 text-center">
+            <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-lg bg-primary/10 text-primary mb-4">
+              <ShieldAlert className="h-7 w-7" />
+            </div>
+            <h2 className="text-xl font-semibold">No Blender jobs yet</h2>
+            <p className="mt-2 mx-auto max-w-md text-sm text-muted-foreground">
+              Dispatch your first job to test the worker contract. The worker
+              source lives in <code className="text-xs">blender-worker/</code>.
+            </p>
           </div>
-          <h2 className="text-xl font-semibold">Job queue UI coming in Phase 7</h2>
-          <p className="mt-2 mx-auto max-w-md text-sm text-muted-foreground">
-            The Blender worker contract and 13 operation types are documented
-            in <code className="text-mono text-xs">blender-worker/</code>. The
-            dispatcher and queue table land alongside the production-ready
-            worker in a later iteration.
-          </p>
-        </div>
+        ) : (
+          <div className="space-y-3">
+            {jobs.map((j) => {
+              const meta = BLENDER_OP_META[j.operation_type];
+              const outputs = (j.output_file_urls ?? {}) as Record<string, string>;
+              const outEntries = Object.entries(outputs).filter(([, v]) => !!v);
+              return (
+                <div key={j.id} className="glass rounded-xl p-4 flex gap-4">
+                  {j.preview_file_url ? (
+                    <img src={j.preview_file_url} alt="" className="h-24 w-24 rounded object-cover bg-muted" />
+                  ) : (
+                    <div className="h-24 w-24 rounded bg-muted/40 flex items-center justify-center text-muted-foreground">
+                      <Hammer className="h-6 w-6" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold truncate">{meta.label}</h3>
+                      <Badge className={STATUS_TONES[j.status] ?? "bg-muted"}>{j.status}</Badge>
+                      <Badge variant="outline" className="text-xs">{meta.group}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(j.created_at), { addSuffix: true })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{meta.description}</p>
+                    {j.error_log && (
+                      <p className="text-xs text-destructive mt-1.5 line-clamp-2">{j.error_log}</p>
+                    )}
+                    {outEntries.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {outEntries.map(([k, url]) => (
+                          <a
+                            key={k}
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded bg-secondary/60 px-2 py-1 text-xs hover:bg-secondary"
+                          >
+                            <Download className="h-3 w-3" /> {k}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    {(j.status === "queued" || j.status === "running") && (
+                      <Button size="sm" variant="outline" onClick={() => refreshOne(j)} disabled={poll.isPending}>
+                        <RefreshCw className={`h-3.5 w-3.5 mr-1 ${poll.isPending ? "animate-spin" : ""}`} /> Poll
+                      </Button>
+                    )}
+                    {j.worker_task_id && (
+                      <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[120px]" title={j.worker_task_id}>
+                        <ExternalLink className="h-3 w-3 inline mr-1" />
+                        {j.worker_task_id.slice(0, 12)}…
+                      </span>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => del.mutate(j.id)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </AppLayout>
   );
