@@ -275,6 +275,41 @@ export default function Showroom() {
     }
   };
 
+  /** Export the live three.js scene as USDZ + (on iOS) launch Quick Look. */
+  const handleQuickLook = async () => {
+    const scene = sceneRef.current?.getSceneRoot();
+    if (!scene) {
+      toast.error("Scene not ready");
+      return;
+    }
+    setExportingUsdz(true);
+    try {
+      await exportSceneToUSDZ(scene, `${projectName.replace(/\s+/g, "-")}.usdz`);
+      toast.success(isIOSDevice() ? "Launching AR Quick Look…" : "USDZ downloaded");
+    } catch (e) {
+      console.error(e);
+      toast.error("USDZ export failed", { description: String(e) });
+    } finally {
+      setExportingUsdz(false);
+    }
+  };
+
+  /** End the current XR session (used by the in-AR exit button). */
+  const exitAR = async () => {
+    const session = (navigator as any).xr?.session ?? null;
+    try {
+      // r3f-xr stores the active session on the global navigator? No — fall back
+      // to walking through document.exitFullscreen / requesting end via store.
+      const xrSession = (window as any).__activeXrSession as XRSession | undefined;
+      if (xrSession) await xrSession.end();
+      else if (session) await session.end();
+    } catch {
+      /* swallow */
+    }
+    arStore.endSession();
+    setArActive(false);
+  };
+
   const projectName = (project as any)?.name ?? "Showroom";
   const isReady = !!heroStlUrl;
 
