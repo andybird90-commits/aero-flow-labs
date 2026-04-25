@@ -27,6 +27,7 @@ import {
   Hexagon,
   Magnet,
   Crosshair,
+  FileBox,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/lib/repo";
@@ -53,6 +54,7 @@ const workspaceNav = [
 const systemNav = [{ title: "Settings", url: "/settings", icon: Settings }];
 
 const adminNav = [
+  { title: "Hero Car STLs", url: "/settings/car-stls", icon: FileBox },
   { title: "Meshy Admin", url: "/meshy-admin", icon: Wand2 },
   { title: "Blender Jobs", url: "/blender-jobs", icon: Hammer },
   { title: "Snap Zones", url: "/snap-zones-admin", icon: Magnet },
