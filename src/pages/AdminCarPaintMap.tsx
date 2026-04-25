@@ -441,7 +441,7 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
         )}
 
         {showHotkeys && (
-          <div className="absolute right-4 top-4 z-20 w-64 rounded-lg border border-border bg-surface-1/95 p-3 text-xs shadow-lg backdrop-blur">
+          <div className="absolute right-4 top-4 z-20 w-64 rounded-lg border border-border bg-surface-1/95 p-3 text-xs shadow-lg">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-mono text-[10px] uppercase tracking-widest text-primary/80">Hotkeys</span>
               <button onClick={() => setShowHotkeys(false)} className="text-muted-foreground hover:text-foreground">×</button>
@@ -465,7 +465,7 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
         )}
 
         {/* Save bar */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 rounded-full border border-border bg-surface-1/95 px-2 py-1.5 shadow-lg backdrop-blur">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 rounded-full border border-border bg-surface-1/95 px-2 py-1.5 shadow-lg">
           {dirty ? (
             <Badge variant="outline" className="border-warning/40 text-warning text-[10px]">
               <AlertTriangle className="mr-1 h-3 w-3" /> Unsaved
