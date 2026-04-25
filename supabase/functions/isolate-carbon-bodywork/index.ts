@@ -53,7 +53,7 @@ const ISOLATION_PROMPT_BOLTON =
   `• Rear wing, swan-neck stays, end-plates, gurney\n` +
   `• Ducktail, rear deck carbon panels\n` +
   `• Any other carbon-fibre bolt-on parts\n\n` +
-  `ERASE (replace with clean medium-grey studio backdrop):\n` +
+  `ERASE (replace with clean PLAIN WHITE studio backdrop):\n` +
   `• The painted base car body, doors, roof, A/B/C-pillars\n` +
   `• Wheels, tyres, brake calipers\n` +
   `• Glass, headlights, tail lights, mirrors, badges\n` +
@@ -68,8 +68,8 @@ const ISOLATION_PROMPT_BOLTON =
   `• Preserve the carbon weave direction, twill pattern, and clearcoat reflections ` +
   `  exactly as they appear in the input.\n\n` +
   `OUTPUT: a single product photograph of the carbon kit only, parts in their ` +
-  `original on-car positions, on a clean medium-grey studio backdrop with soft ` +
-  `even product lighting and a subtle ground shadow under each part. ` +
+  `original on-car positions, on a clean PLAIN WHITE studio backdrop (pure #FFFFFF) ` +
+  `with soft even product lighting and a very subtle ground shadow under each part. ` +
   `No car body, no wheels, no glass, no background, no text, no watermark.`;
 
 /**
