@@ -185,7 +185,10 @@ async def create_job(request: Request, authorization: str | None = Header(defaul
     body = await request.json()
     job_type = body.get("job_type")
     inputs = body.get("inputs") or {}
-    if job_type not in {"prepare_base_mesh", "fit_part_to_zone", "mirror_part", "export_stl"}:
+    if job_type not in {
+        "prepare_base_mesh", "fit_part_to_zone", "mirror_part", "export_stl",
+        "bake_bodykit",
+    }:
         raise HTTPException(400, f"Unknown job_type: {job_type}")
 
     task_id = uuid.uuid4().hex
