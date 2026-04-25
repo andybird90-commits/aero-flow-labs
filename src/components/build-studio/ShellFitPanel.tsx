@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Wand2, Move3d, Ruler, Scaling, AlertTriangle, CheckCircle2, Maximize2 } from "lucide-react";
+import { Wand2, Move3d, Ruler, Scaling, AlertTriangle, CheckCircle2, Maximize2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import {
   autoFitToWheelbase,
@@ -218,6 +218,24 @@ export function ShellFitPanel({
               Click ≥2 pairs (car hardpoint ↔ shell point) in Shell Fit Mode.
             </p>
           )}
+
+          <Button
+            onClick={() => {
+              onApplyTransform({
+                position: { x: 0, y: 0, z: 0 },
+                rotation: { x: 0, y: 0, z: 0 },
+                scale: { x: 1, y: 1, z: 1 },
+              });
+              setLastRms(null);
+              toast.success("Shell transform reset");
+            }}
+            disabled={!shellRoot}
+            size="sm"
+            variant="ghost"
+            className="h-8 w-full justify-start text-xs text-muted-foreground"
+          >
+            <RotateCcw className="mr-2 h-3.5 w-3.5" /> Reset shell transform
+          </Button>
         </div>
 
         <Separator className="my-3" />
