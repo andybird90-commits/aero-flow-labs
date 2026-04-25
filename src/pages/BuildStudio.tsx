@@ -752,7 +752,7 @@ export default function BuildStudio() {
                   />
                 </div>
 
-                <aside className="border-l border-border bg-card/20">
+                <aside className="min-h-0 overflow-hidden border-l border-border bg-card/20">
                   <PropertiesPanel
                     part={selected}
                     onPatch={handlePatch}
