@@ -479,78 +479,43 @@ export function BuildStudioViewport({
       />
 
       {!shellEditMode && selected && meshNode && !selected.locked && (
-        <TransformControls
-          ref={transformRef}
+        <PartTransformGizmo
           object={meshNode}
           mode={transformMode}
-          size={0.7}
-          onMouseDown={() => {
-            if (orbitRef.current) orbitRef.current.enabled = false;
-          }}
-          onMouseUp={() => {
-            if (orbitRef.current) orbitRef.current.enabled = true;
-          }}
-          onObjectChange={() => {
-            // No-op: we commit on dragging-changed=false below for reliability.
-          }}
-          // drei's TransformControls forwards `dragging-changed` from three's TransformControls.
-          // This fires reliably on mouse release across all three transform modes.
-          // @ts-expect-error - drei types omit this event but it's forwarded by three.
-          onDraggingChanged={(event: { value: boolean }) => {
-            if (orbitRef.current) orbitRef.current.enabled = !event.value;
-            if (event.value) return; // dragging started
+          orbitRef={orbitRef}
+          onRelease={() => {
             if (!meshNode || !selected) return;
-
             const pos: Vec3 = {
               x: meshNode.position.x,
               y: meshNode.position.y,
               z: meshNode.position.z,
             };
-
-            // Snap-to-zone on release (translate only).
-            let snapPatch: Partial<Pick<PlacedPart, "position" | "snap_zone_id">> = {
-              position: pos,
-            };
+            let snapPatch: Partial<Pick<PlacedPart, "position" | "snap_zone_id">> = { position: pos };
             if (transformMode === "translate" && snapZones.length > 0) {
               const nearest = nearestSnapZone(pos, snapZones, 0.35);
               if (nearest) {
-                snapPatch = {
-                  position: { ...nearest.position },
-                  snap_zone_id: nearest.id,
-                };
+                snapPatch = { position: { ...nearest.position }, snap_zone_id: nearest.id };
                 meshNode.position.set(nearest.position.x, nearest.position.y, nearest.position.z);
               } else {
                 snapPatch = { position: pos, snap_zone_id: null };
               }
             }
-
             onCommit(selected.id, {
               ...snapPatch,
-              rotation: {
-                x: meshNode.rotation.x,
-                y: meshNode.rotation.y,
-                z: meshNode.rotation.z,
-              },
-              scale: {
-                x: meshNode.scale.x,
-                y: meshNode.scale.y,
-                z: meshNode.scale.z,
-              },
+              rotation: { x: meshNode.rotation.x, y: meshNode.rotation.y, z: meshNode.rotation.z },
+              scale: { x: meshNode.scale.x, y: meshNode.scale.y, z: meshNode.scale.z },
             });
           }}
         />
       )}
 
       {showShellGizmo && shellGroupRef.current && (
-        <TransformControls
-          ref={shellTransformRef}
+        <PartTransformGizmo
           object={shellGroupRef.current}
           mode={transformMode}
           size={0.9}
-          // @ts-expect-error - drei types omit this event but it's forwarded by three.
-          onDraggingChanged={(event: { value: boolean }) => {
-            if (orbitRef.current) orbitRef.current.enabled = !event.value;
-            if (event.value) return;
+          orbitRef={orbitRef}
+          onRelease={() => {
             const g = shellGroupRef.current;
             if (!g || !onShellCommit) return;
             onShellCommit({
@@ -585,6 +550,42 @@ export function BuildStudioViewport({
       </GizmoHelper>
     </Canvas>
   );
+}
+
+/**
+ * Wraps drei's TransformControls and reliably wires `dragging-changed`
+ * (the underlying three.js event) so rotate/scale releases also trigger
+ * orbit re-enable + commit. drei's `onMouseUp` only fires for translate.
+ */
+function PartTransformGizmo({
+  object,
+  mode,
+  size = 0.7,
+  orbitRef,
+  onRelease,
+}: {
+  object: THREE.Object3D;
+  mode: TransformMode;
+  size?: number;
+  orbitRef: React.MutableRefObject<any>;
+  onRelease: () => void;
+}) {
+  const ref = useRef<any>(null);
+  const releaseRef = useRef(onRelease);
+  releaseRef.current = onRelease;
+
+  useEffect(() => {
+    const controls = ref.current;
+    if (!controls) return;
+    const handler = (e: { value: boolean }) => {
+      if (orbitRef.current) orbitRef.current.enabled = !e.value;
+      if (!e.value) releaseRef.current();
+    };
+    controls.addEventListener("dragging-changed", handler);
+    return () => controls.removeEventListener("dragging-changed", handler);
+  }, [object, mode, orbitRef]);
+
+  return <TransformControls ref={ref} object={object} mode={mode} size={size} />;
 }
 
 /** Renders all placed parts and reports the selected mesh node up. */
