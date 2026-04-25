@@ -568,31 +568,18 @@ function PlacedPartGroup({
       disableSliders={transformMode !== "translate"}
       disableRotations={transformMode !== "rotate"}
       disableScaling={transformMode !== "scale"}
-      // PivotControls writes the matrix; we read it on drag-end and snap.
-      onDrag={(local) => {
+      // PivotControls' onDrag gives us the *world* matrix of the controlled
+      // object directly — NOT a delta. Decompose it straight onto the group.
+      // (Multiplying by the part's stored transform was double-applying the
+      // pose, which made parts shoot away from a phantom pivot point.)
+      onDrag={(world) => {
         const g = groupRef.current;
         if (!g) return;
-        // Decompose drei's local matrix → t/r/s
-        const m = new THREE.Matrix4().fromArray(local.elements);
-        const t = new THREE.Vector3();
-        const q = new THREE.Quaternion();
-        const s = new THREE.Vector3();
-        m.decompose(t, q, s);
-        // Drei applies the matrix relative to the wrapped group's *initial* pose
-        // (anchor 0,0,0). We multiply with the part's stored transform to get
-        // the world-equivalent pose.
-        const base = new THREE.Matrix4().compose(
-          new THREE.Vector3(part.position.x, part.position.y, part.position.z),
-          new THREE.Quaternion().setFromEuler(
-            new THREE.Euler(part.rotation.x, part.rotation.y, part.rotation.z),
-          ),
-          new THREE.Vector3(part.scale.x, part.scale.y, part.scale.z),
-        );
-        const world = base.clone().multiply(m);
+        const m = new THREE.Matrix4().fromArray(world.elements);
         const wt = new THREE.Vector3();
         const wq = new THREE.Quaternion();
         const ws = new THREE.Vector3();
-        world.decompose(wt, wq, ws);
+        m.decompose(wt, wq, ws);
 
         // Snap translation to grid.
         if (translateSnapM > 0) {
