@@ -16,6 +16,7 @@ import Brief from "./pages/Brief";
 import Concepts from "./pages/Concepts";
 import Settings from "./pages/Settings";
 import AdminCarStls from "./pages/AdminCarStls";
+import AdminCarPaintMap from "./pages/AdminCarPaintMap";
 import Styles from "./pages/Styles";
 import Garage from "./pages/Garage";
 import Library from "./pages/Library";
@@ -68,6 +69,7 @@ const App = () => (
             <Route path="/projects"          element={<ProtectedRoute><Projects /></ProtectedRoute>} />
             <Route path="/settings"          element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/settings/car-stls" element={<ProtectedRoute><AdminCarStls /></ProtectedRoute>} />
+            <Route path="/settings/car-stls/:carStlId/paint-map" element={<ProtectedRoute><AdminCarPaintMap /></ProtectedRoute>} />
 
             {/* Legacy routes — still reachable, hidden from sidebar */}
             <Route path="/upload"      element={<Navigate to="/concept-studio" replace />} />
