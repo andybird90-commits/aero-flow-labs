@@ -567,12 +567,14 @@ function PartTransformGizmo({
   mode,
   size = 0.7,
   orbitRef,
+  interactionRef,
   onRelease,
 }: {
   object: THREE.Object3D;
   mode: TransformMode;
   size?: number;
   orbitRef: React.MutableRefObject<any>;
+  interactionRef: React.MutableRefObject<boolean>;
   onRelease: () => void;
 }) {
   const { camera, gl, scene, invalidate } = useThree();
@@ -588,8 +590,14 @@ function PartTransformGizmo({
     controls.attach(object);
 
     const handleDragging = (e: { value: boolean }) => {
+      interactionRef.current = e.value;
       if (orbitRef.current) orbitRef.current.enabled = !e.value;
-      if (!e.value) releaseRef.current();
+      if (!e.value) {
+        releaseRef.current();
+        window.setTimeout(() => {
+          interactionRef.current = false;
+        }, 0);
+      }
       invalidate();
     };
     const handleChange = () => invalidate();
@@ -604,9 +612,10 @@ function PartTransformGizmo({
       controls.detach();
       scene.remove(controls);
       controls.dispose();
+      interactionRef.current = false;
       controlsRef.current = null;
     };
-  }, [camera, gl, scene, object, orbitRef, invalidate]);
+  }, [camera, gl, scene, object, orbitRef, interactionRef, invalidate]);
 
   useEffect(() => {
     controlsRef.current?.setMode(mode);
