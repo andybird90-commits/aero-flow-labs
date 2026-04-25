@@ -42,6 +42,7 @@ import {
   Layers,
   Undo2,
   Redo2,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
