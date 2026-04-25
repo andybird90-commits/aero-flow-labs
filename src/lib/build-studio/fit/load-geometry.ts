@@ -26,9 +26,13 @@ export async function loadGeometryNormalised(
   targetSize: number,
   groundToOrigin: boolean,
 ): Promise<LoadedFitGeometry> {
-  const raw = await loadRaw(url, kind);
+  // Sniff the file before trusting the caller-supplied kind — Supabase signed
+  // URLs often have no extension and a part flagged "stl" can really be GLB
+  // (or vice-versa), which crashes the GLTFLoader with a JSON parse error.
+  const actualKind = await sniffMeshKind(url, kind);
+  const raw = await loadRaw(url, actualKind);
   // Z-up STL → Y-up rotation handled here to match HeroStlCar.
-  if (kind === "stl") raw.rotateX(-Math.PI / 2);
+  if (actualKind === "stl") raw.rotateX(-Math.PI / 2);
 
   raw.computeBoundingBox();
   const box = raw.boundingBox!;
@@ -56,6 +60,41 @@ export async function loadGeometryNormalised(
     normaliseScale: scale,
     centerOffset: center,
   };
+}
+
+/**
+ * Fetch the first 8 bytes of the URL and detect whether it's actually a GLB
+ * (magic "glTF"), an ASCII STL ("solid "), or a binary STL (assume STL if
+ * neither magic matches). Falls back to the caller-supplied kind on network
+ * error so we don't break offline / blob: URLs.
+ */
+async function sniffMeshKind(url: string, fallback: FitMeshKind): Promise<FitMeshKind> {
+  try {
+    const res = await fetch(url, {
+      headers: { Range: "bytes=0-7" },
+      cache: "force-cache",
+    });
+    if (!res.ok && res.status !== 206) return fallback;
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength < 4) return fallback;
+    const bytes = new Uint8Array(buf);
+    // GLB magic: 0x46546C67 ("glTF") at offset 0, little-endian.
+    if (bytes[0] === 0x67 && bytes[1] === 0x6c && bytes[2] === 0x54 && bytes[3] === 0x46) {
+      return "glb";
+    }
+    // ASCII STL starts with "solid ".
+    if (
+      bytes[0] === 0x73 && bytes[1] === 0x6f && bytes[2] === 0x6c && bytes[3] === 0x69 &&
+      bytes[4] === 0x64
+    ) {
+      return "stl";
+    }
+    // Binary STL has no magic — just trust the fallback if it's "stl",
+    // otherwise prefer "stl" since unknown small headers are usually STL.
+    return fallback === "glb" ? "glb" : "stl";
+  } catch {
+    return fallback;
+  }
 }
 
 async function loadRaw(url: string, kind: FitMeshKind): Promise<THREE.BufferGeometry> {
