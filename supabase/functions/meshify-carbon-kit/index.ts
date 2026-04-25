@@ -1,29 +1,29 @@
 /**
  * meshify-carbon-kit
  *
- * Reconstructs the entire isolated carbon-fibre body kit (front 3/4, side,
- * rear 3/4, rear carbon-only renders) as a SINGLE combined GLB using
- * Hyper3D Rodin Gen-2 (Ultra) on Replicate.
+ * Reconstructs the entire isolated carbon-fibre body kit (matte-white side +
+ * rear renders) as a SINGLE combined GLB using Meshy 6 image-to-3d.
  *
  * Why one mesh: the AI is bad at deciding "this pixel is the arch, this is
- * the bumper". By exporting the kit as one cohesive mesh and letting the user
- * split it in Fusion / Blender, we sidestep the entire labelling problem.
+ * the bumper". By exporting the kit as one cohesive mesh and letting the
+ * user split it in Fusion / Blender, we sidestep the labelling problem.
  *
  * Pixel sizing is preserved by:
- *   1. Sending all 4 carbon renders with the exact same square canvas size
- *      (already enforced by isolate-carbon-bodywork).
+ *   1. Sending matte-white renders (carbon weave + clearcoat reflections
+ *      confuse Meshy's shape-from-shading).
  *   2. Optionally snapping the recovered scale to the project's hero STL
  *      bounding box (car length).
  *
  * Two actions:
- *   action: "start"  → kicks off Rodin prediction, persists task id.
- *   action: "status" → polls Replicate. On success, downloads GLB,
+ *   action: "start"  → kicks off Meshy task, persists task id.
+ *   action: "status" → polls Meshy. On success, downloads GLB,
  *                      re-hosts it in `concept-renders`, persists URL,
  *                      and updates `carbon_kit_*` columns on the concept.
  *
  * Body: { action, concept_id }
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createImageTo3dTask, getImageTo3dTask } from "../_shared/meshy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,31 +33,20 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
-const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const RODIN_MODEL = "hyper3d/rodin";
-
-const KIT_PROMPT =
-  `Floating disconnected aftermarket aero parts (splitter, canards, side ` +
-  `skirts, flared arches, diffuser, rear wing, vents, quarter panels) ` +
-  `rendered in matte white clay on a plain grey backdrop. NO car body, ` +
-  `NO chassis, NO wheels, NO glass, NO doors, NO roof — parts are NOT ` +
-  `attached to a vehicle. Two reference views: SIDE (full silhouette + ` +
-  `length) and REAR (wing width + diffuser depth). Reconstruct only the ` +
-  `visible white shells in their shown positions. Do NOT invent a car ` +
-  `body to bridge gaps. Clean smooth surfaces, sharp edges, flat aero ` +
-  `faces, thin-walled shell (~2mm), open-backed where appropriate. No ` +
-  `bolts, fasteners or tabs. Parts stay visually distinct for CAD split.`;
+const KIT_TEXTURE_PROMPT =
+  "Floating disconnected aftermarket aero parts (splitter, canards, side " +
+  "skirts, flared arches, diffuser, rear wing, vents, quarter panels) in " +
+  "matte white clay. Clean smooth surfaces, sharp edges, flat aero faces. " +
+  "Parts stay visually distinct for CAD split.";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   try {
-    if (!REPLICATE_API_TOKEN) return json({ error: "REPLICATE_API_TOKEN is not configured" }, 500);
-
     const body = await req.json().catch(() => ({})) as {
       action?: "start" | "status";
       concept_id?: string;
@@ -84,8 +73,8 @@ Deno.serve(async (req) => {
 
     // ─────────── START ───────────
     if (action === "start") {
-      // Generate fresh MATTE WHITE renders of the kit (side + rear) just for
-      // meshing input. Carbon weave + clearcoat reflections confuse Rodin's
+      // Generate fresh MATTE WHITE renders of the kit (side + rear) for
+      // meshing input. Carbon weave + clearcoat reflections confuse the
       // shape-from-shading; flat white clay gives clean silhouettes.
       const whiteResp = await fetch(`${SUPABASE_URL}/functions/v1/isolate-white-bodywork`, {
         method: "POST",
@@ -104,116 +93,93 @@ Deno.serve(async (req) => {
         return json({ error: `White-render step failed: ${t.slice(0, 300)}` }, 500);
       }
       const whiteJson = await whiteResp.json() as { side_url?: string | null; rear_url?: string | null };
-      const carbonUrls = [whiteJson.side_url, whiteJson.rear_url]
-        .filter((u): u is string => typeof u === "string" && u.length > 0);
+      const sideUrl = typeof whiteJson.side_url === "string" ? whiteJson.side_url : null;
+      const rearUrl = typeof whiteJson.rear_url === "string" ? whiteJson.rear_url : null;
 
-      if (carbonUrls.length === 0) {
+      // Side gives us length; use it as the primary. Rear becomes the
+      // texture reference so Meshy biases the back-side surfacing.
+      const primary = sideUrl ?? rearUrl;
+      if (!primary) {
         await admin.from("concepts").update({
           carbon_kit_status: "failed",
           carbon_kit_error: "White renders came back empty.",
         }).eq("id", concept.id);
         return json({ error: "White renders came back empty." }, 500);
       }
+      const textureRef = primary === sideUrl ? rearUrl : sideUrl;
 
       await admin.from("concepts").update({
         carbon_kit_status: "queued",
         carbon_kit_error: null,
       }).eq("id", concept.id);
 
-      const createResp = await fetch(`https://api.replicate.com/v1/models/${RODIN_MODEL}/predictions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          input: {
-            images: carbonUrls,
-            prompt: KIT_PROMPT,
-          },
-        }),
-      });
-      if (!createResp.ok) {
-        const t = await createResp.text();
-        // Rate limit (Replicate throttles to 6/min while balance < $5).
-        // Don't mark the concept as failed — surface a soft "rate_limited"
-        // so the UI can prompt a retry without losing state.
-        if (createResp.status === 429) {
-          let retryAfter = 10;
-          try {
-            const parsed = JSON.parse(t);
-            if (typeof parsed?.retry_after === "number") retryAfter = parsed.retry_after;
-          } catch { /* ignore */ }
+      try {
+        const { task_id } = await createImageTo3dTask({
+          image_url: primary,
+          texture_image_url: textureRef ?? undefined,
+          texture_prompt: textureRef ? undefined : KIT_TEXTURE_PROMPT,
+          ai_model: "latest",
+          enable_pbr: true,
+          should_remesh: true,
+          target_polycount: 50000,
+          symmetry_mode: "on",
+          remove_lighting: true,
+          target_formats: ["glb", "stl"],
+        });
+        await admin.from("concepts").update({
+          carbon_kit_status: "generating",
+          carbon_kit_task_id: task_id,
+        }).eq("id", concept.id);
+        console.log("meshify-carbon-kit Meshy task created:", task_id);
+        return json({ task_id, status: "generating", progress: 0 });
+      } catch (e: any) {
+        // Surface 429s as soft rate-limit so the UI can prompt a retry
+        // without losing state.
+        if (e?.status === 429) {
           await admin.from("concepts").update({
             carbon_kit_status: "idle",
             carbon_kit_error: null,
           }).eq("id", concept.id);
           return json({
             status: "rate_limited",
-            retry_after: retryAfter,
-            message: `Replicate is rate-limiting requests (try again in ~${retryAfter}s). This happens when your Replicate balance is below $5.`,
+            retry_after: 10,
+            message: "Meshy is rate-limiting requests. Try again in ~10s.",
           });
         }
+        const msg = (e instanceof Error ? e.message : "Meshy create failed").slice(0, 500);
         await admin.from("concepts").update({
           carbon_kit_status: "failed",
-          carbon_kit_error: `Rodin ${createResp.status}: ${t.slice(0, 300)}`,
+          carbon_kit_error: msg,
         }).eq("id", concept.id);
-        return json({ error: `Rodin ${createResp.status}: ${t.slice(0, 300)}` }, 500);
+        return json({ error: msg }, 500);
       }
-      const pred = await createResp.json();
-      const taskId: string | undefined = pred.id;
-      if (!taskId) return json({ error: "Rodin returned no prediction id" }, 500);
-
-      await admin.from("concepts").update({
-        carbon_kit_status: "generating",
-        carbon_kit_task_id: taskId,
-      }).eq("id", concept.id);
-
-      console.log("meshify-carbon-kit Rodin task created:", taskId);
-      return json({ task_id: taskId, status: "generating", progress: 0 });
     }
 
     // ─────────── STATUS ───────────
     const taskId = (concept as any).carbon_kit_task_id as string | null;
     if (!taskId) return json({ status: concept.carbon_kit_status ?? "idle" });
 
-    const pollResp = await fetch(`https://api.replicate.com/v1/predictions/${taskId}`, {
-      headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}` },
-    });
-    if (!pollResp.ok) {
-      const t = await pollResp.text();
-      return json({ error: `Rodin poll ${pollResp.status}: ${t.slice(0, 200)}` }, 500);
-    }
-    const pred = await pollResp.json();
-    const status: string = pred.status;
+    const result = await getImageTo3dTask(taskId);
 
-    if (status === "failed" || status === "canceled") {
-      const msg = pred.error || `Rodin status: ${status}`;
+    if (result.status === "FAILED" || result.status === "CANCELED" || result.status === "EXPIRED") {
+      const msg = (result.error || `Meshy ${result.status}`).slice(0, 500);
       await admin.from("concepts").update({
         carbon_kit_status: "failed",
-        carbon_kit_error: String(msg).slice(0, 500),
+        carbon_kit_error: msg,
       }).eq("id", concept.id);
-      return json({ status: "failed", error: String(msg).slice(0, 500) });
+      return json({ status: "failed", error: msg });
+    }
+    if (result.status !== "SUCCEEDED") {
+      return json({ status: "generating", progress: result.progress });
     }
 
-    if (status !== "succeeded") {
-      const fakeProgress = status === "processing" ? 60 : status === "starting" ? 15 : 30;
-      return json({ status: "generating", progress: fakeProgress });
-    }
-
-    // SUCCEEDED — Rodin output is a GLB url (or array containing one).
-    const out = pred.output;
-    const glbUrl: string | undefined =
-      typeof out === "string" ? out :
-      Array.isArray(out) ? (out.find((u: string) => typeof u === "string" && u.endsWith(".glb")) ?? out[0]) :
-      undefined;
-
+    const glbUrl = result.glb_url;
     if (!glbUrl) {
       await admin.from("concepts").update({
         carbon_kit_status: "failed",
-        carbon_kit_error: "Rodin returned no GLB",
+        carbon_kit_error: "Meshy returned no GLB",
       }).eq("id", concept.id);
-      return json({ error: "Rodin returned no GLB" }, 500);
+      return json({ error: "Meshy returned no GLB" }, 500);
     }
 
     const glbResp = await fetch(glbUrl);
@@ -229,8 +195,8 @@ Deno.serve(async (req) => {
     const bustedUrl = `${publicUrl}?v=${Date.now()}`;
 
     // Try to recover real-world scale from the project's hero STL bbox
-    // (car length in mm). Rodin returns mesh in arbitrary units; this lets us
-    // emit a scale_m so the user can rescale on import.
+    // (car length in mm). Meshy returns mesh in arbitrary units; emit
+    // scale_m so the user can rescale on import.
     let scaleM: number | null = null;
     try {
       const { data: project } = await admin
