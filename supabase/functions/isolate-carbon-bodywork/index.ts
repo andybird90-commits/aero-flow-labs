@@ -305,7 +305,7 @@ async function padToSquareCanvas(bytes: Uint8Array, size: number): Promise<Uint8
   const th = Math.max(1, Math.round(sh * scale));
   const resized = src.clone().resize(tw, th);
   const canvas = new Image(size, size);
-  canvas.fill(CARBON_BG_GREY);
+  canvas.fill(CARBON_BG_WHITE);
   const dx = Math.floor((size - tw) / 2);
   const dy = Math.floor((size - th) / 2);
   canvas.composite(resized, dx, dy);
