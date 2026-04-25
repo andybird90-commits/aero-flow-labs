@@ -410,10 +410,12 @@ export function BuildStudioViewport({
   transformMode,
   showGrid,
   preset,
+  quality = "studio",
   paintFinish,
   onCommit,
 }: ViewportProps) {
   const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
+  const settings = QUALITY_PRESETS[quality];
   const orbitRef = useRef<any>(null);
   const transformRef = useRef<any>(null);
   const shellTransformRef = useRef<any>(null);
