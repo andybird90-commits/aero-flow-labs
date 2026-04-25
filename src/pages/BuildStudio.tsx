@@ -47,7 +47,10 @@ import {
   Scissors,
   MousePointer2,
   Tag,
+  Focus,
+  Trash2,
 } from "lucide-react";
+import { frameReset } from "@/components/build-studio/ViewportTools";
 import type { MeasureLine } from "@/components/build-studio/ViewportTools";
 import type { ViewportTool } from "@/components/build-studio/BuildStudioViewport";
 import { toast } from "sonner";
