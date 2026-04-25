@@ -129,7 +129,7 @@ export default function SharePage() {
     };
   }, [project?.car_id]);
 
-  const { data: heroStlUrl } = useSignedCarStlUrl(heroStl);
+  const { data: heroStlUrl } = useSignedCarStlUrl(heroStl as never);
 
   // Library items needed by parts.
   useMyLibrary(undefined); // no-op for anon, but keeps hook order stable
