@@ -149,7 +149,7 @@ export function ShellFitPanel({
             <Ruler className="mr-2 h-3.5 w-3.5" /> Auto-fit to wheelbase
           </Button>
           {!hasFrontRear && (
-            <p className="flex items-start gap-1.5 text-[10px] text-amber-500">
+            <p className="flex items-start gap-1.5 text-[10px] text-warning">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               Donor car needs front + rear wheel-centre hardpoints
             </p>
