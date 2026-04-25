@@ -519,6 +519,21 @@ export default function BuildStudio() {
     toast.success(`Design saved (${parts.length} parts)`);
   };
 
+  /** Selected part's resolved library item — used by Live Fit to load the asset. */
+  const selectedLibraryItem = selected?.library_item_id
+    ? libraryItemsById.get(selected.library_item_id) ?? null
+    : null;
+
+  /** Invalidate placed-parts + library caches when a Live Fit bake completes
+   *  so the viewport reloads the new mesh. */
+  const handleLiveFitBaked = () => {
+    if (!projectId) return;
+    qc.invalidateQueries({ queryKey: ["placed_parts", projectId] });
+    qc.invalidateQueries({ queryKey: ["library_items_by_ids"] });
+    qc.invalidateQueries({ queryKey: ["my_library", user?.id] });
+    toast.success("Live-fitted part baked into the build");
+  };
+
   /** Wrappers that surface a subtle toast on success. */
   const doUndo = async () => {
     const entry = await history.undo();
