@@ -47,11 +47,14 @@ export function useCarMaterialMap(carStlId: string | null | undefined) {
   });
 
   // Auto-trigger classification if missing OR if cached at an older method
-  // version. Bump this string when the server-side classifier improves.
+  // version. Manual (admin-curated) maps are NEVER auto-replaced — admins
+  // own them; bump this string only when the *automatic* classifier improves.
   const CURRENT_METHOD = "geometric-v2";
 
   useEffect(() => {
     if (!carStlId || query.isLoading) return;
+    // Manual maps win — never overwrite an admin's curation.
+    if (query.data && query.data.method === "manual") return;
     if (query.data && query.data.method === CURRENT_METHOD) return;
     let cancelled = false;
     (async () => {

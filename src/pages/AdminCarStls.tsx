@@ -9,8 +9,8 @@
  * instead of the upload UI.
  */
 import { useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Navigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, Navigate } from "react-router-dom";
 import { z } from "zod";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { decimateClientSide } from "@/lib/decimate-client";
 import {
-  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles,
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles, Palette,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -116,6 +116,26 @@ function CarStlsInner({ userId }: { userId: string }) {
 
   const usedTemplateIds = useMemo(() => new Set(rows.map((r) => r.car_template_id)), [rows]);
   const availableTemplates = templates.filter((t) => !usedTemplateIds.has(t.id));
+
+  // Paint-map status per car_stl (admin-curated vs auto vs none).
+  const stlIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const { data: paintMaps = [] } = useQuery({
+    queryKey: ["car_material_maps_summary", stlIds.join(",")],
+    enabled: stlIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("car_material_maps")
+        .select("car_stl_id, method")
+        .in("car_stl_id", stlIds);
+      if (error) throw error;
+      return data as { car_stl_id: string; method: string }[];
+    },
+  });
+  const paintMapByStlId = useMemo(() => {
+    const m = new Map<string, string>();
+    paintMaps.forEach((r) => m.set(r.car_stl_id, r.method));
+    return m;
+  }, [paintMaps]);
 
   const submitNewTemplate = async () => {
     const parsed = newTemplateSchema.safeParse({
@@ -336,6 +356,7 @@ function CarStlsInner({ userId }: { userId: string }) {
               row={row}
               template={row.car_template}
               repairing={repairing === row.id}
+              paintMapMethod={paintMapByStlId.get(row.id) ?? null}
               onRepair={() => runRepair(row)}
               onDelete={async () => {
                 if (!confirm(`Delete the STL for ${row.car_template?.make ?? "this template"}?`)) return;
@@ -356,11 +377,12 @@ function CarStlsInner({ userId }: { userId: string }) {
 }
 
 function CarStlRow({
-  row, template, repairing, onRepair, onDelete, onAxisChange,
+  row, template, repairing, paintMapMethod, onRepair, onDelete, onAxisChange,
 }: {
   row: CarStl;
   template: CarTemplate | null;
   repairing: boolean;
+  paintMapMethod: string | null;
   onRepair: () => void;
   onDelete: () => void;
   onAxisChange: (axis: string) => void;
@@ -386,6 +408,19 @@ function CarStlRow({
           ) : (
             <Badge variant="outline" className="border-warning/40 text-warning">
               <AlertTriangle className="mr-1 h-3 w-3" /> Non-manifold
+            </Badge>
+          )}
+          {paintMapMethod === "manual" ? (
+            <Badge variant="outline" className="border-success/40 text-success">
+              <Palette className="mr-1 h-3 w-3" /> Paint: curated
+            </Badge>
+          ) : paintMapMethod ? (
+            <Badge variant="outline" className="border-warning/40 text-warning">
+              <Palette className="mr-1 h-3 w-3" /> Paint: auto
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-muted-foreground">
+              <Palette className="mr-1 h-3 w-3" /> Paint: none
             </Badge>
           )}
         </div>
@@ -416,6 +451,11 @@ function CarStlRow({
           ) : (
             <><Wrench className="mr-1.5 h-3.5 w-3.5" /> {repaired ? "Re-repair" : "Run repair"}</>
           )}
+        </Button>
+        <Button asChild variant="outline" size="sm" disabled={!repaired}>
+          <Link to={`/settings/car-stls/${row.id}/paint-map`}>
+            <Palette className="mr-1.5 h-3.5 w-3.5" /> Edit paint map
+          </Link>
         </Button>
         <Button variant="ghost" size="sm" onClick={onDelete} className="text-destructive hover:bg-destructive/10">
           <Trash2 className="h-3.5 w-3.5" />
