@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
 
 /** All the heavy STL work — runs after the HTTP response is sent. */
 async function runBake(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   bodyKitId: string,
   userId: string,
 ): Promise<void> {
