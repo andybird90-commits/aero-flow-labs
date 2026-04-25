@@ -71,7 +71,10 @@ import {
 import { useSnapZones } from "@/lib/build-studio/snap-zones";
 import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
 import { useBodySkins, useSignedBodySkinUrl, type BodySkin } from "@/lib/body-skins";
-import { useShellAlignment, useUpsertShellAlignment } from "@/lib/build-studio/shell-alignments";
+import { useShellAlignment, useUpsertShellAlignment, type LockedHardpointPair } from "@/lib/build-studio/shell-alignments";
+import { useCarHardpoints } from "@/lib/build-studio/hardpoints";
+import { ShellFitPanel } from "@/components/build-studio/ShellFitPanel";
+import type * as THREE from "three";
 import { DEFAULT_PAINT_FINISH, parsePaintFinish, type PaintFinish } from "@/lib/build-studio/paint-finish";
 
 import { BuildStudioViewport, type CameraPreset, type TransformMode, type ShellTransform } from "@/components/build-studio/BuildStudioViewport";
@@ -164,6 +167,11 @@ export default function BuildStudio() {
   const { data: bodySkinUrl } = useSignedBodySkinUrl(skinAssetPath);
   const { data: alignment } = useShellAlignment(projectId, shellSkinId);
   const upsertAlignment = useUpsertShellAlignment();
+  const [shellRoot, setShellRoot] = useState<THREE.Object3D | null>(null);
+  const carTemplateIdForHp = (project?.car as any)?.template_id ?? null;
+  const { data: carHardpoints = [] } = useCarHardpoints(carTemplateIdForHp);
+  const lockedPairs = ((alignment?.locked_hardpoints as unknown) as LockedHardpointPair[] | undefined) ?? [];
+  const stretchEnabled = !(alignment?.scale_to_wheelbase ?? true);
 
   const shellTransform: ShellTransform | null = useMemo(() => {
     if (!alignment) return null;
@@ -562,6 +570,16 @@ export default function BuildStudio() {
     );
   };
 
+  const handleStretchChange = (enabled: boolean) => {
+    if (!user || !projectId || !shellSkinId) return;
+    upsertAlignment.mutate({
+      user_id: user.id,
+      project_id: projectId,
+      body_skin_id: shellSkinId,
+      scale_to_wheelbase: !enabled,
+    });
+  };
+
   /* ─── render ─── */
   return (
     <SidebarProvider defaultOpen={false}>
@@ -832,6 +850,17 @@ export default function BuildStudio() {
                   <Layers className="h-4 w-4" />
                 </Toggle>
 
+                <ShellFitPanel
+                  shellRoot={shellRoot}
+                  carHardpoints={carHardpoints}
+                  lockedPairs={lockedPairs}
+                  currentTransform={shellTransform}
+                  stretchEnabled={stretchEnabled}
+                  disabled={!shellSkinId}
+                  onApplyTransform={handleShellCommit}
+                  onStretchChange={handleStretchChange}
+                />
+
                 <div className="ml-auto flex items-center gap-2">
                   <Button asChild size="sm" variant="outline" className="h-9 px-3 text-xs" title="Open in Showroom (AR/VR & presentation)">
                     <Link to={`/showroom?project=${projectId}`}>
@@ -864,6 +893,7 @@ export default function BuildStudio() {
                     shellTransform={shellTransform}
                     shellEditMode={shellEditMode}
                     onShellCommit={handleShellCommit}
+                    onShellMeshReady={setShellRoot}
                     parts={parts}
                     libraryItemsById={libraryItemsById}
                     snapZones={snapZones}

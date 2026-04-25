@@ -71,6 +71,12 @@ interface ViewportProps {
   shellEditMode?: boolean;
   /** Called when the user releases the shell gizmo. */
   onShellCommit?: (t: ShellTransform) => void;
+  /**
+   * Called once the shell mesh is loaded into the scene. Receives the root
+   * Object3D of the loaded shell (in shell-local frame, before user transforms
+   * are applied). Used by the parent to run auto-fit / arch detection.
+   */
+  onShellMeshReady?: (root: THREE.Object3D | null) => void;
   parts: PlacedPart[];
   /** Resolved library_items for placed parts so we can render real meshes. */
   libraryItemsById: Map<string, LibraryItem>;
@@ -649,6 +655,7 @@ export function BuildStudioViewport({
   shellTransform,
   shellEditMode,
   onShellCommit,
+  onShellMeshReady,
   parts,
   libraryItemsById,
   snapZones = [],
@@ -681,6 +688,11 @@ export function BuildStudioViewport({
   const sceneRootRef = useRef<THREE.Group | null>(null);
 
   const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellNode;
+
+  // Forward the loaded shell to the parent so it can run auto-fit / arch detection.
+  useEffect(() => {
+    onShellMeshReady?.(shellNode ?? null);
+  }, [shellNode, onShellMeshReady]);
 
   // mm per scene-unit. We scale the car so its longest side ≈ wheelbase + 1.45m,
   // so 1 scene unit = 1 metre = 1000 mm.
