@@ -80,6 +80,14 @@ import {
 import { useCameraBookmarks, type CameraBookmark } from "@/lib/showroom/bookmarks";
 import { captureCanvasPng, recordTurntable } from "@/lib/showroom/capture";
 import { exportSceneToUSDZ, isIOSDevice } from "@/lib/showroom/usdz-export";
+import { exportSceneToGLB } from "@/lib/showroom/glb-export";
+import { captureHiRes } from "@/lib/showroom/hires-screenshot";
+import { canvasToThumbBlob, saveProjectThumbnail } from "@/lib/showroom/thumbnails";
+import {
+  buildShareUrl,
+  useProjectShareState,
+  useToggleShare,
+} from "@/lib/showroom/share";
 import { ARHud } from "@/components/showroom/ARHud";
 import { arStore } from "@/lib/showroom/ar-anchor";
 
