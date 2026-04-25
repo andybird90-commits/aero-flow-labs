@@ -563,7 +563,21 @@ function PaintMapCanvas(props: CanvasProps) {
           onCursor={setCursor}
           onLasso={setLassoPath}
         />
-        <OrbitControls makeDefault enableDamping />
+        <OrbitControls
+          makeDefault
+          enableDamping
+          mouseButtons={{
+            // Reserve LEFT for paint tools — orbit only with middle, pan with right.
+            LEFT: undefined as any,
+            MIDDLE: THREE.MOUSE.ROTATE,
+            RIGHT: THREE.MOUSE.PAN,
+          }}
+          touches={{
+            // One finger = paint, two fingers = orbit (mobile).
+            ONE: undefined as any,
+            TWO: THREE.TOUCH.DOLLY_ROTATE,
+          }}
+        />
       </Canvas>
 
       {/* SVG overlay: brush cursor + wheel preview + lasso */}
