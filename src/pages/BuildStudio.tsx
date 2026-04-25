@@ -398,15 +398,21 @@ export default function BuildStudio() {
   /** Keyboard shortcut: Delete / Backspace removes the selected part. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!selected || selected.locked) return;
-      // Don't hijack delete while typing in inputs / textareas / contenteditable.
+      // Don't hijack while typing in inputs / textareas / contenteditable.
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select" || t?.isContentEditable) return;
-      if (e.key === "Delete" || e.key === "Backspace") {
+      if ((e.key === "Delete" || e.key === "Backspace") && selected && !selected.locked) {
         e.preventDefault();
         handleDelete();
+        return;
       }
+      // Tier 2 tool shortcuts
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.key === "v" || e.key === "V") setTool("select");
+      else if (e.key === "m" || e.key === "M") setTool("measure");
+      else if (e.key === "c" || e.key === "C") setTool("clip");
+      else if (e.key === "f" || e.key === "F") frameReset();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
