@@ -146,7 +146,7 @@ export function LiveFitPanel({
       if (snapTimer.current) window.clearTimeout(snapTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offsetMm, partGeo, baseReady]);
+  }, [offsetMm, partGeo, baseReady, partWorldMatrix]);
 
   useEffect(() => {
     if (!partGeo || !baseReady) return;
@@ -157,7 +157,7 @@ export function LiveFitPanel({
       if (trimTimer.current) window.clearTimeout(trimTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offsetMm, trim, partGeo, baseReady]);
+  }, [offsetMm, trim, partGeo, baseReady, partWorldMatrix]);
 
   /**
    * The part geometry is loaded normalised to its own bounding box (centred at
