@@ -398,8 +398,9 @@ export function BuildStudioViewport({
   const transformInteractionRef = useRef(false);
   const selected = parts.find((p) => p.id === selectedId) ?? null;
   const [meshNode, setMeshNode] = useState<THREE.Object3D | null>(null);
+  const [shellNode, setShellNode] = useState<THREE.Object3D | null>(null);
 
-  const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellGroupRef.current;
+  const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellNode;
 
   return (
     <Canvas
@@ -459,6 +460,8 @@ export function BuildStudioViewport({
             template={template}
             transform={shellTransform ?? null}
             groupRef={shellGroupRef}
+            onReady={setShellNode}
+            editing={!!shellEditMode}
             highlight={!!shellEditMode}
           />
         </Suspense>
@@ -513,15 +516,15 @@ export function BuildStudioViewport({
         />
       )}
 
-      {showShellGizmo && shellGroupRef.current && (
+      {showShellGizmo && shellNode && (
         <PartTransformGizmo
-          object={shellGroupRef.current}
+          object={shellNode}
           mode={transformMode}
           size={0.9}
           orbitRef={orbitRef}
           interactionRef={transformInteractionRef}
           onRelease={() => {
-            const g = shellGroupRef.current;
+            const g = shellNode as THREE.Group;
             if (!g || !onShellCommit) return;
             onShellCommit({
               position: { x: g.position.x, y: g.position.y, z: g.position.z },
