@@ -9,22 +9,29 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Magnet, Plus, Trash2, ShieldAlert } from "lucide-react";
+import { Magnet, Plus, Trash2, ShieldAlert, Link as LinkIcon, MousePointerClick } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useIsAdmin, useCarTemplates } from "@/lib/repo";
+import { useIsAdmin, useCarTemplates, useCarStlForTemplate, useSignedCarStlUrl } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
 import {
   useSnapZones, useAddSnapZone, useUpdateSnapZone, useDeleteSnapZone,
-  SNAP_ZONE_TYPES, SNAP_ZONE_LABELS, type SnapZone, type SnapZoneType,
+  SNAP_ZONE_TYPES, SNAP_ZONE_LABELS, MIRROR_TYPE,
+  type SnapZone, type SnapZoneType,
 } from "@/lib/build-studio/snap-zones";
 import type { Vec3 } from "@/lib/build-studio/placed-parts";
+import { SnapZonesAdminViewport } from "@/components/build-studio/SnapZonesAdminViewport";
 
 /**
  * Snap Zones admin — define attachment slots for each car_template.
  *
- * Snap zones live in the same normalized space as placed parts:
- *  origin = ground center, +X = forward, +Y = up, +Z = lateral.
- * In the Build Studio, parts within ~0.35m of a zone snap to it on release.
+ * Workflow:
+ *  1. Pick a car template (loads its hero STL into the viewport).
+ *  2. Pick a zone type, then click on the car to drop a zone there
+ *     (or click "Add zone" to spawn at origin).
+ *  3. Click an existing zone gizmo to select it; further clicks on the
+ *     car move that zone. Use the row controls for fine numeric tuning.
+ *  4. "Auto-pair L↔R" links matching left/right zones via mirror_zone_id
+ *     so the user-side mirror button works without guessing.
  */
 export default function SnapZonesAdmin() {
   const { user } = useAuth();
@@ -33,15 +40,21 @@ export default function SnapZonesAdmin() {
   const { data: templates = [] } = useCarTemplates();
   const [templateId, setTemplateId] = useState<string>("");
 
-  // Default to first template once loaded.
   const activeTemplateId = templateId || templates[0]?.id || "";
+  const activeTemplate = useMemo(
+    () => templates.find((t) => t.id === activeTemplateId) ?? null,
+    [templates, activeTemplateId],
+  );
   const { data: zones = [], isLoading } = useSnapZones(activeTemplateId);
+  const { data: heroStl } = useCarStlForTemplate(activeTemplateId);
+  const { data: heroStlUrl } = useSignedCarStlUrl(heroStl);
 
   const add = useAddSnapZone();
   const update = useUpdateSnapZone();
   const del = useDeleteSnapZone();
 
   const [newType, setNewType] = useState<SnapZoneType>("front_splitter");
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
   const grouped = useMemo(() => {
     const m = new Map<SnapZoneType, SnapZone[]>();
@@ -62,17 +75,45 @@ export default function SnapZonesAdmin() {
   }
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
-  const handleAdd = async () => {
+  /** Click on the 3D car: move selected zone, or spawn a new one. */
+  const handleCarClick = async (pos: Vec3) => {
+    if (!activeTemplateId) return;
+    if (selectedZoneId) {
+      const z = zones.find((x) => x.id === selectedZoneId);
+      if (!z) return;
+      update.mutate({
+        id: z.id,
+        car_template_id: z.car_template_id,
+        patch: { position: pos },
+      });
+      return;
+    }
+    try {
+      const created = await add.mutateAsync({
+        car_template_id: activeTemplateId,
+        zone_type: newType,
+        label: SNAP_ZONE_LABELS[newType],
+        position: pos,
+      });
+      setSelectedZoneId(created.id);
+      toast({ title: `Placed ${SNAP_ZONE_LABELS[newType]}` });
+    } catch (e: any) {
+      toast({ title: "Couldn't place zone", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleAddAtOrigin = async () => {
     if (!activeTemplateId) {
       toast({ title: "Pick a car template first", variant: "destructive" });
       return;
     }
     try {
-      await add.mutateAsync({
+      const created = await add.mutateAsync({
         car_template_id: activeTemplateId,
         zone_type: newType,
         label: SNAP_ZONE_LABELS[newType],
       });
+      setSelectedZoneId(created.id);
       toast({ title: "Snap zone added" });
     } catch (e: any) {
       toast({ title: "Couldn't add zone", description: e.message, variant: "destructive" });
@@ -89,19 +130,40 @@ export default function SnapZonesAdmin() {
     });
   };
 
+  /** Auto-pair zones whose types are L/R counterparts (front_left_arch ↔ front_right_arch, …). */
+  const handleAutoPair = async () => {
+    let paired = 0;
+    for (const z of zones) {
+      const partnerType = MIRROR_TYPE[z.zone_type];
+      if (!partnerType) continue;
+      const partner = zones.find((p) => p.zone_type === partnerType);
+      if (!partner) continue;
+      if (z.mirror_zone_id === partner.id) continue;
+      await update.mutateAsync({
+        id: z.id,
+        car_template_id: z.car_template_id,
+        patch: { mirror_zone_id: partner.id } as any,
+      });
+      paired++;
+    }
+    toast({ title: paired ? `Paired ${paired} zone${paired === 1 ? "" : "s"}` : "Nothing to pair" });
+  };
+
+  const selectedZone = zones.find((z) => z.id === selectedZoneId) ?? null;
+
   return (
     <AppLayout>
-      <div className="container mx-auto px-6 py-8 max-w-6xl space-y-8">
+      <div className="container mx-auto px-6 py-8 max-w-6xl space-y-6">
         <PageHeader
           eyebrow="Admin"
           title="Snap Zones"
-          description="Define part attachment slots on each car template. Used by the Build Studio for snap-to-zone placement."
+          description="Define part attachment slots on each car template. Click on the 3D car to place zones; users in the Build Studio will snap parts to them."
         />
 
         <div className="glass rounded-xl p-4 flex items-end gap-4 flex-wrap">
           <div className="flex-1 min-w-[260px] space-y-1.5">
             <Label className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">Car template</Label>
-            <Select value={activeTemplateId} onValueChange={setTemplateId}>
+            <Select value={activeTemplateId} onValueChange={(v) => { setTemplateId(v); setSelectedZoneId(null); }}>
               <SelectTrigger><SelectValue placeholder="Select a template" /></SelectTrigger>
               <SelectContent>
                 {templates.map((t) => (
@@ -123,10 +185,44 @@ export default function SnapZonesAdmin() {
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={handleAdd} disabled={add.isPending || !activeTemplateId}>
-            <Plus className="h-4 w-4 mr-1.5" /> Add zone
+          <Button onClick={handleAddAtOrigin} disabled={add.isPending || !activeTemplateId} variant="outline">
+            <Plus className="h-4 w-4 mr-1.5" /> Add at origin
+          </Button>
+          <Button onClick={handleAutoPair} disabled={zones.length < 2} variant="outline">
+            <LinkIcon className="h-4 w-4 mr-1.5" /> Auto-pair L↔R
           </Button>
         </div>
+
+        {/* 3D viewport */}
+        {activeTemplateId && (
+          <div className="glass rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <MousePointerClick className="h-3.5 w-3.5" />
+                {selectedZone ? (
+                  <>Click the car to <span className="text-primary font-medium">move</span> {selectedZone.label || SNAP_ZONE_LABELS[selectedZone.zone_type]}</>
+                ) : (
+                  <>Click the car to <span className="text-primary font-medium">place a new {SNAP_ZONE_LABELS[newType]}</span></>
+                )}
+              </div>
+              {selectedZone && (
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedZoneId(null)}>
+                  Deselect
+                </Button>
+              )}
+            </div>
+            <div className="h-[420px] w-full">
+              <SnapZonesAdminViewport
+                template={activeTemplate}
+                heroStlUrl={heroStlUrl}
+                zones={zones}
+                selectedZoneId={selectedZoneId}
+                onSelectZone={setSelectedZoneId}
+                onClickCar={handleCarClick}
+              />
+            </div>
+          </div>
+        )}
 
         {!activeTemplateId ? (
           <div className="glass rounded-xl p-10 text-center text-sm text-muted-foreground">
@@ -141,8 +237,7 @@ export default function SnapZonesAdmin() {
             </div>
             <h2 className="text-xl font-semibold">No snap zones yet</h2>
             <p className="mt-2 mx-auto max-w-md text-sm text-muted-foreground">
-              Add zones for the common attachment points (splitter, wing, sills…). Parts placed near them
-              will snap automatically in the Build Studio.
+              Pick a zone type above, then click the car to drop it there. Repeat for splitter, sills, wing, arches… then hit "Auto-pair L↔R".
             </p>
           </div>
         ) : (
@@ -154,38 +249,61 @@ export default function SnapZonesAdmin() {
                   <Badge variant="outline" className="text-[10px]">{list.length}</Badge>
                 </div>
                 <div className="space-y-2">
-                  {list.map((z) => (
-                    <div key={z.id} className="glass rounded-lg p-3 flex items-center gap-3 flex-wrap">
-                      <Magnet className="h-4 w-4 text-primary shrink-0" />
-                      <Input
-                        className="h-8 w-[200px] text-xs"
-                        value={z.label ?? ""}
-                        placeholder="Label"
-                        onChange={(e) => update.mutate({
-                          id: z.id, car_template_id: z.car_template_id,
-                          patch: { label: e.target.value },
-                        })}
-                      />
-                      <div className="flex items-center gap-1.5 ml-auto">
-                        {(["x", "y", "z"] as const).map((axis) => (
-                          <div key={axis} className="flex items-center gap-1">
-                            <span className="text-mono text-[10px] uppercase text-muted-foreground">{axis}</span>
-                            <Input
-                              type="number"
-                              step="0.05"
-                              className="h-8 w-[80px] text-xs text-mono"
-                              value={Number(z.position[axis] ?? 0).toFixed(2)}
-                              onChange={(e) => handlePosChange(z, axis, e.target.value)}
-                            />
-                          </div>
-                        ))}
-                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive h-8 w-8 p-0"
-                          onClick={() => del.mutate({ id: z.id, car_template_id: z.car_template_id })}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                  {list.map((z) => {
+                    const partner = z.mirror_zone_id ? zones.find((x) => x.id === z.mirror_zone_id) : null;
+                    return (
+                      <div
+                        key={z.id}
+                        className={`glass rounded-lg p-3 flex items-center gap-3 flex-wrap cursor-pointer ${
+                          selectedZoneId === z.id ? "ring-1 ring-primary" : ""
+                        }`}
+                        onClick={() => setSelectedZoneId(z.id)}
+                      >
+                        <Magnet className={`h-4 w-4 shrink-0 ${selectedZoneId === z.id ? "text-primary" : "text-muted-foreground"}`} />
+                        <Input
+                          className="h-8 w-[180px] text-xs"
+                          value={z.label ?? ""}
+                          placeholder="Label"
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => update.mutate({
+                            id: z.id, car_template_id: z.car_template_id,
+                            patch: { label: e.target.value },
+                          })}
+                        />
+                        {partner && (
+                          <Badge variant="secondary" className="text-[10px] gap-1">
+                            <LinkIcon className="h-2.5 w-2.5" />
+                            {partner.label || SNAP_ZONE_LABELS[partner.zone_type]}
+                          </Badge>
+                        )}
+                        <div className="flex items-center gap-1.5 ml-auto" onClick={(e) => e.stopPropagation()}>
+                          {(["x", "y", "z"] as const).map((axis) => (
+                            <div key={axis} className="flex items-center gap-1">
+                              <span className="text-mono text-[10px] uppercase text-muted-foreground">{axis}</span>
+                              <Input
+                                type="number"
+                                step="0.05"
+                                className="h-8 w-[72px] text-xs text-mono"
+                                value={Number(z.position[axis] ?? 0).toFixed(2)}
+                                onChange={(e) => handlePosChange(z, axis, e.target.value)}
+                              />
+                            </div>
+                          ))}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive h-8 w-8 p-0"
+                            onClick={() => {
+                              if (selectedZoneId === z.id) setSelectedZoneId(null);
+                              del.mutate({ id: z.id, car_template_id: z.car_template_id });
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

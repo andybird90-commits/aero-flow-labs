@@ -53,6 +53,7 @@ import {
   useDeletePlacedPart,
   useDuplicatePlacedPart,
   type PlacedPart,
+  type Vec3,
 } from "@/lib/build-studio/placed-parts";
 import { useSnapZones } from "@/lib/build-studio/snap-zones";
 import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
@@ -201,6 +202,56 @@ export default function BuildStudio() {
       mirrored: !selected.mirrored,
       scale: { ...selected.scale, z: -selected.scale.z },
     });
+  };
+
+  /** Snap selected part to a zone (or unsnap when zoneId is null). */
+  const handleSnapToZone = (zoneId: string | null) => {
+    if (!selected || !projectId) return;
+    if (!zoneId) {
+      updatePart.mutate({ id: selected.id, project_id: projectId, patch: { snap_zone_id: null } as any });
+      return;
+    }
+    const zone = snapZones.find((z) => z.id === zoneId);
+    if (!zone) return;
+    updatePart.mutate({
+      id: selected.id,
+      project_id: projectId,
+      patch: { position: { ...zone.position }, snap_zone_id: zone.id } as any,
+    });
+    toast.success(`Snapped to ${zone.label ?? zone.zone_type}`);
+  };
+
+  /** Duplicate selected part and snap the copy to the mirror zone. */
+  const handleMirrorToZone = (zone: { id: string; position: Vec3 }) => {
+    if (!selected || !user || !projectId) return;
+    addPart.mutate(
+      {
+        user_id: user.id,
+        project_id: projectId,
+        library_item_id: selected.library_item_id,
+        part_name: `${selected.part_name ?? "Part"} (mirror)`,
+        position: { ...zone.position },
+        metadata: { ...(selected.metadata ?? {}), mirrored_from: selected.id },
+      },
+      {
+        onSuccess: (p) => {
+          // Apply rotation/scale + mirror flag + zone link to the new part.
+          updatePart.mutate({
+            id: p.id,
+            project_id: projectId,
+            patch: {
+              rotation: { ...selected.rotation },
+              scale: { ...selected.scale, z: -selected.scale.z },
+              mirrored: true,
+              snap_zone_id: zone.id,
+            } as any,
+          });
+          setSelectedId(p.id);
+          toast.success("Mirrored to opposite zone");
+        },
+        onError: (e: any) => toast.error(e.message ?? "Mirror failed"),
+      },
+    );
   };
 
   const handleSaveDesign = () => {
@@ -403,6 +454,9 @@ export default function BuildStudio() {
                     onDuplicate={handleDuplicate}
                     onDelete={handleDelete}
                     onMirror={handleMirror}
+                    snapZones={snapZones}
+                    onSnapToZone={handleSnapToZone}
+                    onMirrorToZone={handleMirrorToZone}
                   />
                 </aside>
               </div>
