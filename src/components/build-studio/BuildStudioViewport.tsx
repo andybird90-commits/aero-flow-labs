@@ -13,7 +13,6 @@ import {
   OrbitControls,
   Grid,
   Environment,
-  ContactShadows,
   GizmoHelper,
   GizmoViewcube,
 } from "@react-three/drei";
@@ -26,6 +25,9 @@ import { nearestSnapZone } from "@/lib/build-studio/snap-zones";
 import { PartMesh } from "@/components/build-studio/PartMesh";
 import { SnapZoneViz } from "@/components/build-studio/SnapZoneViz";
 import { DEFAULT_PAINT_FINISH, type EnvPreset, type PaintFinish } from "@/lib/build-studio/paint-finish";
+import { PostFX } from "@/components/build-studio/PostFX";
+import { ShowroomFloor } from "@/components/build-studio/ShowroomFloor";
+import { QUALITY_PRESETS, type RenderQuality } from "@/lib/build-studio/render-quality";
 
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
@@ -60,6 +62,8 @@ interface ViewportProps {
   transformMode: TransformMode;
   showGrid: boolean;
   preset: CameraPreset;
+  /** Render quality preset — drives postprocessing + floor look. */
+  quality?: RenderQuality;
   /** Paint Studio finish (color + material + HDRI preset). */
   paintFinish?: PaintFinish | null;
   onCommit: (
@@ -406,10 +410,12 @@ export function BuildStudioViewport({
   transformMode,
   showGrid,
   preset,
+  quality = "studio",
   paintFinish,
   onCommit,
 }: ViewportProps) {
   const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
+  const settings = QUALITY_PRESETS[quality];
   const orbitRef = useRef<any>(null);
   const transformRef = useRef<any>(null);
   const shellTransformRef = useRef<any>(null);
@@ -461,7 +467,7 @@ export function BuildStudioViewport({
         />
       )}
 
-      <ContactShadows position={[0, 0.001, 0]} opacity={0.45} scale={14} blur={2.5} far={4} />
+      <ShowroomFloor reflector={settings.reflectorFloor} accumulative={settings.accumulativeShadows} />
 
       {heroStlUrl ? (
         <Suspense fallback={<CarPlaceholder template={template} />}>
@@ -575,6 +581,14 @@ export function BuildStudioViewport({
           hoverColor="#fb923c"
         />
       </GizmoHelper>
+
+      <PostFX
+        settings={settings}
+        outlineTargets={[
+          ...(meshNode && !shellEditMode ? [meshNode] : []),
+          ...(shellNode && shellEditMode ? [shellNode] : []),
+        ]}
+      />
     </Canvas>
   );
 }

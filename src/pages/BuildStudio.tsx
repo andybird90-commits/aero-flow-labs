@@ -42,6 +42,7 @@ import {
   Layers,
   Undo2,
   Redo2,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -69,6 +70,12 @@ import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
 import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
 import { useHistory, useHistoryShortcuts } from "@/lib/build-studio/history";
+import {
+  useRenderQuality,
+  QUALITY_LABEL,
+  QUALITY_DESCRIPTION,
+  type RenderQuality,
+} from "@/lib/build-studio/render-quality";
 
 export default function BuildStudio() {
   const { user } = useAuth();
@@ -97,6 +104,7 @@ export default function BuildStudio() {
   const [showGrid, setShowGrid] = useState(true);
   const [showSnapZones, setShowSnapZones] = useState(true);
   const [preset, setPreset] = useState<CameraPreset>("free");
+  const { quality, setQuality } = useRenderQuality();
 
   // Paint Studio finish — local for live preview, debounced-saved to project.
   const updateProject = useUpdateProject();
@@ -637,6 +645,27 @@ export default function BuildStudio() {
 
                 <Separator orientation="vertical" className="h-7" />
 
+                <Select value={quality} onValueChange={(v) => setQuality(v as RenderQuality)}>
+                  <SelectTrigger className="h-9 w-[150px] text-xs" title={QUALITY_DESCRIPTION[quality]}>
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["draft", "studio", "cinematic"] as RenderQuality[]).map((q) => (
+                      <SelectItem key={q} value={q}>
+                        <div className="flex flex-col">
+                          <span>{QUALITY_LABEL[q]}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {QUALITY_DESCRIPTION[q]}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Separator orientation="vertical" className="h-7" />
+
                 <PaintStudioPopover
                   finish={paintFinish}
                   onChange={setPaintFinish}
@@ -714,6 +743,7 @@ export default function BuildStudio() {
                     transformMode={mode}
                     showGrid={showGrid}
                     preset={preset}
+                    quality={quality}
                     paintFinish={paintFinish}
                     onCommit={handleCommit}
                   />
