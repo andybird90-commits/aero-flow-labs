@@ -325,10 +325,12 @@ export function ClippingPlane({
     controlsRef.current = controls;
     controls.setMode("translate");
     controls.setSize(0.6);
-    // Lock to the axis we're slicing along.
-    controls.showX = axis === "x";
-    controls.showY = axis === "y";
-    controls.showZ = axis === "z";
+    // Lock to the axis we're slicing along (cast — three-stdlib's d.ts marks
+    // these as private but they're public on the runtime class).
+    const c = controls as unknown as { showX: boolean; showY: boolean; showZ: boolean };
+    c.showX = axis === "x";
+    c.showY = axis === "y";
+    c.showZ = axis === "z";
     controls.attach(handleRef.current);
     scene.add(controls);
 
