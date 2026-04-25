@@ -192,6 +192,115 @@ export function paintBySphere(
   return painted;
 }
 
+/* ───── Triangle adjacency (shared edges) ──────────────────── */
+
+/**
+ * Build a triangle-adjacency list keyed by shared edges. Returned as a flat
+ * Int32Array of length triCount*3 where slot t*3+k holds the index of the
+ * neighbour across edge k (or -1 if the edge is a boundary). Cached once per
+ * geometry — pass the same BufferGeometry to reuse.
+ */
+const adjacencyCache = new WeakMap<THREE.BufferGeometry, Int32Array>();
+export function buildTriAdjacency(geom: THREE.BufferGeometry): Int32Array {
+  const cached = adjacencyCache.get(geom);
+  if (cached) return cached;
+  const idx = geom.index;
+  const triCount = idx ? idx.count / 3 : geom.attributes.position.count / 3;
+  const adj = new Int32Array(triCount * 3).fill(-1);
+  // Map "min,max" vert-pair string → first triangle index that owns it.
+  const edgeMap = new Map<string, number>();
+  const get = (t: number, k: number) =>
+    idx ? idx.getX(t * 3 + k) : t * 3 + k;
+  for (let t = 0; t < triCount; t++) {
+    const va = get(t, 0), vb = get(t, 1), vc = get(t, 2);
+    const edges: Array<[number, number]> = [[va, vb], [vb, vc], [vc, va]];
+    for (let k = 0; k < 3; k++) {
+      const [a, b] = edges[k];
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      const key = `${lo}|${hi}`;
+      const other = edgeMap.get(key);
+      if (other == null) {
+        edgeMap.set(key, t);
+      } else {
+        adj[t * 3 + k] = other;
+        // Find which slot in the other triangle this edge is and back-fill.
+        const ova = get(other, 0), ovb = get(other, 1), ovc = get(other, 2);
+        const oedges: Array<[number, number]> = [[ova, ovb], [ovb, ovc], [ovc, ova]];
+        for (let kk = 0; kk < 3; kk++) {
+          const olo = Math.min(oedges[kk][0], oedges[kk][1]);
+          const ohi = Math.max(oedges[kk][0], oedges[kk][1]);
+          if (olo === lo && ohi === hi) { adj[other * 3 + kk] = t; break; }
+        }
+      }
+    }
+  }
+  adjacencyCache.set(geom, adj);
+  return adj;
+}
+
+/** Per-triangle face normals (unit), cached on the geometry. */
+const triNormalCache = new WeakMap<THREE.BufferGeometry, Float32Array>();
+export function computeTriNormals(geom: THREE.BufferGeometry): Float32Array {
+  const cached = triNormalCache.get(geom);
+  if (cached) return cached;
+  const pos = geom.attributes.position as THREE.BufferAttribute;
+  const idx = geom.index;
+  const triCount = idx ? idx.count / 3 : pos.count / 3;
+  const out = new Float32Array(triCount * 3);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const ab = new THREE.Vector3(), ac = new THREE.Vector3(), n = new THREE.Vector3();
+  for (let t = 0; t < triCount; t++) {
+    const ia = idx ? idx.getX(t * 3) : t * 3;
+    const ib = idx ? idx.getX(t * 3 + 1) : t * 3 + 1;
+    const ic = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+    a.set(pos.getX(ia), pos.getY(ia), pos.getZ(ia));
+    b.set(pos.getX(ib), pos.getY(ib), pos.getZ(ib));
+    c.set(pos.getX(ic), pos.getY(ic), pos.getZ(ic));
+    ab.subVectors(b, a); ac.subVectors(c, a);
+    n.crossVectors(ab, ac).normalize();
+    out[t * 3] = n.x; out[t * 3 + 1] = n.y; out[t * 3 + 2] = n.z;
+  }
+  triNormalCache.set(geom, out);
+  return out;
+}
+
+/**
+ * Flood-fill from a seed triangle, walking adjacency, stopping when the
+ * neighbour's normal angle exceeds `maxAngleDeg`. Perfect for tagging a
+ * single body panel or a windscreen in one click.
+ */
+export function floodFillByNormal(
+  tags: Uint8Array,
+  geom: THREE.BufferGeometry,
+  seedTri: number,
+  tag: Tag,
+  maxAngleDeg = 30,
+): number {
+  if (seedTri < 0 || seedTri >= tags.length) return 0;
+  const adj = buildTriAdjacency(geom);
+  const normals = computeTriNormals(geom);
+  const cosThreshold = Math.cos((maxAngleDeg * Math.PI) / 180);
+  const visited = new Uint8Array(tags.length);
+  const queue: number[] = [seedTri];
+  visited[seedTri] = 1;
+  let painted = 0;
+  while (queue.length) {
+    const t = queue.pop()!;
+    if (tags[t] !== tag) { tags[t] = tag; painted++; }
+    const nx = normals[t * 3], ny = normals[t * 3 + 1], nz = normals[t * 3 + 2];
+    for (let k = 0; k < 3; k++) {
+      const nb = adj[t * 3 + k];
+      if (nb < 0 || visited[nb]) continue;
+      const mx = normals[nb * 3], my = normals[nb * 3 + 1], mz = normals[nb * 3 + 2];
+      const dot = nx * mx + ny * my + nz * mz;
+      if (dot < cosThreshold) continue;
+      visited[nb] = 1;
+      queue.push(nb);
+    }
+  }
+  return painted;
+}
+
 /**
  * Mirror-paint helper: for each triangle painted, also paint the triangle
  * whose centroid is closest to the X-mirrored centroid (for left/right pairs).
