@@ -46,7 +46,7 @@ import type { CarStl, CarTemplate } from "@/lib/repo";
 import {
   Loader2, ArrowLeft, Save, Undo2, Redo2, Check, AlertTriangle,
   Brush, CircleDashed, Lasso, Sparkles, FlipHorizontal, Wand2, Pipette,
-  Eye, EyeOff, Keyboard,
+  Eye, EyeOff, Keyboard, Bot, X, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
