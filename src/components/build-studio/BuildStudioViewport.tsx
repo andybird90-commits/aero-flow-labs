@@ -395,6 +395,7 @@ export function BuildStudioViewport({
   const transformRef = useRef<any>(null);
   const shellTransformRef = useRef<any>(null);
   const shellGroupRef = useRef<THREE.Group | null>(null);
+  const transformInteractionRef = useRef(false);
   const selected = parts.find((p) => p.id === selectedId) ?? null;
   const [meshNode, setMeshNode] = useState<THREE.Object3D | null>(null);
 
@@ -404,7 +405,10 @@ export function BuildStudioViewport({
     <Canvas
       shadows
       camera={{ position: [4.5, 3, 4.5], fov: 38, near: 0.1, far: 100 }}
-      onPointerMissed={() => onSelect(null)}
+      onPointerMissed={() => {
+        if (transformInteractionRef.current) return;
+        onSelect(null);
+      }}
       dpr={[1, 2]}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
     >
@@ -482,6 +486,7 @@ export function BuildStudioViewport({
           object={meshNode}
           mode={transformMode}
           orbitRef={orbitRef}
+          interactionRef={transformInteractionRef}
           onRelease={() => {
             if (!meshNode || !selected) return;
             const pos: Vec3 = {
@@ -514,6 +519,7 @@ export function BuildStudioViewport({
           mode={transformMode}
           size={0.9}
           orbitRef={orbitRef}
+          interactionRef={transformInteractionRef}
           onRelease={() => {
             const g = shellGroupRef.current;
             if (!g || !onShellCommit) return;
