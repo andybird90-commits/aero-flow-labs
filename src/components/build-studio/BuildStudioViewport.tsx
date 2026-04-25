@@ -74,6 +74,8 @@ interface ViewportProps {
   quality?: RenderQuality;
   /** Paint Studio finish (color + material + HDRI preset). */
   paintFinish?: PaintFinish | null;
+  /** Per-triangle material tags (0=body,1=glass,2=wheel,3=tyre). */
+  materialTags?: Uint8Array | null;
   onCommit: (
     id: string,
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "snap_zone_id">>,
