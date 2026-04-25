@@ -1,76 +1,138 @@
+# One-click auto-split for clean CAD car meshes
 
-# Admin Paint Map Editor
+**Goal:** Upload a hero STL, click **Auto-split into panels**, get back ~10–14 named panels (hood, doors, bumpers, fenders, roof, mirrors, wheels), each registered as a swappable Build Studio part with auto-placed hardpoints — with **zero manual cleanup** on clean inputs.
 
-Move material classification from "auto-guess on first user load" to an explicit admin curation step. Once an admin has finished a car, every end-user opens it with perfect black tyres, painted rims, and untouched glass — zero work on their side.
+**Honest scope:** Targets clean CAD/game-ready meshes (your stated input). Will refuse gracefully on heavily smoothed scans rather than producing garbage.
 
-## How it will work for you (admin)
+---
 
-1. Go to **Settings → Hero-car STL library** (the page you already have).
-2. Each car row gets a new **"Edit paint map"** button + a status badge: *No map · Auto · Curated*.
-3. Clicking it opens a full-screen 3D editor: the car in the middle, a tools rail on the left, a legend/save bar on the right.
-4. The car is shown with **debug colours** so you can see what's tagged what:
-   - Body = grey
-   - Glass = cyan
-   - Wheel = blue
-   - Tyre = orange
-5. Use the tools to fix anything wrong, then **Save**. The map is stored as `method = 'manual'` and end-users get it instantly.
+## 1 · Backend: shut-line splitter
 
-## Tools in the editor
+**New file:** `supabase/functions/_shared/stl-split-by-creases.ts`
 
-| Tool | What it does | How you use it |
-|------|--------------|----------------|
-| **Wheel circle** | Tags a wheel + tyre in one go | Click the wheel hub, drag outward. Inner ring = wheel, outer ring = tyre. Repeat for each of the 4 wheels. |
-| **Glass lasso** | Tags a window | Click around the window outline; double-click to close. Reuses the lasso engine from `PartLasso.tsx`. |
-| **Magic wand** | Flood-fills connected triangles with similar normals (stops at sharp edges — perfect for a single body panel or a whole windscreen) | Pick a tag (body/glass/wheel/tyre), click a triangle. |
-| **Brush** | Paint individual triangles | Pick a tag + radius, drag over the surface. |
-| **Reset to auto** | Re-runs the geometric classifier from scratch | One button, with confirm. |
+Pure-TS, no Blender needed. Pipeline:
 
-All tools project the user's 2D screen-space input (circle, lasso polygon, click) onto the 3D mesh by raycasting and centroid-in-polygon tests, only affecting camera-facing triangles so you don't accidentally paint the far side.
+1. **Weld vertices** — spatial hash at 1e-5 m tolerance so welded but coincident vertices share an index.
+2. **Build edge → triangle adjacency** — `Map<edgeKey, [triA, triB]>`.
+3. **Mark sharp edges** — for each shared edge, compute dihedral angle from face normals. Mark sharp if `angle > threshold` (default **45°**, tuned for game-ready CAD where shut lines are typically 60–90°).
+4. **Constrained flood-fill** — BFS from each unvisited triangle, traversing only across non-sharp edges. Each fill = one raw component.
+5. **Sliver merge** — components with `< 200 triangles` OR `< 0.5%` of total mesh area get merged into their largest neighboring component (across the sharp edge with the most shared length).
+6. **Boundary extraction** — for each surviving component, collect the loop(s) of edges that border another component. These are the **mating surfaces**.
 
-## End-user experience after curation
+Returns: `{ components: Array<{ triangleIndices, vertexCount, areaM2, bbox, boundaryLoops }> }`.
 
-- Build Studio loads the car → fetches the curated map → renders body / wheels / tyres / glass with separate materials immediately.
-- The Paint popover stays as it is (Body / Wheels / Tyres / Glass tabs) but the user **never sees a "classifying…" spinner** and **never sees mis-tagged regions**.
-- For cars an admin hasn't curated yet, the existing auto-classifier still runs as a fallback (so nothing breaks).
+## 2 · Backend: panel slot classifier
 
-## Save behaviour (your answer to the open question)
+**New file:** `supabase/functions/_shared/classify-car-panels.ts`
 
-You said **(b)**: Save and stay so I can keep refining, with a separate Done button to leave. ✅
-- **Save** → writes the current map to the DB and shows a tiny "Saved · 3:42 pm" toast, editor stays open.
-- **Done** → goes back to the admin list. If there are unsaved edits, prompts to save first.
+Given the split components and the car's known forward axis (already stored in `car_stls.forward_axis`), classify each component into one of these slots by bounding-box geometry relative to the car's overall bbox:
 
-## Files to create / change
+| Slot | Heuristic |
+|---|---|
+| `hood` | Top surface, front 1/3 length, full width, near-flat normal-up area > 60% |
+| `roof` | Top surface, middle 1/3 length, full width |
+| `front_bumper` | Front 15% length, bottom-to-mid height, full width |
+| `rear_bumper` | Rear 15% length, bottom-to-mid height, full width |
+| `door_l` / `door_r` | Mid length, mid height, one side only (Y < 0 / Y > 0) |
+| `fender_l` / `fender_r` | Front 1/3, mid height, one side, contains a wheel arch cut-out |
+| `mirror_l` / `mirror_r` | Small (< 2% mesh area), high Y offset, mid height, attached to door region |
+| `wheel_l_f`, `wheel_l_r`, `wheel_r_f`, `wheel_r_r` | Cylindrical (analyzed via normal distribution), at known wheel positions |
+| `unknown_<n>` | Anything that fails all classifiers — kept but flagged |
 
-**New**
-- `src/pages/AdminCarPaintMap.tsx` — the editor page (route: `/settings/car-stls/:carStlId/paint-map`)
-- `src/components/admin/PaintMapEditor.tsx` — viewport + tools rail + save bar
-- `src/components/admin/PaintMapTools/WheelCircleTool.tsx` — circle drag → radial tag
-- `src/components/admin/PaintMapTools/GlassLassoTool.tsx` — polygon → screen-space tag
-- `src/components/admin/PaintMapTools/MagicWandTool.tsx` — flood-fill by normal angle
-- `src/components/admin/PaintMapTools/BrushTool.tsx` — radius-based painting
-- `src/lib/build-studio/paint-map-edit.ts` — pure functions: raycast, centroid-in-polygon, flood-fill, undo/redo stack, base64 encode/decode
-- `supabase/functions/save-car-material-map/index.ts` — admin-only edge function that upserts the manual map (validates JWT + `has_role(uid, 'admin')`)
+Components scoring `< 0.6` confidence on their best slot get tagged `unknown_<n>` and surfaced in the UI for manual labeling (this respects your "zero clicks" rule for the success path while not silently mislabeling edge cases).
 
-**Modified**
-- `src/pages/AdminCarStls.tsx` — add status badge + "Edit paint map" link per row
-- `src/lib/build-studio/use-car-material-map.ts` — prefer `method = 'manual'`, never auto-replace it; only auto-classify when no map exists at all
-- `src/App.tsx` — register the new admin route
-- `src/components/build-studio/PaintStudioPopover.tsx` — small "Curated by admin" / "Auto-tagged" indicator (no functional change)
+## 3 · Backend: hardpoint auto-placement
 
-**Database (no schema change needed)** — the existing `car_material_maps` table already has a `method` text column. We'll just write `'manual'` to it. The unique key is already `car_stl_id`, so save = upsert.
+**Inside the same edge function:** for each classified panel, walk its `boundaryLoops`:
 
-## Tech notes (for transparency)
+- **Centroid** of each loop = candidate hardpoint position
+- **Normal** = average of triangle normals along the loop
+- **Tangent** = principal axis of the loop's vertex covariance matrix
 
-- **Undo/redo** lives in memory (a stack of `Uint8Array` snapshots, capped at 30 to bound memory).
-- **Performance:** the debug colour overlay uses three.js geometry groups + an array of 4 simple `MeshBasicMaterial`s — same trick the live viewport already uses, so it scales to 500k-tri meshes at 60 fps.
-- **Camera-facing filter:** every paint operation only affects triangles whose normal·view-direction < 0, so you can't paint the back of the car by accident.
-- **Symmetry helper (stretch):** a "mirror across X" toggle so painting the front-left wheel also paints the front-right. Cheap to add and saves you half the clicks. I'll include it.
+These three vectors define a snap frame. Save as rows in the existing `hardpoints` table (already used by `HardpointsAdminViewport`). Each panel gets 1–4 hardpoints depending on how many neighbors it had.
 
-## Out of scope for this round
+This is the high-value bit: hardpoints come from **actual mating geometry**, not from a human guessing where the bumper bolts on.
 
-- AI-assisted tagging (Tier 2 image segmentation). The manual editor is fast enough and gives 100 % accuracy; we can add AI as a "pre-fill" button later if you want.
-- Per-user paint maps. Maps stay one-per-car-STL, shared across all users.
+## 4 · New edge function
 
-## Approval
+**New file:** `supabase/functions/auto-split-car-stl/index.ts`
 
-If this plan looks right, approve it and I'll implement it end-to-end. After that, your workflow is: upload a car STL → click "Edit paint map" → spend 1–2 minutes per car → end-users get a polished experience forever.
+```
+POST /auto-split-car-stl  { car_stl_id }
+```
+
+Flow:
+1. Load `repaired_stl_path` (auto-split requires the repair pass to have run — enforced in UI).
+2. Fetch STL bytes from `car-stls` bucket.
+3. Run `stl-split-by-creases` → raw components.
+4. Run `classify-car-panels` → labeled panels.
+5. Compute auto-hardpoints per panel.
+6. Write each panel as a separate STL into `car-stls/<car_stl_id>/panels/<slot>.stl`.
+7. Insert rows into a new `car_panels` table (see below) and matching `hardpoints` rows.
+8. Return summary: `{ totalPanels, namedPanels, unknownPanels, splitConfidence }`.
+
+Runs synchronously — typical clean CAD STL (~500k tris) processes in 8–15s server-side, well within edge timeout.
+
+## 5 · Database migration
+
+**New table `car_panels`:**
+
+```
+id, car_stl_id (fk), slot (text), confidence (real),
+stl_path (text), triangle_count (int), area_m2 (real),
+bbox jsonb, created_at
+```
+
+RLS: only admins can write; authenticated can read panels for any car_stl they have access to (i.e., same as `car_stls`).
+
+Existing `hardpoints` table gets a new optional FK `car_panel_id`. When present, the hardpoint represents an auto-derived mating surface; when null, it's a hand-placed one from `HardpointsAdmin`.
+
+## 6 · UI: Admin (`AdminCarStls.tsx`)
+
+After the **Run repair** button, add a third action per row:
+
+- **`✂️ Auto-split panels`** — disabled until repaired & manifold. Shows a confirmation dialog with the dihedral threshold slider (default 45°, advanced users only) and a "this will replace existing panels" warning if `car_panels` rows already exist for this car.
+- After running, the row expands inline to show a **preview panel list** with each detected slot, triangle count, confidence chip (green / yellow / red), and a "View" button that opens a 3D viewer with each panel colored differently.
+- For any `unknown_<n>` panels, a dropdown lets the admin pick the correct slot label without re-running the split. This is the only "click" required, and only on imperfect inputs.
+
+## 7 · UI: Build Studio integration
+
+- `PartLibraryRail` gets a new **"Body panels"** section, populated from `car_panels` rows for the currently active hero car.
+- Selecting a panel in the rail **toggles its visibility** on the base car (the existing single-mesh base car is still rendered, but with the toggled panel's triangles masked out via vertex group).
+- Replacement parts can now snap to the hardpoints derived from that panel's boundary loops — no more guessing where the bumper attaches.
+
+## 8 · Honest fallback for the 15%
+
+If the splitter returns `< 4` components for the entire car, that's a strong signal the input doesn't have detectable shut lines (heavily smoothed scan, single watertight blob). Edge function returns `{ ok: false, reason: 'no_shut_lines_detected', componentsFound: N }` and the UI shows:
+
+> "This mesh doesn't have detectable panel seams. The car will still work as a non-splittable base. To enable panel-level swaps, re-export from CAD with separate panel objects, or use a higher-quality source mesh."
+
+No silent corruption, no fake panels.
+
+---
+
+## Files touched
+
+**New:**
+- `supabase/functions/_shared/stl-split-by-creases.ts`
+- `supabase/functions/_shared/classify-car-panels.ts`
+- `supabase/functions/auto-split-car-stl/index.ts`
+- `src/lib/build-studio/car-panels.ts` (client repo helpers + React Query hooks)
+- `src/components/admin/CarPanelsPreview.tsx` (3D coloured-by-component viewer)
+- DB migration: `car_panels` table + `hardpoints.car_panel_id` column
+
+**Modified:**
+- `src/pages/AdminCarStls.tsx` — Auto-split button + inline preview
+- `src/components/build-studio/PartLibraryRail.tsx` — Body panels section
+- `src/components/build-studio/BuildStudioViewport.tsx` — panel-masked base car render
+- `src/lib/build-studio/hardpoints.ts` — read auto-derived hardpoints
+
+---
+
+## What I'm explicitly NOT doing in v1
+
+- No paint/brush manual splitter (you said zero clicks — adding it would imply auto isn't trusted)
+- No symmetry detection to guarantee `door_l` and `door_r` are mirror-perfect (they will be 99% of the time on clean CAD; if not, it's a signal the car itself isn't symmetric)
+- No segmentation of underbody/interior (out of scope for aero-kit work)
+
+If after testing on real STLs the unknown-rate is too high, the realistic next step is **option B: a 5-second manual touch-up brush**, not "make the auto-detector smarter" — at some point the input quality is the bottleneck, not the algorithm.

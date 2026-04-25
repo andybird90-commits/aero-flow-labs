@@ -28,9 +28,18 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { decimateClientSide } from "@/lib/decimate-client";
 import {
-  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles, Palette,
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles, Palette, Scissors, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  useCarPanels,
+  useRunAutoSplit,
+  useUpdateCarPanelSlot,
+  panelDisplayLabel,
+  PANEL_SLOT_LABELS,
+  type CarPanel,
+} from "@/lib/build-studio/car-panels";
+import { CarPanelsPreview } from "@/components/admin/CarPanelsPreview";
 
 // Anything above this gets quadric-edge-collapse decimated in a Web Worker
 // before upload so the edge worker can repair it within its 256 MB cap.
@@ -390,76 +399,224 @@ function CarStlRow({
   const repaired = !!row.repaired_stl_path;
   const manifold = row.manifold_clean;
   const tris = row.triangle_count;
+  const { toast } = useToast();
+
+  const { data: panels = [] } = useCarPanels(row.id);
+  const runSplit = useRunAutoSplit();
+  const updateSlot = useUpdateCarPanelSlot();
+  const [showPanels, setShowPanels] = useState(false);
+  const [splitConfirmOpen, setSplitConfirmOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+
+  const onAutoSplit = async () => {
+    setSplitConfirmOpen(false);
+    try {
+      const res = await runSplit.mutateAsync({ car_stl_id: row.id });
+      if (!res.ok) {
+        const failed = res as { ok: false; reason: string; message: string };
+        toast({
+          title: failed.reason === "no_shut_lines_detected"
+            ? "No shut lines detected"
+            : "Couldn't auto-split",
+          description: failed.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      setShowPanels(true);
+      toast({
+        title: `Split into ${res.total_panels} panels`,
+        description: `${res.named_panels} named · ${res.unknown_panels} unknown · ${res.sharp_edges.toLocaleString()} sharp edges`,
+      });
+    } catch (e: any) {
+      toast({
+        title: "Auto-split failed",
+        description: String(e.message ?? e),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const splitBadge = panels.length > 0 ? (
+    <Badge variant="outline" className="border-primary/40 text-primary">
+      <Scissors className="mr-1 h-3 w-3" /> {panels.length} panels
+    </Badge>
+  ) : null;
 
   return (
-    <div className="glass rounded-xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="text-sm font-semibold tracking-tight truncate">
-            {template ? `${template.make} ${template.model}` : "Unknown template"}
-            {template?.trim ? <span className="text-muted-foreground"> {template.trim}</span> : null}
+    <div className="glass rounded-xl p-4 flex flex-col gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="text-sm font-semibold tracking-tight truncate">
+              {template ? `${template.make} ${template.model}` : "Unknown template"}
+              {template?.trim ? <span className="text-muted-foreground"> {template.trim}</span> : null}
+            </div>
+            {!repaired ? (
+              <Badge variant="outline" className="border-warning/40 text-warning">Needs repair</Badge>
+            ) : manifold ? (
+              <Badge variant="outline" className="border-success/40 text-success">
+                <CheckCircle2 className="mr-1 h-3 w-3" /> Manifold
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-warning/40 text-warning">
+                <AlertTriangle className="mr-1 h-3 w-3" /> Non-manifold
+              </Badge>
+            )}
+            {paintMapMethod === "manual" ? (
+              <Badge variant="outline" className="border-success/40 text-success">
+                <Palette className="mr-1 h-3 w-3" /> Paint: curated
+              </Badge>
+            ) : paintMapMethod ? (
+              <Badge variant="outline" className="border-warning/40 text-warning">
+                <Palette className="mr-1 h-3 w-3" /> Paint: auto
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground">
+                <Palette className="mr-1 h-3 w-3" /> Paint: none
+              </Badge>
+            )}
+            {splitBadge}
           </div>
-          {!repaired ? (
-            <Badge variant="outline" className="border-warning/40 text-warning">Needs repair</Badge>
-          ) : manifold ? (
-            <Badge variant="outline" className="border-success/40 text-success">
-              <CheckCircle2 className="mr-1 h-3 w-3" /> Manifold
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="border-warning/40 text-warning">
-              <AlertTriangle className="mr-1 h-3 w-3" /> Non-manifold
-            </Badge>
-          )}
-          {paintMapMethod === "manual" ? (
-            <Badge variant="outline" className="border-success/40 text-success">
-              <Palette className="mr-1 h-3 w-3" /> Paint: curated
-            </Badge>
-          ) : paintMapMethod ? (
-            <Badge variant="outline" className="border-warning/40 text-warning">
-              <Palette className="mr-1 h-3 w-3" /> Paint: auto
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-muted-foreground">
-              <Palette className="mr-1 h-3 w-3" /> Paint: none
-            </Badge>
-          )}
+          <div className="mt-1 text-mono text-[10px] uppercase tracking-widest text-muted-foreground truncate">
+            {row.stl_path}
+            {tris ? ` · ${tris.toLocaleString()} tris` : ""}
+          </div>
         </div>
-        <div className="mt-1 text-mono text-[10px] uppercase tracking-widest text-muted-foreground truncate">
-          {row.stl_path}
-          {tris ? ` · ${tris.toLocaleString()} tris` : ""}
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={row.forward_axis} onValueChange={onAxisChange}>
+            <SelectTrigger className="h-8 w-[200px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {FORWARD_AXES.map((a) => (
+                <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="glass"
+            size="sm"
+            onClick={onRepair}
+            disabled={repairing}
+            className={cn(repaired && manifold && "opacity-70")}
+          >
+            {repairing ? (
+              <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Repairing…</>
+            ) : (
+              <><Wrench className="mr-1.5 h-3.5 w-3.5" /> {repaired ? "Re-repair" : "Run repair"}</>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!repaired || runSplit.isPending}
+            onClick={() => panels.length > 0 ? setSplitConfirmOpen(true) : onAutoSplit()}
+            title={!repaired ? "Run repair first" : "Auto-split into body panels along shut lines"}
+          >
+            {runSplit.isPending ? (
+              <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Splitting…</>
+            ) : (
+              <><Scissors className="mr-1.5 h-3.5 w-3.5" /> {panels.length > 0 ? "Re-split" : "Auto-split"}</>
+            )}
+          </Button>
+          <Button asChild variant="outline" size="sm" disabled={!repaired}>
+            <Link to={`/settings/car-stls/${row.id}/paint-map`}>
+              <Palette className="mr-1.5 h-3.5 w-3.5" /> Edit paint map
+            </Link>
+          </Button>
+          {panels.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowPanels((s) => !s)}
+              title={showPanels ? "Hide panels" : "Show panels"}
+            >
+              {showPanels ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={onDelete} className="text-destructive hover:bg-destructive/10">
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <Select value={row.forward_axis} onValueChange={onAxisChange}>
-          <SelectTrigger className="h-8 w-[200px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {FORWARD_AXES.map((a) => (
-              <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+      {splitConfirmOpen && (
+        <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
+          <div className="font-semibold text-warning">Re-split this car?</div>
+          <p className="mt-1 text-muted-foreground">
+            The {panels.length} existing panel{panels.length === 1 ? "" : "s"} will be replaced. Auto-derived hardpoints linked to those panels will also be removed.
+          </p>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setSplitConfirmOpen(false)}>Cancel</Button>
+            <Button size="sm" variant="hero" onClick={onAutoSplit}>Re-split</Button>
+          </div>
+        </div>
+      )}
+
+      {showPanels && panels.length > 0 && (
+        <div className="grid gap-3 lg:grid-cols-[1fr_320px]">
+          <CarPanelsPreview panels={panels} highlightedPanelId={highlighted} />
+          <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1">
+            <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+              Detected panels · click slot to relabel
+            </div>
+            {panels.map((p) => (
+              <PanelRow
+                key={p.id}
+                panel={p}
+                highlighted={highlighted === p.id}
+                onHover={(on) => setHighlighted(on ? p.id : null)}
+                onRelabel={(slot) =>
+                  updateSlot.mutate({ id: p.id, car_stl_id: row.id, slot })
+                }
+              />
             ))}
-          </SelectContent>
-        </Select>
-        <Button
-          variant="glass"
-          size="sm"
-          onClick={onRepair}
-          disabled={repairing}
-          className={cn(repaired && manifold && "opacity-70")}
-        >
-          {repairing ? (
-            <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Repairing…</>
-          ) : (
-            <><Wrench className="mr-1.5 h-3.5 w-3.5" /> {repaired ? "Re-repair" : "Run repair"}</>
-          )}
-        </Button>
-        <Button asChild variant="outline" size="sm" disabled={!repaired}>
-          <Link to={`/settings/car-stls/${row.id}/paint-map`}>
-            <Palette className="mr-1.5 h-3.5 w-3.5" /> Edit paint map
-          </Link>
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onDelete} className="text-destructive hover:bg-destructive/10">
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PanelRow({
+  panel, highlighted, onHover, onRelabel,
+}: {
+  panel: CarPanel;
+  highlighted: boolean;
+  onHover: (on: boolean) => void;
+  onRelabel: (slot: string) => void;
+}) {
+  const isUnknown = panel.slot.startsWith("unknown");
+  const conf = panel.confidence;
+  const confColor = conf >= 0.75 ? "text-success" : conf >= 0.6 ? "text-warning" : "text-destructive";
+  return (
+    <div
+      className={cn(
+        "rounded-md border border-border bg-surface-1/40 p-2 transition-colors",
+        highlighted && "border-primary/60 bg-primary/5",
+      )}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <Select value={isUnknown ? "" : panel.slot.replace(/_(\d+)$/, "")} onValueChange={onRelabel}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder={panelDisplayLabel(panel.slot)} />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(PANEL_SLOT_LABELS).map(([key, label]) => (
+                <SelectItem key={key} value={key}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <span className={cn("text-mono text-[10px] uppercase tracking-widest", confColor)}>
+          {(conf * 100).toFixed(0)}%
+        </span>
+      </div>
+      <div className="mt-1 text-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+        {panel.triangle_count.toLocaleString()} tris · {(panel.area_m2).toFixed(2)} m²
       </div>
     </div>
   );
