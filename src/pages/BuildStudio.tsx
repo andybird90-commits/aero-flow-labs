@@ -427,6 +427,14 @@ export default function BuildStudio() {
 
                 <Separator orientation="vertical" className="h-5" />
 
+                <PaintStudioPopover
+                  finish={paintFinish}
+                  onChange={setPaintFinish}
+                  disabled={!projectId}
+                />
+
+                <Separator orientation="vertical" className="h-5" />
+
                 {/* Shell Fit Mode */}
                 <Select
                   value={shellSkinId ?? "__none__"}
