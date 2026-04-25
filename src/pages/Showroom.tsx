@@ -231,7 +231,7 @@ export default function Showroom() {
     }
   };
 
-  const handleTurntable = async () => {
+  const handleTurntable = async (format: "webm" | "mp4" = "webm") => {
     const canvas = sceneRef.current?.getCanvas();
     const scene = sceneRef.current;
     if (!canvas || !scene) return;
@@ -243,21 +243,76 @@ export default function Showroom() {
       await recordTurntable(canvas, {
         durationSec: 8,
         fps: 60,
+        format,
         onProgress: setRecordProgress,
         onTick: (angle) => {
           const delta = angle - lastAngle;
           lastAngle = angle;
           scene.orbitBy(delta);
         },
-        filename: `turntable-${Date.now()}.webm`,
+        filename: `turntable-${Date.now()}`,
       });
       if (startState) scene.setCameraState(startState);
-      toast.success("Turntable saved");
+      toast.success(`Turntable saved (${format.toUpperCase()})`);
     } catch (e) {
       toast.error("Recording failed", { description: String(e) });
     } finally {
       setRecording(false);
       setRecordProgress(0);
+    }
+  };
+
+  const handleHiResScreenshot = async (scale: 2 | 4) => {
+    const renderer = sceneRef.current?.getRenderer();
+    const scene = sceneRef.current?.getSceneRoot();
+    const camera = sceneRef.current?.getCamera();
+    if (!renderer || !scene || !camera) {
+      toast.error("Scene not ready");
+      return;
+    }
+    try {
+      await captureHiRes(renderer, scene, camera, { scale });
+      toast.success(`${scale}× screenshot saved`);
+    } catch (e) {
+      toast.error("Hi-res capture failed", { description: String(e) });
+    }
+  };
+
+  const handleGLBExport = async () => {
+    const sceneRoot = sceneRef.current?.getSceneRoot();
+    if (!sceneRoot) return;
+    try {
+      await exportSceneToGLB(sceneRoot, `${projectName.replace(/\s+/g, "-")}.glb`);
+      toast.success("GLB exported");
+    } catch (e) {
+      toast.error("GLB export failed", { description: String(e) });
+    }
+  };
+
+  const handleSaveThumbnail = async () => {
+    if (!user || !projectId) return;
+    const canvas = sceneRef.current?.getCanvas();
+    if (!canvas) return;
+    try {
+      const blob = await canvasToThumbBlob(canvas);
+      await saveProjectThumbnail(user.id, projectId, blob);
+      toast.success("Thumbnail updated");
+    } catch (e) {
+      toast.error("Thumbnail save failed", { description: String(e) });
+    }
+  };
+
+  const handleToggleShare = async () => {
+    try {
+      const r = await toggleShare.mutateAsync(!shareState?.share_enabled);
+      if (r.enabled && r.token) {
+        await navigator.clipboard?.writeText(buildShareUrl(r.token));
+        toast.success("Share link copied", { description: buildShareUrl(r.token) });
+      } else {
+        toast.success("Sharing disabled");
+      }
+    } catch (e) {
+      toast.error("Share toggle failed", { description: String(e) });
     }
   };
 
