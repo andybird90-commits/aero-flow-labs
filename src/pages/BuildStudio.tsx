@@ -893,6 +893,7 @@ export default function BuildStudio() {
                     shellTransform={shellTransform}
                     shellEditMode={shellEditMode}
                     onShellCommit={handleShellCommit}
+                    onShellMeshReady={setShellRoot}
                     parts={parts}
                     libraryItemsById={libraryItemsById}
                     snapZones={snapZones}
