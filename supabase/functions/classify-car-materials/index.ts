@@ -56,14 +56,17 @@ Deno.serve(async (req) => {
       return json({ error: "car_stl_id required" }, 400);
     }
 
-    // Skip if already cached (unless forced).
+    // Bumped whenever the heuristic changes — older entries get auto-rerun.
+    const CLASSIFIER_VERSION = "geometric-v2";
+
+    // Skip if already cached at the current version (unless forced).
     if (!body.force) {
       const { data: existing } = await admin
         .from("car_material_maps")
         .select("id, method, triangle_count, stats")
         .eq("car_stl_id", body.car_stl_id)
         .maybeSingle();
-      if (existing) {
+      if (existing && existing.method === CLASSIFIER_VERSION) {
         return json({ ok: true, cached: true, map: existing });
       }
     }
