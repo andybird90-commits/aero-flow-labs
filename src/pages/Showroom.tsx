@@ -297,7 +297,7 @@ export default function Showroom() {
 
       {/* Top bar — hidden in presentation mode */}
       {!presentationMode && (
-        <header className="absolute inset-x-0 top-0 z-40 flex items-center justify-between gap-4 bg-gradient-to-b from-background/95 via-background/70 to-transparent px-6 py-4 backdrop-blur-sm">
+        <header className="absolute inset-x-0 top-0 z-40 flex items-center justify-between gap-4 bg-gradient-to-b from-background/95 via-background/80 to-transparent px-6 py-4">
           <div className="flex items-center gap-3">
             <Button asChild variant="ghost" size="icon" className="h-9 w-9">
               <Link to={projectId ? `/build-studio?project=${projectId}` : "/dashboard"}>
@@ -339,7 +339,7 @@ export default function Showroom() {
       {/* Left rail — bookmarks + camera presets */}
       {!presentationMode && (
         <aside className="absolute left-4 top-1/2 z-40 w-64 -translate-y-1/2">
-          <div className="rounded-xl border border-border bg-surface-1/90 p-3 shadow-xl backdrop-blur">
+          <div className="rounded-xl border border-border bg-surface-1/95 p-3 shadow-xl">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Camera presets
@@ -412,7 +412,7 @@ export default function Showroom() {
       {/* Right rail — environment + capture */}
       {!presentationMode && (
         <aside className="absolute right-4 top-1/2 z-40 w-64 -translate-y-1/2">
-          <div className="rounded-xl border border-border bg-surface-1/90 p-3 shadow-xl backdrop-blur">
+          <div className="rounded-xl border border-border bg-surface-1/95 p-3 shadow-xl">
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Environment
             </h3>
