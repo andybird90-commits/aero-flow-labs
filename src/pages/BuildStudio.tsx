@@ -594,9 +594,9 @@ export default function BuildStudio() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col">
               {/* Toolbar */}
-              <div className="sticky top-14 z-20 flex h-14 items-center gap-2.5 border-b border-border bg-card/95 px-4 shadow-sm">
+              <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border bg-card/95 px-4 shadow-sm overflow-x-auto">
                 <div className="text-mono text-[11px] uppercase tracking-widest text-muted-foreground">
                   Build
                 </div>
