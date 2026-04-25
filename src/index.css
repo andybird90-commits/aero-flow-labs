@@ -193,4 +193,26 @@
   }
 
   .animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+
+  /* APEX brand gradient text — cyan → violet, signature treatment */
+  .text-brand-gradient {
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .bg-brand-gradient {
+    background: var(--gradient-brand);
+  }
+
+  .ring-glow-violet {
+    box-shadow: var(--shadow-glow-violet);
+  }
+
+  /* Tech display font used for headlines + numeric chips on APEX|NEXT */
+  .font-display {
+    font-family: 'Rajdhani', 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.02em;
+  }
 }
