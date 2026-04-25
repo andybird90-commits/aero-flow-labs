@@ -7,13 +7,12 @@
  * cars + body skin + placed parts are all included with their materials.
  */
 import * as THREE from "three";
-// @ts-expect-error — three ships USDZExporter under examples/jsm
 import { USDZExporter } from "three/examples/jsm/exporters/USDZExporter.js";
 
 export async function exportSceneToUSDZ(scene: THREE.Object3D, filename = "showroom.usdz") {
   const exporter = new USDZExporter();
-  const arraybuffer: Uint8Array = await exporter.parse(scene);
-  const blob = new Blob([arraybuffer], { type: "model/vnd.usdz+zip" });
+  const arraybuffer = (await exporter.parse(scene)) as Uint8Array;
+  const blob = new Blob([arraybuffer.buffer as ArrayBuffer], { type: "model/vnd.usdz+zip" });
   const url = URL.createObjectURL(blob);
 
   // Detect iOS Safari → use the native AR Quick Look anchor link.
