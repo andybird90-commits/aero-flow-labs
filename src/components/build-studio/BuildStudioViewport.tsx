@@ -395,6 +395,7 @@ export function BuildStudioViewport({
   const transformRef = useRef<any>(null);
   const shellTransformRef = useRef<any>(null);
   const shellGroupRef = useRef<THREE.Group | null>(null);
+  const transformInteractionRef = useRef(false);
   const selected = parts.find((p) => p.id === selectedId) ?? null;
   const [meshNode, setMeshNode] = useState<THREE.Object3D | null>(null);
 
@@ -404,7 +405,10 @@ export function BuildStudioViewport({
     <Canvas
       shadows
       camera={{ position: [4.5, 3, 4.5], fov: 38, near: 0.1, far: 100 }}
-      onPointerMissed={() => onSelect(null)}
+      onPointerMissed={() => {
+        if (transformInteractionRef.current) return;
+        onSelect(null);
+      }}
       dpr={[1, 2]}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
     >
@@ -482,6 +486,7 @@ export function BuildStudioViewport({
           object={meshNode}
           mode={transformMode}
           orbitRef={orbitRef}
+          interactionRef={transformInteractionRef}
           onRelease={() => {
             if (!meshNode || !selected) return;
             const pos: Vec3 = {
@@ -514,6 +519,7 @@ export function BuildStudioViewport({
           mode={transformMode}
           size={0.9}
           orbitRef={orbitRef}
+          interactionRef={transformInteractionRef}
           onRelease={() => {
             const g = shellGroupRef.current;
             if (!g || !onShellCommit) return;
@@ -561,12 +567,14 @@ function PartTransformGizmo({
   mode,
   size = 0.7,
   orbitRef,
+  interactionRef,
   onRelease,
 }: {
   object: THREE.Object3D;
   mode: TransformMode;
   size?: number;
   orbitRef: React.MutableRefObject<any>;
+  interactionRef: React.MutableRefObject<boolean>;
   onRelease: () => void;
 }) {
   const { camera, gl, scene, invalidate } = useThree();
@@ -582,25 +590,39 @@ function PartTransformGizmo({
     controls.attach(object);
 
     const handleDragging = (e: { value: boolean }) => {
+      interactionRef.current = e.value;
       if (orbitRef.current) orbitRef.current.enabled = !e.value;
-      if (!e.value) releaseRef.current();
+      if (!e.value) {
+        releaseRef.current();
+        window.setTimeout(() => {
+          interactionRef.current = false;
+        }, 0);
+      }
       invalidate();
     };
     const handleChange = () => invalidate();
 
     controls.addEventListener("dragging-changed", handleDragging as any);
     controls.addEventListener("change", handleChange);
+    const handlePointerDownCapture = (event: PointerEvent) => {
+      const c = controls as any;
+      c.pointerHover?.(c.getPointer?.(event));
+      if (c.axis) interactionRef.current = true;
+    };
+    gl.domElement.addEventListener("pointerdown", handlePointerDownCapture, true);
     scene.add(controls);
 
     return () => {
       controls.removeEventListener("dragging-changed", handleDragging as any);
       controls.removeEventListener("change", handleChange);
+      gl.domElement.removeEventListener("pointerdown", handlePointerDownCapture, true);
       controls.detach();
       scene.remove(controls);
       controls.dispose();
+      interactionRef.current = false;
       controlsRef.current = null;
     };
-  }, [camera, gl, scene, object, orbitRef, invalidate]);
+  }, [camera, gl, scene, object, orbitRef, interactionRef, invalidate]);
 
   useEffect(() => {
     controlsRef.current?.setMode(mode);
