@@ -340,6 +340,10 @@ const BodySkinOverlay = function BodySkinOverlay({
 }) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
   const localRef = useRef<THREE.Group>(null);
+  // Track the materials we created so we can mutate (not rebuild) them when
+  // the highlight flag flips. Rebuilding meant re-fetching + re-parsing the
+  // entire skin STL on every Shell Fit Mode toggle — multi-second freeze.
+  const materialsRef = useRef<THREE.MeshPhysicalMaterial[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -364,24 +368,30 @@ const BodySkinOverlay = function BodySkinOverlay({
       const box3 = new THREE.Box3().setFromObject(wrapper);
       wrapper.position.y -= box3.min.y;
 
-      // Translucent orange tint to clearly read it as a skin overlay.
+      // Translucent orange tint to clearly read it as a skin overlay. Highlight
+      // state (opacity/emissive) is applied in a separate effect so toggling
+      // Shell Fit Mode doesn't re-run this expensive load.
+      const created: THREE.MeshPhysicalMaterial[] = [];
       wrapper.traverse((c) => {
         const m = c as THREE.Mesh;
         if (m.isMesh) {
           m.castShadow = false;
           m.receiveShadow = false;
-          m.material = new THREE.MeshPhysicalMaterial({
-            color: highlight ? "#fb923c" : "#fb923c",
+          const mat = new THREE.MeshPhysicalMaterial({
+            color: "#fb923c",
             metalness: 0.2,
             roughness: 0.6,
             transparent: true,
-            opacity: highlight ? 0.55 : 0.42,
+            opacity: 0.42,
             clearcoat: 0.3,
-            emissive: highlight ? "#7c2d12" : "#000000",
-            emissiveIntensity: highlight ? 0.15 : 0,
+            emissive: "#000000",
+            emissiveIntensity: 0,
           });
+          m.material = mat;
+          created.push(mat);
         }
       });
+      materialsRef.current = created;
       setObject(wrapper);
     };
 
@@ -415,7 +425,17 @@ const BodySkinOverlay = function BodySkinOverlay({
     return () => {
       cancelled = true;
     };
-  }, [url, kind, template?.wheelbase_mm, highlight]);
+  }, [url, kind, template?.wheelbase_mm]);
+
+  // Cheap material mutation when highlight flips — no reload, no reparse.
+  useEffect(() => {
+    for (const mat of materialsRef.current) {
+      mat.opacity = highlight ? 0.55 : 0.42;
+      mat.emissive.set(highlight ? "#7c2d12" : "#000000");
+      mat.emissiveIntensity = highlight ? 0.15 : 0;
+      mat.needsUpdate = true;
+    }
+  }, [highlight, object]);
 
   // Apply transform when it changes (without overriding gizmo dragging).
   useEffect(() => {
