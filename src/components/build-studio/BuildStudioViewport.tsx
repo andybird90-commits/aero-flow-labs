@@ -8,7 +8,7 @@
  * commits to DB and snaps to the nearest snap zone if within threshold.
  */
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   OrbitControls,
   Grid,
