@@ -39,6 +39,8 @@ export async function captureCanvasPng(
   });
 }
 
+export type TurntableFormat = "webm" | "mp4";
+
 export interface TurntableOptions {
   /** Total rotation duration in seconds. */
   durationSec?: number;
@@ -48,8 +50,44 @@ export interface TurntableOptions {
   onProgress?: (t: number) => void;
   /** Called every frame with the current angle in radians (caller rotates camera). */
   onTick: (angleRad: number) => void;
-  /** Filename for download. */
+  /** Filename for download (extension is overwritten to match the chosen format). */
   filename?: string;
+  /** Container format. MP4 needs an H.264-capable browser (Chrome 105+, Safari 16+). */
+  format?: TurntableFormat;
+}
+
+/** Pick the best supported MIME for the requested container. */
+function pickMime(format: TurntableFormat): { mime: string; ext: string } {
+  if (typeof MediaRecorder === "undefined") {
+    return { mime: "video/webm", ext: "webm" };
+  }
+  if (format === "mp4") {
+    const candidates = [
+      "video/mp4;codecs=h264",
+      'video/mp4;codecs="avc1.42E01E"',
+      "video/mp4",
+    ];
+    const found = candidates.find((m) => MediaRecorder.isTypeSupported(m));
+    if (found) return { mime: found, ext: "mp4" };
+    // Fall through to WebM if MP4 isn't supported.
+  }
+  const webmCandidates = [
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+  ];
+  const found = webmCandidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? "video/webm";
+  return { mime: found, ext: "webm" };
+}
+
+/** Whether the current browser can record MP4 directly (no transcoding). */
+export function canRecordMp4(): boolean {
+  if (typeof MediaRecorder === "undefined") return false;
+  return [
+    "video/mp4;codecs=h264",
+    'video/mp4;codecs="avc1.42E01E"',
+    "video/mp4",
+  ].some((m) => MediaRecorder.isTypeSupported(m));
 }
 
 /**
@@ -67,20 +105,15 @@ export async function recordTurntable(
     fps = 60,
     onProgress,
     onTick,
-    filename = "showroom-turntable.webm",
+    filename = "showroom-turntable",
+    format = "webm",
   } = opts;
 
   if (!("captureStream" in canvas) || typeof MediaRecorder === "undefined") {
     throw new Error("Browser does not support canvas video capture");
   }
 
-  // Pick the best available codec.
-  const mimeCandidates = [
-    "video/webm;codecs=vp9",
-    "video/webm;codecs=vp8",
-    "video/webm",
-  ];
-  const mime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? "video/webm";
+  const { mime, ext } = pickMime(format);
 
   const stream = (canvas as HTMLCanvasElement & { captureStream(fps: number): MediaStream }).captureStream(fps);
   const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12_000_000 });
@@ -89,10 +122,12 @@ export async function recordTurntable(
     if (e.data && e.data.size > 0) chunks.push(e.data);
   };
 
+  const finalName = filename.replace(/\.(webm|mp4)$/i, "") + "." + ext;
+
   const done = new Promise<void>((resolve) => {
     recorder.onstop = () => {
       const blob = new Blob(chunks, { type: mime });
-      downloadBlob(blob, filename);
+      downloadBlob(blob, finalName);
       resolve();
     };
   });
