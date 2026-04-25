@@ -362,12 +362,12 @@ export default function BuildStudio() {
           ) : (
             <div className="flex flex-1 flex-col">
               {/* Toolbar */}
-              <div className="flex h-12 items-center gap-2 border-b border-border bg-card/30 px-3">
-                <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              <div className="sticky top-14 z-20 flex h-14 items-center gap-2.5 border-b border-border bg-card/80 px-4 backdrop-blur-md shadow-sm">
+                <div className="text-mono text-[11px] uppercase tracking-widest text-muted-foreground">
                   Build
                 </div>
-                <div className="text-sm font-medium truncate max-w-[200px]">{project?.name}</div>
-                <Separator orientation="vertical" className="h-5" />
+                <div className="text-sm font-medium truncate max-w-[220px]">{project?.name}</div>
+                <Separator orientation="vertical" className="h-7" />
 
                 <ToggleGroup
                   type="single"
@@ -375,43 +375,43 @@ export default function BuildStudio() {
                   onValueChange={(v) => v && setMode(v as TransformMode)}
                   className="gap-0"
                 >
-                  <ToggleGroupItem value="translate" size="sm" className="h-7 px-2">
-                    <Move3d className="h-3.5 w-3.5" />
+                  <ToggleGroupItem value="translate" size="sm" className="h-9 px-3" aria-label="Move">
+                    <Move3d className="h-4 w-4" />
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="rotate" size="sm" className="h-7 px-2">
-                    <RotateCcw className="h-3.5 w-3.5" />
+                  <ToggleGroupItem value="rotate" size="sm" className="h-9 px-3" aria-label="Rotate">
+                    <RotateCcw className="h-4 w-4" />
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="scale" size="sm" className="h-7 px-2">
-                    <Maximize2 className="h-3.5 w-3.5" />
+                  <ToggleGroupItem value="scale" size="sm" className="h-9 px-3" aria-label="Scale">
+                    <Maximize2 className="h-4 w-4" />
                   </ToggleGroupItem>
                 </ToggleGroup>
 
-                <Separator orientation="vertical" className="h-5" />
+                <Separator orientation="vertical" className="h-7" />
 
                 <Toggle
                   pressed={showGrid}
                   onPressedChange={setShowGrid}
                   size="sm"
-                  className="h-7 px-2"
+                  className="h-9 px-3"
                   aria-label="Toggle grid"
                 >
-                  <Grid3x3 className="h-3.5 w-3.5" />
+                  <Grid3x3 className="h-4 w-4" />
                 </Toggle>
 
                 <Toggle
                   pressed={showSnapZones}
                   onPressedChange={setShowSnapZones}
                   size="sm"
-                  className="h-7 px-2"
+                  className="h-9 px-3"
                   aria-label="Toggle snap zones"
                   disabled={!carTemplateId}
                 >
-                  <Magnet className="h-3.5 w-3.5" />
+                  <Magnet className="h-4 w-4" />
                 </Toggle>
 
                 <Select value={preset} onValueChange={(v) => setPreset(v as CameraPreset)}>
-                  <SelectTrigger className="h-7 w-[140px] text-xs">
-                    <Camera className="mr-1 h-3 w-3" />
+                  <SelectTrigger className="h-9 w-[160px] text-xs">
+                    <Camera className="mr-1.5 h-3.5 w-3.5" />
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -425,7 +425,7 @@ export default function BuildStudio() {
                   </SelectContent>
                 </Select>
 
-                <Separator orientation="vertical" className="h-5" />
+                <Separator orientation="vertical" className="h-7" />
 
                 <PaintStudioPopover
                   finish={paintFinish}
@@ -433,7 +433,7 @@ export default function BuildStudio() {
                   disabled={!projectId}
                 />
 
-                <Separator orientation="vertical" className="h-5" />
+                <Separator orientation="vertical" className="h-7" />
 
                 {/* Shell Fit Mode */}
                 <Select
@@ -443,8 +443,8 @@ export default function BuildStudio() {
                     if (v === "__none__") setShellEditMode(false);
                   }}
                 >
-                  <SelectTrigger className="h-7 w-[180px] text-xs">
-                    <Layers className="mr-1 h-3 w-3 text-primary" />
+                  <SelectTrigger className="h-9 w-[200px] text-xs">
+                    <Layers className="mr-1.5 h-3.5 w-3.5 text-primary" />
                     <SelectValue placeholder="Shell Fit: none" />
                   </SelectTrigger>
                   <SelectContent>
@@ -461,16 +461,16 @@ export default function BuildStudio() {
                   pressed={shellEditMode}
                   onPressedChange={setShellEditMode}
                   size="sm"
-                  className="h-7 px-2 data-[state=on]:bg-primary/20 data-[state=on]:text-primary"
+                  className="h-9 px-3 data-[state=on]:bg-primary/20 data-[state=on]:text-primary"
                   aria-label="Edit shell alignment"
                   disabled={!shellSkinId}
                 >
-                  <Layers className="h-3.5 w-3.5" />
+                  <Layers className="h-4 w-4" />
                 </Toggle>
 
                 <div className="ml-auto flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={handleSaveDesign} className="h-7 text-xs">
-                    <Save className="mr-1 h-3 w-3" /> Save
+                  <Button size="sm" variant="outline" onClick={handleSaveDesign} className="h-9 px-3 text-xs">
+                    <Save className="mr-1.5 h-3.5 w-3.5" /> Save
                   </Button>
                 </div>
               </div>
