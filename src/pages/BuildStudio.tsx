@@ -71,7 +71,10 @@ import {
 import { useSnapZones } from "@/lib/build-studio/snap-zones";
 import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
 import { useBodySkins, useSignedBodySkinUrl, type BodySkin } from "@/lib/body-skins";
-import { useShellAlignment, useUpsertShellAlignment } from "@/lib/build-studio/shell-alignments";
+import { useShellAlignment, useUpsertShellAlignment, type LockedHardpointPair } from "@/lib/build-studio/shell-alignments";
+import { useCarHardpoints } from "@/lib/build-studio/hardpoints";
+import { ShellFitPanel } from "@/components/build-studio/ShellFitPanel";
+import type * as THREE from "three";
 import { DEFAULT_PAINT_FINISH, parsePaintFinish, type PaintFinish } from "@/lib/build-studio/paint-finish";
 
 import { BuildStudioViewport, type CameraPreset, type TransformMode, type ShellTransform } from "@/components/build-studio/BuildStudioViewport";
