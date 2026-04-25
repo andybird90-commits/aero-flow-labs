@@ -121,7 +121,12 @@ export const arStore = {
 /** React hook — returns the full state and re-renders on change. */
 export function useARAnchor(): ARAnchorState {
   const [snapshot, setSnapshot] = useState(arStore.get());
-  useEffect(() => arStore.subscribe(() => setSnapshot(arStore.get())), []);
+  useEffect(() => {
+    const unsub = arStore.subscribe(() => setSnapshot(arStore.get()));
+    return () => {
+      unsub();
+    };
+  }, []);
   return snapshot;
 }
 
