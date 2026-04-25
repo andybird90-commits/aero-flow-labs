@@ -489,6 +489,16 @@ export function BuildStudioViewport({
           }}
           onMouseUp={() => {
             if (orbitRef.current) orbitRef.current.enabled = true;
+          }}
+          onObjectChange={() => {
+            // No-op: we commit on dragging-changed=false below for reliability.
+          }}
+          // drei's TransformControls forwards `dragging-changed` from three's TransformControls.
+          // This fires reliably on mouse release across all three transform modes.
+          // @ts-expect-error - drei types omit this event but it's forwarded by three.
+          onDraggingChanged={(event: { value: boolean }) => {
+            if (orbitRef.current) orbitRef.current.enabled = !event.value;
+            if (event.value) return; // dragging started
             if (!meshNode || !selected) return;
 
             const pos: Vec3 = {
@@ -537,11 +547,10 @@ export function BuildStudioViewport({
           object={shellGroupRef.current}
           mode={transformMode}
           size={0.9}
-          onMouseDown={() => {
-            if (orbitRef.current) orbitRef.current.enabled = false;
-          }}
-          onMouseUp={() => {
-            if (orbitRef.current) orbitRef.current.enabled = true;
+          // @ts-expect-error - drei types omit this event but it's forwarded by three.
+          onDraggingChanged={(event: { value: boolean }) => {
+            if (orbitRef.current) orbitRef.current.enabled = !event.value;
+            if (event.value) return;
             const g = shellGroupRef.current;
             if (!g || !onShellCommit) return;
             onShellCommit({
