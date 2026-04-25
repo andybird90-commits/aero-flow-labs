@@ -23,11 +23,12 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Wand2, Move3d, Ruler, Scaling, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Wand2, Move3d, Ruler, Scaling, AlertTriangle, CheckCircle2, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   autoFitToWheelbase,
   describeFitQuality,
+  matchWheelbaseExact,
   solveFromLockedHardpoints,
 } from "@/lib/build-studio/shell-fit";
 import type { CarHardpoint } from "@/lib/build-studio/hardpoints";
@@ -100,6 +101,37 @@ export function ShellFitPanel({
     toast.success(`Snapped to wheelbase — fit ${describeFitQuality(transform.rms).toLowerCase()}`);
   };
 
+  const handleMatchWheelbase = () => {
+    if (!shellRoot) {
+      toast.error("Shell mesh not ready");
+      return;
+    }
+    if (!hasFrontRear) {
+      toast.error(
+        "Donor car needs front + rear wheel-centre hardpoints. Add them in Hardpoints admin first.",
+      );
+      return;
+    }
+    const result = matchWheelbaseExact(shellRoot, carHardpoints, currentTransform);
+    if (!result) {
+      toast.error(
+        "Couldn't detect wheel arches on this shell. Try Auto-fit or the manual hardpoint method.",
+      );
+      return;
+    }
+    setLastRms(0);
+    onApplyTransform({
+      position: result.transform.position,
+      rotation: result.transform.rotation,
+      scale: result.transform.scale,
+    });
+    const deltaMm = Math.round((result.donorWheelbaseM - result.shellWheelbaseM) * 1000);
+    const sign = deltaMm >= 0 ? "+" : "";
+    toast.success(
+      `Wheelbase matched (${result.donorWheelbaseM.toFixed(2)} m) — scaled ${(result.scaleFactor * 100).toFixed(1)}% (${sign}${deltaMm} mm)`,
+    );
+  };
+
   const handleSolveLocked = () => {
     if (!canSolveFromLocked) {
       toast.error("Lock at least 2 hardpoint pairs in Shell Fit Mode first.");
@@ -141,12 +173,25 @@ export function ShellFitPanel({
 
         <div className="space-y-2">
           <Button
-            onClick={handleAutoFit}
+            onClick={handleMatchWheelbase}
             disabled={!shellRoot || !hasFrontRear}
             size="sm"
             className="h-8 w-full justify-start text-xs"
           >
-            <Ruler className="mr-2 h-3.5 w-3.5" /> Auto-fit to wheelbase
+            <Maximize2 className="mr-2 h-3.5 w-3.5" /> Match wheelbase exactly
+          </Button>
+          <p className="text-[10px] leading-snug text-muted-foreground">
+            Best fix when the shell silhouette is right but length is off — pure uniform scale, no rotation guess.
+          </p>
+
+          <Button
+            onClick={handleAutoFit}
+            disabled={!shellRoot || !hasFrontRear}
+            size="sm"
+            variant="outline"
+            className="h-8 w-full justify-start text-xs"
+          >
+            <Ruler className="mr-2 h-3.5 w-3.5" /> Auto-fit (scale + rotate)
           </Button>
           {!hasFrontRear && (
             <p className="flex items-start gap-1.5 text-[10px] text-warning">

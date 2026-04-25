@@ -280,6 +280,83 @@ export function autoFitToWheelbase(
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * Match wheelbase exactly — pure 1D scale fix.
+ *
+ * Lighter-touch alternative to `autoFitToWheelbase`: rather than solving a
+ * full similarity transform (which can over-rotate when arches are slightly
+ * mis-detected on one side), this just computes the ratio between the donor
+ * wheelbase and the detected shell-arch span and applies it as **uniform
+ * scale**, then re-translates so the *midpoint* of the shell arches sits on
+ * the *midpoint* of the donor wheel-centres. Rotation is left untouched.
+ *
+ * Use case: shell silhouette is correct but the wheelbase is X mm short or
+ * long (the dominant failure mode for AI-generated bodies).
+ * ──────────────────────────────────────────────────────────────────────── */
+export interface WheelbaseFitResult {
+  transform: SolvedShellTransform;
+  shellWheelbaseM: number;
+  donorWheelbaseM: number;
+  scaleFactor: number;
+}
+
+export function matchWheelbaseExact(
+  shellRoot: THREE.Object3D,
+  carHardpoints: CarHardpoint[],
+  currentTransform: { position: Vec3; rotation: Vec3; scale: Vec3 } | null,
+): WheelbaseFitResult | null {
+  const front = carHardpoints.find((h) => h.point_type === "front_wheel_centre");
+  const rear = carHardpoints.find((h) => h.point_type === "rear_wheel_centre");
+  if (!front || !rear) return null;
+
+  const arches = detectWheelArches(shellRoot);
+  if (!arches.front || !arches.rear) return null;
+
+  // Detected arches are in shell-LOCAL coords. The shell mesh has already
+  // had `currentTransform` applied in the viewport, so to match world
+  // distances we need to apply the same scale we're about to compute.
+  const shellWb = distance(arches.front, arches.rear); // shell-local metres
+  const donorWb = distance(front.position, rear.position); // world metres
+  if (shellWb < 1e-4) return null;
+
+  // Scale factor needed to make the shell arch span equal donor wheelbase.
+  const scaleFactor = donorWb / shellWb;
+  const baseScale = currentTransform?.scale ?? { x: 1, y: 1, z: 1 };
+  // Apply scale uniformly relative to current scale so we honour any user
+  // height/width tweaks (we replace the *X* component which controls length).
+  const newScale: Vec3 = {
+    x: baseScale.x * scaleFactor,
+    y: baseScale.y * scaleFactor,
+    z: baseScale.z * scaleFactor,
+  };
+
+  // Where does the midpoint of the shell arches end up in WORLD space after
+  // the new scale + current translation? We re-derive translation so the
+  // shell-arch midpoint lands on the donor wheel-centre midpoint.
+  const shellMid = midpoint3D(arches.front, arches.rear, false);
+  const donorMid = midpoint3D(front.position, rear.position, false);
+  // After scaling, shell-local point P maps to (P * newScale) + position.
+  // We want (shellMid * newScale) + position = donorMid.
+  const newPosition: Vec3 = {
+    x: donorMid.x - shellMid.x * newScale.x,
+    y: donorMid.y - shellMid.y * newScale.y,
+    z: donorMid.z - shellMid.z * newScale.z,
+  };
+
+  return {
+    transform: {
+      position: newPosition,
+      rotation: currentTransform?.rotation ?? { x: 0, y: 0, z: 0 },
+      scale: newScale,
+      // RMS = 0 by construction (we made the wheelbase exact).
+      rms: 0,
+    },
+    shellWheelbaseM: shellWb,
+    donorWheelbaseM: donorWb,
+    scaleFactor,
+  };
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
  * Manual: solve from locked hardpoint pairs
  * ──────────────────────────────────────────────────────────────────────── */
 export function solveFromLockedHardpoints(
