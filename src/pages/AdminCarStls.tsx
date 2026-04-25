@@ -9,8 +9,8 @@
  * instead of the upload UI.
  */
 import { useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Navigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, Navigate } from "react-router-dom";
 import { z } from "zod";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { decimateClientSide } from "@/lib/decimate-client";
 import {
-  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles,
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles, Palette,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
