@@ -388,8 +388,10 @@ export function BuildStudioViewport({
   transformMode,
   showGrid,
   preset,
+  paintFinish,
   onCommit,
 }: ViewportProps) {
+  const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
   const orbitRef = useRef<any>(null);
   const transformRef = useRef<any>(null);
   const shellTransformRef = useRef<any>(null);
