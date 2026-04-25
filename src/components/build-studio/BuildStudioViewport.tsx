@@ -15,6 +15,8 @@ import {
   Environment,
   GizmoHelper,
   GizmoViewcube,
+  PivotControls,
+  Bounds,
 } from "@react-three/drei";
 import * as THREE from "three";
 import { STLLoader, GLTFLoader, TransformControls as TransformControlsImpl } from "three-stdlib";
@@ -36,9 +38,19 @@ import {
 import { PostFX } from "@/components/build-studio/PostFX";
 import { ShowroomFloor } from "@/components/build-studio/ShowroomFloor";
 import { QUALITY_PRESETS, type RenderQuality } from "@/lib/build-studio/render-quality";
+import {
+  FrameOnDoubleClick,
+  PartLabel,
+  MeasureTool,
+  ClippingPlane,
+  type MeasureLine,
+  type ClipAxis,
+} from "@/components/build-studio/ViewportTools";
 
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
+/** Active interactive tool. `select` = normal pivot/transform editing. */
+export type ViewportTool = "select" | "measure" | "clip";
 
 export interface ShellTransform {
   position: Vec3;
