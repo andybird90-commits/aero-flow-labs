@@ -178,6 +178,22 @@ export function PropertiesPanel({
 
         {snapZones.length > 0 && <Separator />}
 
+        {/* Live Fit — in-app body conform + CSG trim. Only shown when we have
+            a part asset and a base car mesh. */}
+        {selectedLibraryItem?.asset_url && baseMeshUrl && (
+          <>
+            <LiveFitPanel
+              part={part}
+              libraryItem={selectedLibraryItem}
+              baseMeshUrl={baseMeshUrl}
+              userId={userId}
+              onBaked={(url, id) => onLiveFitBaked?.(url, id)}
+              onSendForPrint={onSendForPrint}
+            />
+            <Separator />
+          </>
+        )}
+
         <VecRow
           label="Position (m)"
           value={part.position}
