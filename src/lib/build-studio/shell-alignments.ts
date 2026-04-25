@@ -42,6 +42,28 @@ export function useShellAlignment(projectId: string | null | undefined, bodySkin
   });
 }
 
+/**
+ * Most-recently-updated alignment for a project, regardless of body skin.
+ * Used by the Showroom (which has no UI to pick the active skin) so it can
+ * render whatever shell the user last fitted in the Build Studio.
+ */
+export function useLatestShellAlignmentForProject(projectId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["shell_alignment_latest", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("shell_alignments")
+        .select("*")
+        .eq("project_id", projectId!)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as ShellAlignment | null;
+    },
+  });
+}
 export function useUpsertShellAlignment() {
   const qc = useQueryClient();
   return useMutation({
