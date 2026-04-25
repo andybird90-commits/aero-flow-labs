@@ -61,6 +61,8 @@ interface ViewportProps {
   transformMode: TransformMode;
   showGrid: boolean;
   preset: CameraPreset;
+  /** Paint Studio finish (color + material + HDRI preset). */
+  paintFinish?: PaintFinish | null;
   onCommit: (
     id: string,
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "snap_zone_id">>,
