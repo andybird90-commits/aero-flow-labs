@@ -167,6 +167,11 @@ export default function BuildStudio() {
   const { data: bodySkinUrl } = useSignedBodySkinUrl(skinAssetPath);
   const { data: alignment } = useShellAlignment(projectId, shellSkinId);
   const upsertAlignment = useUpsertShellAlignment();
+  const [shellRoot, setShellRoot] = useState<THREE.Object3D | null>(null);
+  const carTemplateIdForHp = (project?.car as any)?.template_id ?? null;
+  const { data: carHardpoints = [] } = useCarHardpoints(carTemplateIdForHp);
+  const lockedPairs = (alignment?.locked_hardpoints as LockedHardpointPair[] | undefined) ?? [];
+  const stretchEnabled = !(alignment?.scale_to_wheelbase ?? true);
 
   const shellTransform: ShellTransform | null = useMemo(() => {
     if (!alignment) return null;
