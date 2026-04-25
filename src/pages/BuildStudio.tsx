@@ -848,6 +848,13 @@ export default function BuildStudio() {
                     quality={quality}
                     paintFinish={paintFinish}
                     materialTags={materialTags}
+                    tool={tool}
+                    clipAxis={clipAxis}
+                    translateSnapM={translateSnapM}
+                    rotateSnapDeg={rotateSnapDeg}
+                    showLabels={showLabels}
+                    measureLines={measureLines}
+                    onMeasureLinesChange={setMeasureLines}
                     onCommit={handleCommit}
                   />
                 </div>
