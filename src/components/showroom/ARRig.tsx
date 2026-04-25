@@ -126,7 +126,6 @@ export function ARRig({ children, carLengthMeters }: ARRigProps) {
   /* ─── Two-finger touch pinch (AR phone fallback) ─── */
   useEffect(() => {
     if (!isPresenting) return;
-    const gl = (camera as any).gl as HTMLCanvasElement | undefined;
     const canvas: HTMLCanvasElement | null =
       (typeof document !== "undefined" && document.querySelector("canvas")) || null;
     if (!canvas) return;

@@ -41,8 +41,8 @@ export function ARMeasureViz() {
       ))}
       {ar.measurePoints.length === 2 && (
         <>
-          {/* @ts-expect-error r3f line primitive */}
-          <line ref={lineRef as any} geometry={geom}>
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          <line ref={lineRef as unknown as any} geometry={geom}>
             <lineBasicMaterial color="#22d3ee" depthTest={false} linewidth={2} />
           </line>
           <Html
