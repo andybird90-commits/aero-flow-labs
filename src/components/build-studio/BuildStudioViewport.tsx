@@ -507,6 +507,7 @@ function PlacedPartGroup({
   showLabel,
   translateSnapM = 0,
   rotateSnapDeg = 0,
+  transformMode = "translate",
   onSelect,
   onFrame,
   onCommit,
@@ -517,6 +518,7 @@ function PlacedPartGroup({
   showLabel: boolean;
   translateSnapM?: number;
   rotateSnapDeg?: number;
+  transformMode?: TransformMode;
   onSelect: () => void;
   onFrame: (object: THREE.Object3D) => void;
   onCommit: (patch: { position: Vec3; rotation: Vec3; scale: Vec3 }) => void;
@@ -562,6 +564,10 @@ function PlacedPartGroup({
       fixed
       lineWidth={2}
       activeAxes={[true, true, true]}
+      disableAxes={transformMode !== "translate"}
+      disableSliders={transformMode !== "translate"}
+      disableRotations={transformMode !== "rotate"}
+      disableScaling={transformMode !== "scale"}
       // PivotControls writes the matrix; we read it on drag-end and snap.
       onDrag={(local) => {
         const g = groupRef.current;
@@ -779,6 +785,7 @@ export function BuildStudioViewport({
             showLabels={showLabels && tool === "select"}
             translateSnapM={translateSnapM}
             rotateSnapDeg={rotateSnapDeg}
+            transformMode={transformMode}
             onSelect={onSelect}
             onMeshFound={setMeshNode}
             onFrame={(obj) => {
@@ -944,6 +951,7 @@ function SceneParts({
   showLabels,
   translateSnapM,
   rotateSnapDeg,
+  transformMode,
   onSelect,
   onMeshFound,
   onFrame,
@@ -955,6 +963,7 @@ function SceneParts({
   showLabels: boolean;
   translateSnapM: number;
   rotateSnapDeg: number;
+  transformMode: TransformMode;
   onSelect: (id: string | null) => void;
   onMeshFound: (node: THREE.Object3D | null) => void;
   onFrame: (object: THREE.Object3D) => void;
@@ -982,6 +991,7 @@ function SceneParts({
           showLabel={showLabels}
           translateSnapM={translateSnapM}
           rotateSnapDeg={rotateSnapDeg}
+          transformMode={transformMode}
           onSelect={() => onSelect(p.id)}
           onFrame={onFrame}
           onCommit={(patch) => onCommit(p.id, patch)}
