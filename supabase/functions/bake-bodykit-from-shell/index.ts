@@ -48,6 +48,10 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 /** Distance (in donor mm) below which a shell vertex is considered "on the donor". */
 const TOLERANCE_MM = 4;
 const MIN_SPLIT_TRIANGLES = 80;
+/** Cap input triangle counts so the bake stays under the edge CPU budget. */
+const MAX_INPUT_TRIS = 60_000;
+
+declare const EdgeRuntime: { waitUntil: (p: Promise<unknown>) => void } | undefined;
 
 interface Vec3 { x: number; y: number; z: number }
 
@@ -62,13 +66,10 @@ Deno.serve(async (req) => {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  let bodyKitId: string | null = null;
-  let admin: ReturnType<typeof createClient> | null = null;
-
   try {
     const body = await req.json().catch(() => ({})) as { body_kit_id?: string };
     if (!body.body_kit_id) return json({ error: "body_kit_id required" }, 400);
-    bodyKitId = body.body_kit_id;
+    const bodyKitId = body.body_kit_id;
 
     // --- Auth ---
     const authHeader = req.headers.get("Authorization") ?? "";
@@ -77,240 +78,272 @@ Deno.serve(async (req) => {
     });
     const { data: userRes, error: userErr } = await userClient.auth.getUser();
     if (userErr || !userRes.user) return json({ error: "Unauthorized" }, 401);
+    const userId = userRes.user.id;
 
-    admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    // --- Load body_kits row ---
+    // --- Verify ownership + idempotency BEFORE returning ---
     const { data: kitData, error: kitErr } = await admin
       .from("body_kits")
-      .select("*")
+      .select("id, user_id, status")
       .eq("id", bodyKitId)
       .maybeSingle();
     if (kitErr) return json({ error: kitErr.message }, 500);
     if (!kitData) return json({ error: "body_kits row not found" }, 404);
-    const kit = kitData as {
-      id: string;
-      user_id: string;
-      status: string;
-      body_skin_id: string;
-      donor_car_template_id: string | null;
-      baked_transform: unknown;
-    };
-    if (kit.user_id !== userRes.user.id) return json({ error: "Forbidden" }, 403);
-
-    // Idempotency: skip if already terminal.
-    if (kit.status === "ready") {
-      return json({ ok: true, status: "ready", body_kit_id: kit.id, skipped: true });
+    if ((kitData as any).user_id !== userId) return json({ error: "Forbidden" }, 403);
+    if ((kitData as any).status === "ready") {
+      return json({ ok: true, status: "ready", body_kit_id: bodyKitId, skipped: true });
     }
 
+    // Flip to baking immediately so the UI shows progress even if the bg
+    // task takes longer than the response.
     await admin.from("body_kits")
       .update({ status: "baking", error: null })
-      .eq("id", kit.id);
+      .eq("id", bodyKitId);
 
-    // --- Load body skin ---
-    const { data: skinData, error: skinErr } = await admin
-      .from("body_skins")
-      .select("file_url_stl, file_url_glb, name")
-      .eq("id", kit.body_skin_id)
-      .maybeSingle();
-    if (skinErr) throw new Error(`Skin lookup failed: ${skinErr.message}`);
-    if (!skinData) throw new Error("Body skin not found");
-    const skin = skinData as {
-      file_url_stl: string | null;
-      file_url_glb: string | null;
-      name: string;
-    };
-    if (!skin.file_url_stl) {
-      throw new Error(
-        "This body skin only has a GLB file. Re-export it as STL (or run the GLB→STL conversion) before baking a kit.",
-      );
-    }
-
-    // --- Load donor car STL ---
-    if (!kit.donor_car_template_id) {
-      throw new Error("No donor car template attached to this kit.");
-    }
-    const { data: carStlData, error: carErr } = await admin
-      .from("car_stls")
-      .select("*")
-      .eq("car_template_id", kit.donor_car_template_id)
-      .maybeSingle();
-    if (carErr) throw new Error(`Donor lookup failed: ${carErr.message}`);
-    if (!carStlData) throw new Error("Donor car has no STL configured.");
-    const carStl = carStlData as { repaired_stl_path: string | null; stl_path: string };
-    const donorPath = carStl.repaired_stl_path ?? carStl.stl_path;
-    if (!donorPath) throw new Error("Donor car STL path missing.");
-
-    // --- Download both meshes ---
-    const donorBytes = await downloadStorage(admin, "car-stls", donorPath);
-    const skinBytes = await downloadHttpOrStorage(admin, skin.file_url_stl, "body-skins");
-
-    let donorMesh = parseStl(donorBytes);
-    let shellMesh = parseStl(skinBytes);
-    if (donorMesh.indices.length === 0) throw new Error("Donor mesh empty.");
-    if (shellMesh.indices.length === 0) throw new Error("Shell mesh empty.");
-
-    // --- Normalise units ---
-    // Donor STLs are millimetres in this project. The shell may have been
-    // exported in metres (typical for GLB-derived STLs from Meshy). Detect
-    // by bounding-box magnitude: if the shell fits within a 50-unit cube,
-    // it's metres and we scale up to mm.
-    const shellBox = bbox(shellMesh);
-    const shellMaxDim = Math.max(
-      shellBox.max[0] - shellBox.min[0],
-      shellBox.max[1] - shellBox.min[1],
-      shellBox.max[2] - shellBox.min[2],
-    );
-    if (shellMaxDim < 50) {
-      scaleMeshInPlace(shellMesh, 1000); // m → mm
-    }
-
-    // --- Apply baked transform ---
-    const t = (kit.baked_transform ?? {}) as BakedTransform;
-    applyTransformInPlace(shellMesh, t);
-
-    // --- Subtract donor (vertex hash distance) ---
-    const isOutboard = computeOutboardMask(shellMesh, donorMesh, TOLERANCE_MM);
-    const outboardCount = countOutboard(isOutboard);
-    if (outboardCount === 0) {
-      throw new Error(
-        "No outboard geometry found — the shell sits within tolerance of the donor everywhere. Check the alignment.",
-      );
-    }
-
-    await admin.from("body_kits")
-      .update({ status: "subtracting" })
-      .eq("id", kit.id);
-
-    // Free donor mesh now that the mask is computed.
-    donorMesh = null as any;
-
-    // --- Build kit-only mesh from kept triangles ---
-    let kitMesh = pickTrianglesByVertexMask(shellMesh, isOutboard, /*minVerts*/ 2);
-    shellMesh = null as any;
-    if (kitMesh.indices.length === 0) {
-      throw new Error("No kit triangles after subtraction.");
-    }
-    kitMesh = weldMesh(kitMesh, 0.5);
-
-    // --- Upload combined STL ---
-    const combinedBytes = writeBinaryStl(kitMesh);
-    const combinedPath = `bodykits/${kit.id}/combined.stl`;
-    const { error: combinedUpErr } = await admin.storage
-      .from("body-skins")
-      .upload(combinedPath, combinedBytes, { contentType: "model/stl", upsert: true });
-    if (combinedUpErr) throw new Error(`Combined STL upload failed: ${combinedUpErr.message}`);
-
-    // --- Split into panels ---
-    await admin.from("body_kits")
-      .update({ status: "splitting", combined_stl_path: combinedPath, triangle_count: kitMesh.indices.length / 3 })
-      .eq("id", kit.id);
-
-    const split = splitByCreases(kitMesh, {
-      thresholdDeg: 38,
-      minTriangles: MIN_SPLIT_TRIANGLES,
-      minAreaFraction: 0.005,
-      unitsAreMillimetres: true,
-      weldEpsilon: 0.5,
+    // Heavy work runs in the background; the response returns now so we
+    // never trip the 2s edge CPU budget.
+    const work = runBake(admin, bodyKitId, userId).catch(async (e) => {
+      const msg = String((e as Error).message ?? e);
+      console.error("bake-bodykit-from-shell failed:", msg);
+      await admin.from("body_kits")
+        .update({ status: "failed", error: msg })
+        .eq("id", bodyKitId);
     });
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      EdgeRuntime.waitUntil(work);
+    }
 
-    // Cleanup any prior parts for this kit (idempotent re-bake).
-    await admin.from("body_kit_parts").delete().eq("body_kit_id", kit.id);
+    return json({ ok: true, status: "baking", body_kit_id: bodyKitId, async: true }, 202);
+  } catch (e) {
+    return json({ error: String((e as Error).message ?? e) }, 500);
+  }
+});
 
-    let panelCount = 0;
-    if (split.components.length > 0) {
-      const { assignments } = classifyPanels(split.components);
-      const slotCounters = new Map<string, number>();
-      const insertRows: Array<Record<string, unknown>> = [];
+/** All the heavy STL work — runs after the HTTP response is sent. */
+async function runBake(
+  admin: any,
+  bodyKitId: string,
+  userId: string,
+): Promise<void> {
+  // --- Reload kit (status is now 'baking') ---
+  const { data: kitData, error: kitErr } = await admin
+    .from("body_kits")
+    .select("*")
+    .eq("id", bodyKitId)
+    .maybeSingle();
+  if (kitErr) throw new Error(kitErr.message);
+  if (!kitData) throw new Error("body_kits row not found");
+  const kit = kitData as {
+    id: string;
+    user_id: string;
+    body_skin_id: string;
+    donor_car_template_id: string | null;
+    baked_transform: unknown;
+  };
 
-      for (const a of assignments) {
-        const comp = split.components[a.componentIndex];
-        const baseSlot = a.slot === "unknown" && a.unknownIndex
-          ? `unknown_${a.unknownIndex}`
-          : a.slot;
-        const n = (slotCounters.get(baseSlot) ?? 0) + 1;
-        slotCounters.set(baseSlot, n);
-        const slotName = n === 1 ? baseSlot : `${baseSlot}_${n}`;
+  // --- Load body skin ---
+  const { data: skinData, error: skinErr } = await admin
+    .from("body_skins")
+    .select("file_url_stl, file_url_glb, name")
+    .eq("id", kit.body_skin_id)
+    .maybeSingle();
+  if (skinErr) throw new Error(`Skin lookup failed: ${skinErr.message}`);
+  if (!skinData) throw new Error("Body skin not found");
+  const skin = skinData as {
+    file_url_stl: string | null;
+    file_url_glb: string | null;
+    name: string;
+  };
+  if (!skin.file_url_stl) {
+    throw new Error(
+      "This body skin only has a GLB file. Re-export it as STL (or run the GLB→STL conversion) before baking a kit.",
+    );
+  }
 
-        const compMesh = extractComponentMesh(split.weldedMesh, comp.triangleIndices);
-        const stlBytes = writeBinaryStl(compMesh);
-        const stlPath = `bodykits/${kit.id}/panels/${slotName}.stl`;
-        const { error: upErr } = await admin.storage
-          .from("body-skins")
-          .upload(stlPath, stlBytes, { contentType: "model/stl", upsert: true });
-        if (upErr) {
-          // Skip this panel but don't abort — log via reason.
-          insertRows.push({
-            body_kit_id: kit.id,
-            user_id: kit.user_id,
-            slot: slotName,
-            label: a.slot,
-            confidence: a.confidence,
-            stl_path: stlPath,
-            triangle_count: comp.triangleCount,
-            area_m2: comp.areaM2,
-            bbox: { error: `Upload failed: ${upErr.message}` },
-          });
-          continue;
-        }
+  // --- Load donor car STL ---
+  if (!kit.donor_car_template_id) {
+    throw new Error("No donor car template attached to this kit.");
+  }
+  const { data: carStlData, error: carErr } = await admin
+    .from("car_stls")
+    .select("*")
+    .eq("car_template_id", kit.donor_car_template_id)
+    .maybeSingle();
+  if (carErr) throw new Error(`Donor lookup failed: ${carErr.message}`);
+  if (!carStlData) throw new Error("Donor car has no STL configured.");
+  const carStl = carStlData as { repaired_stl_path: string | null; stl_path: string };
+  const donorPath = carStl.repaired_stl_path ?? carStl.stl_path;
+  if (!donorPath) throw new Error("Donor car STL path missing.");
 
+  // --- Download both meshes ---
+  const donorBytes = await downloadStorage(admin, "car-stls", donorPath);
+  const skinBytes = await downloadHttpOrStorage(admin, skin.file_url_stl, "body-skins");
+
+  let donorMesh = parseStl(donorBytes);
+  let shellMesh = parseStl(skinBytes);
+  if (donorMesh.indices.length === 0) throw new Error("Donor mesh empty.");
+  if (shellMesh.indices.length === 0) throw new Error("Shell mesh empty.");
+
+  // --- Decimate dense inputs to stay under edge CPU/memory limits ---
+  donorMesh = decimateIfTooBig(donorMesh, MAX_INPUT_TRIS);
+  shellMesh = decimateIfTooBig(shellMesh, MAX_INPUT_TRIS);
+
+  // --- Normalise units ---
+  const shellBox = bbox(shellMesh);
+  const shellMaxDim = Math.max(
+    shellBox.max[0] - shellBox.min[0],
+    shellBox.max[1] - shellBox.min[1],
+    shellBox.max[2] - shellBox.min[2],
+  );
+  if (shellMaxDim < 50) {
+    scaleMeshInPlace(shellMesh, 1000);
+  }
+
+  // --- Apply baked transform ---
+  const t = (kit.baked_transform ?? {}) as BakedTransform;
+  applyTransformInPlace(shellMesh, t);
+
+  // --- Subtract donor (vertex hash distance) ---
+  const isOutboard = computeOutboardMask(shellMesh, donorMesh, TOLERANCE_MM);
+  const outboardCount = countOutboard(isOutboard);
+  if (outboardCount === 0) {
+    throw new Error(
+      "No outboard geometry found — the shell sits within tolerance of the donor everywhere. Check the alignment.",
+    );
+  }
+
+  await admin.from("body_kits")
+    .update({ status: "subtracting" })
+    .eq("id", kit.id);
+
+  donorMesh = null as any;
+
+  let kitMesh = pickTrianglesByVertexMask(shellMesh, isOutboard, 2);
+  shellMesh = null as any;
+  if (kitMesh.indices.length === 0) {
+    throw new Error("No kit triangles after subtraction.");
+  }
+  kitMesh = weldMesh(kitMesh, 0.5);
+
+  const combinedBytes = writeBinaryStl(kitMesh);
+  const combinedPath = `bodykits/${kit.id}/combined.stl`;
+  const { error: combinedUpErr } = await admin.storage
+    .from("body-skins")
+    .upload(combinedPath, combinedBytes, { contentType: "model/stl", upsert: true });
+  if (combinedUpErr) throw new Error(`Combined STL upload failed: ${combinedUpErr.message}`);
+
+  await admin.from("body_kits")
+    .update({ status: "splitting", combined_stl_path: combinedPath, triangle_count: kitMesh.indices.length / 3 })
+    .eq("id", kit.id);
+
+  const split = splitByCreases(kitMesh, {
+    thresholdDeg: 38,
+    minTriangles: MIN_SPLIT_TRIANGLES,
+    minAreaFraction: 0.005,
+    unitsAreMillimetres: true,
+    weldEpsilon: 0.5,
+  });
+
+  await admin.from("body_kit_parts").delete().eq("body_kit_id", kit.id);
+
+  let panelCount = 0;
+  if (split.components.length > 0) {
+    const { assignments } = classifyPanels(split.components);
+    const slotCounters = new Map<string, number>();
+    const insertRows: Array<Record<string, unknown>> = [];
+
+    for (const a of assignments) {
+      const comp = split.components[a.componentIndex];
+      const baseSlot = a.slot === "unknown" && a.unknownIndex
+        ? `unknown_${a.unknownIndex}`
+        : a.slot;
+      const n = (slotCounters.get(baseSlot) ?? 0) + 1;
+      slotCounters.set(baseSlot, n);
+      const slotName = n === 1 ? baseSlot : `${baseSlot}_${n}`;
+
+      const compMesh = extractComponentMesh(split.weldedMesh, comp.triangleIndices);
+      const stlBytes = writeBinaryStl(compMesh);
+      const stlPath = `bodykits/${kit.id}/panels/${slotName}.stl`;
+      const { error: upErr } = await admin.storage
+        .from("body-skins")
+        .upload(stlPath, stlBytes, { contentType: "model/stl", upsert: true });
+      if (upErr) {
         insertRows.push({
           body_kit_id: kit.id,
-          user_id: kit.user_id,
+          user_id: userId,
           slot: slotName,
           label: a.slot,
           confidence: a.confidence,
           stl_path: stlPath,
           triangle_count: comp.triangleCount,
           area_m2: comp.areaM2,
-          anchor_position: comp.boundaryCentroid
-            ? { x: comp.boundaryCentroid[0], y: comp.boundaryCentroid[1], z: comp.boundaryCentroid[2] }
-            : null,
-          bbox: {
-            min: comp.bbox.min,
-            max: comp.bbox.max,
-            centroid: comp.centroid,
-            avg_normal: comp.avgNormal,
-          },
+          bbox: { error: `Upload failed: ${upErr.message}` },
         });
-        panelCount++;
+        continue;
       }
 
-      if (insertRows.length > 0) {
-        const { error: partsErr } = await admin.from("body_kit_parts").insert(insertRows);
-        if (partsErr) throw new Error(`Insert panels failed: ${partsErr.message}`);
-      }
+      insertRows.push({
+        body_kit_id: kit.id,
+        user_id: userId,
+        slot: slotName,
+        label: a.slot,
+        confidence: a.confidence,
+        stl_path: stlPath,
+        triangle_count: comp.triangleCount,
+        area_m2: comp.areaM2,
+        anchor_position: comp.boundaryCentroid
+          ? { x: comp.boundaryCentroid[0], y: comp.boundaryCentroid[1], z: comp.boundaryCentroid[2] }
+          : null,
+        bbox: {
+          min: comp.bbox.min,
+          max: comp.bbox.max,
+          centroid: comp.centroid,
+          avg_normal: comp.avgNormal,
+        },
+      });
+      panelCount++;
     }
 
-    // If splitter found nothing usable, the kit still ships as a single combined STL.
-    await admin.from("body_kits")
-      .update({
-        status: "ready",
-        panel_count: panelCount,
-        error: null,
-      })
-      .eq("id", kit.id);
-
-    return json({
-      ok: true,
-      body_kit_id: kit.id,
-      status: "ready",
-      combined_stl_path: combinedPath,
-      panel_count: panelCount,
-      sharp_edges: split.sharpEdgeCount,
-      total_components: split.components.length,
-      total_triangles: kitMesh.indices.length / 3,
-    });
-  } catch (e) {
-    const msg = String((e as Error).message ?? e);
-    if (admin && bodyKitId) {
-      await admin.from("body_kits")
-        .update({ status: "failed", error: msg })
-        .eq("id", bodyKitId);
+    if (insertRows.length > 0) {
+      const { error: partsErr } = await admin.from("body_kit_parts").insert(insertRows);
+      if (partsErr) throw new Error(`Insert panels failed: ${partsErr.message}`);
     }
-    return json({ error: msg }, 500);
   }
-});
+
+  await admin.from("body_kits")
+    .update({
+      status: "ready",
+      panel_count: panelCount,
+      error: null,
+    })
+    .eq("id", kit.id);
+}
+
+/** Cheap uniform triangle decimation to stay under edge CPU/memory limits. */
+function decimateIfTooBig(mesh: Mesh, maxTris: number): Mesh {
+  const triCount = mesh.indices.length / 3;
+  if (triCount <= maxTris) return mesh;
+  const stride = Math.ceil(triCount / maxTris);
+  const keptCount = Math.floor(triCount / stride);
+  const keptIdx = new Uint32Array(keptCount * 3);
+  const remap = new Map<number, number>();
+  const newPos: number[] = [];
+  for (let i = 0; i < keptCount; i++) {
+    const t = i * stride;
+    for (let k = 0; k < 3; k++) {
+      const old = mesh.indices[t * 3 + k];
+      let nid = remap.get(old);
+      if (nid === undefined) {
+        nid = newPos.length / 3;
+        newPos.push(mesh.positions[old * 3], mesh.positions[old * 3 + 1], mesh.positions[old * 3 + 2]);
+        remap.set(old, nid);
+      }
+      keptIdx[i * 3 + k] = nid;
+    }
+  }
+  return { positions: new Float32Array(newPos), indices: keptIdx };
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // Helpers

@@ -42,6 +42,10 @@ export function useBodyKits(projectId: string | null | undefined) {
       if (error) throw error;
       return (data ?? []) as BodyKit[];
     },
+    refetchInterval: (query) => {
+      const rows = (query.state.data as BodyKit[] | undefined) ?? [];
+      return rows.some((r) => isBodyKitInFlight(r.status)) ? 2500 : false;
+    },
   });
 }
 
