@@ -64,7 +64,7 @@ import {
 } from "@/lib/build-studio/placed-parts";
 import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
 import { useBodySkins, useSignedBodySkinUrl } from "@/lib/body-skins";
-import { useShellAlignment } from "@/lib/build-studio/shell-alignments";
+import { useShellAlignment, useLatestShellAlignmentForProject } from "@/lib/build-studio/shell-alignments";
 import { useCarMaterialMap } from "@/lib/build-studio/use-car-material-map";
 import {
   DEFAULT_PAINT_FINISH,
