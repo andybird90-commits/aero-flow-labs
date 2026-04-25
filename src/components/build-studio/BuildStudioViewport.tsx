@@ -161,6 +161,8 @@ const BodySkinOverlay = function BodySkinOverlay({
   template,
   transform,
   groupRef,
+  onReady,
+  editing,
   onClick,
   highlight,
 }: {
@@ -169,6 +171,8 @@ const BodySkinOverlay = function BodySkinOverlay({
   template?: CarTemplate | null;
   transform?: ShellTransform | null;
   groupRef?: React.MutableRefObject<THREE.Group | null>;
+  onReady?: (group: THREE.Group | null) => void;
+  editing?: boolean;
   onClick?: () => void;
   highlight?: boolean;
 }) {
@@ -255,10 +259,13 @@ const BodySkinOverlay = function BodySkinOverlay({
   useEffect(() => {
     const g = localRef.current;
     if (!g || !transform) return;
+    // Don't fight the gizmo while the user is editing — the gizmo writes
+    // directly to the group transform; we only sync from props when *not* editing.
+    if (editing) return;
     g.position.set(transform.position.x, transform.position.y, transform.position.z);
     g.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
     g.scale.set(transform.scale.x, transform.scale.y, transform.scale.z);
-  }, [transform]);
+  }, [transform, editing]);
 
   if (!object) return null;
   return (
@@ -266,6 +273,7 @@ const BodySkinOverlay = function BodySkinOverlay({
       ref={(node) => {
         localRef.current = node;
         if (groupRef) groupRef.current = node;
+        onReady?.(node);
       }}
       name="shell-overlay"
       onClick={
