@@ -364,9 +364,38 @@ export default function Showroom() {
             />
             <ARButton
               className="!relative !inline-flex !h-9 !items-center !gap-2 !rounded-md !border !border-border !bg-surface-1 !px-3 !text-sm !font-medium !text-foreground hover:!bg-surface-2"
-              sessionInit={{ requiredFeatures: ["hit-test"] }}
+              sessionInit={{
+                requiredFeatures: ["hit-test"],
+                optionalFeatures: arOverlayRef.current
+                  ? ["dom-overlay", "anchors", "local-floor"]
+                  : ["anchors", "local-floor"],
+                domOverlay: arOverlayRef.current ? { root: arOverlayRef.current } : undefined,
+              }}
               onClick={() => setArActive((v) => !v)}
             />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-2"
+                  onClick={handleQuickLook}
+                  disabled={!isReady || exportingUsdz}
+                >
+                  {exportingUsdz ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Box className="h-4 w-4" />
+                  )}
+                  {isIOSDevice() ? "AR Quick Look" : "USDZ"}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isIOSDevice()
+                  ? "Open in iOS AR Quick Look"
+                  : "Download .usdz for iPhone / iPad"}
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="icon" className="h-9 w-9" onClick={toggleFullscreen}>
@@ -382,6 +411,12 @@ export default function Showroom() {
           </div>
         </header>
       )}
+
+      {/* AR HUD — composited over the camera feed via WebXR dom-overlay. */}
+      <div ref={arOverlayRef} className="pointer-events-none absolute inset-0 z-50">
+        {arActive && <ARHud carLengthMeters={carLengthMeters} onExit={exitAR} />}
+      </div>
+
 
       {/* Left rail — bookmarks + camera presets */}
       {!presentationMode && (
