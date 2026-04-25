@@ -80,6 +80,14 @@ import {
 import { useCameraBookmarks, type CameraBookmark } from "@/lib/showroom/bookmarks";
 import { captureCanvasPng, recordTurntable } from "@/lib/showroom/capture";
 import { exportSceneToUSDZ, isIOSDevice } from "@/lib/showroom/usdz-export";
+import { exportSceneToGLB } from "@/lib/showroom/glb-export";
+import { captureHiRes } from "@/lib/showroom/hires-screenshot";
+import { canvasToThumbBlob, saveProjectThumbnail } from "@/lib/showroom/thumbnails";
+import {
+  buildShareUrl,
+  useProjectShareState,
+  useToggleShare,
+} from "@/lib/showroom/share";
 import { ARHud } from "@/components/showroom/ARHud";
 import { arStore } from "@/lib/showroom/ar-anchor";
 
@@ -154,6 +162,8 @@ export default function Showroom() {
   const [exportingUsdz, setExportingUsdz] = useState(false);
 
   const { bookmarks, add, remove } = useCameraBookmarks(projectId);
+  const { data: shareState } = useProjectShareState(projectId);
+  const toggleShare = useToggleShare(projectId);
 
   /** Approx car length (m) used by AR rig + HUD readout. */
   const carLengthMeters = useMemo(
@@ -617,7 +627,7 @@ export default function Showroom() {
                 variant="outline"
                 size="sm"
                 className="h-8 gap-2 text-xs"
-                onClick={handleTurntable}
+                onClick={() => handleTurntable("webm")}
                 disabled={!isReady || recording}
               >
                 {recording ? (
