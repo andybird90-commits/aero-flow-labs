@@ -45,7 +45,7 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProject } from "@/hooks/useCurrentProject";
-import { useCarTemplates, useMyLibrary, useHeroStlForProject, useSignedCarStlUrl, type LibraryItem } from "@/lib/repo";
+import { useCarTemplates, useMyLibrary, useHeroStlForProject, useSignedCarStlUrl, useUpdateProject, type LibraryItem } from "@/lib/repo";
 import {
   usePlacedParts,
   useAddPlacedPart,
@@ -59,11 +59,13 @@ import { useSnapZones } from "@/lib/build-studio/snap-zones";
 import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
 import { useBodySkins, useSignedBodySkinUrl, type BodySkin } from "@/lib/body-skins";
 import { useShellAlignment, useUpsertShellAlignment } from "@/lib/build-studio/shell-alignments";
+import { DEFAULT_PAINT_FINISH, parsePaintFinish, type PaintFinish } from "@/lib/build-studio/paint-finish";
 
 import { BuildStudioViewport, type CameraPreset, type TransformMode, type ShellTransform } from "@/components/build-studio/BuildStudioViewport";
 import { PartLibraryRail } from "@/components/build-studio/PartLibraryRail";
 import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
+import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
 
 export default function BuildStudio() {
   const { user } = useAuth();
