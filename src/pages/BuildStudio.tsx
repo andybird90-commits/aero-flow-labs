@@ -43,7 +43,13 @@ import {
   Undo2,
   Redo2,
   Sparkles,
+  Ruler,
+  Scissors,
+  MousePointer2,
+  Tag,
 } from "lucide-react";
+import type { MeasureLine } from "@/components/build-studio/ViewportTools";
+import type { ViewportTool } from "@/components/build-studio/BuildStudioViewport";
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/useAuth";
@@ -107,6 +113,15 @@ export default function BuildStudio() {
   const [showSnapZones, setShowSnapZones] = useState(true);
   const [preset, setPreset] = useState<CameraPreset>("free");
   const { quality, setQuality } = useRenderQuality();
+
+  // Tier 2 interaction tools
+  const [tool, setTool] = useState<ViewportTool>("select");
+  const [clipAxis, setClipAxis] = useState<"x" | "y" | "z">("x");
+  const [snapEnabled, setSnapEnabled] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
+  const [measureLines, setMeasureLines] = useState<MeasureLine[]>([]);
+  const translateSnapM = snapEnabled ? 0.05 : 0;   // 5 cm
+  const rotateSnapDeg = snapEnabled ? 15 : 0;
 
   // Paint Studio finish — local for live preview, debounced-saved to project.
   const updateProject = useUpdateProject();

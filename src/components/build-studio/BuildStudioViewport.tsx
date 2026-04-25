@@ -8,13 +8,15 @@
  * commits to DB and snaps to the nearest snap zone if within threshold.
  */
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   OrbitControls,
   Grid,
   Environment,
   GizmoHelper,
   GizmoViewcube,
+  PivotControls,
+  Bounds,
 } from "@react-three/drei";
 import * as THREE from "three";
 import { STLLoader, GLTFLoader, TransformControls as TransformControlsImpl } from "three-stdlib";
@@ -36,9 +38,19 @@ import {
 import { PostFX } from "@/components/build-studio/PostFX";
 import { ShowroomFloor } from "@/components/build-studio/ShowroomFloor";
 import { QUALITY_PRESETS, type RenderQuality } from "@/lib/build-studio/render-quality";
+import {
+  FrameOnDoubleClick,
+  PartLabel,
+  MeasureTool,
+  ClippingPlane,
+  type MeasureLine,
+  type ClipAxis,
+} from "@/components/build-studio/ViewportTools";
 
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
+/** Active interactive tool. `select` = normal pivot/transform editing. */
+export type ViewportTool = "select" | "measure" | "clip";
 
 export interface ShellTransform {
   position: Vec3;
@@ -76,6 +88,20 @@ interface ViewportProps {
   paintFinish?: PaintFinish | null;
   /** Per-triangle material tags (0=body,1=glass,2=wheel,3=tyre). */
   materialTags?: Uint8Array | null;
+  /** Active interactive tool (select / measure / clip). */
+  tool?: ViewportTool;
+  /** Section axis when tool = 'clip'. */
+  clipAxis?: ClipAxis;
+  /** Grid snap step in metres for translate (0 = off). */
+  translateSnapM?: number;
+  /** Rotation snap step in degrees for rotate (0 = off). */
+  rotateSnapDeg?: number;
+  /** Show floating part-name labels. */
+  showLabels?: boolean;
+  /** Persistent measurement lines (lifted state). */
+  measureLines?: MeasureLine[];
+  /** Setter for measurement lines. */
+  onMeasureLinesChange?: (lines: MeasureLine[]) => void;
   onCommit: (
     id: string,
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "snap_zone_id">>,
@@ -465,34 +491,137 @@ function CarPlaceholder({ template }: { template?: CarTemplate | null }) {
 }
 
 /* ─── Single placed part wrapper (transform + mesh) ─── */
+/**
+ * When `selected && !locked`, wraps the part in a drei <PivotControls> gizmo.
+ * The gizmo is anchored to the object so it lives *on* the part — much nicer
+ * for fine work than a centred TransformControls. We commit on `onDragEnd`.
+ *
+ * Snapping: drei's PivotControls does not have built-in snap props, so we
+ * post-process the matrix in `onDrag` to round translation to the configured
+ * grid (and rotation to multiples of `rotateSnapDeg`).
+ */
 function PlacedPartGroup({
   part,
   libraryItem,
   selected,
+  showLabel,
+  translateSnapM = 0,
+  rotateSnapDeg = 0,
   onSelect,
+  onFrame,
+  onCommit,
 }: {
   part: PlacedPart;
   libraryItem: LibraryItem | null;
   selected: boolean;
+  showLabel: boolean;
+  translateSnapM?: number;
+  rotateSnapDeg?: number;
   onSelect: () => void;
+  onFrame: (object: THREE.Object3D) => void;
+  onCommit: (patch: { position: Vec3; rotation: Vec3; scale: Vec3 }) => void;
 }) {
+  const groupRef = useRef<THREE.Group>(null);
+
   if (part.hidden) return null;
 
-  return (
+  const inner = (
     <group
+      ref={groupRef}
       name={`placed-${part.id}`}
       position={[part.position.x, part.position.y, part.position.z]}
       rotation={[part.rotation.x, part.rotation.y, part.rotation.z]}
       scale={[part.scale.x, part.scale.y, part.scale.z]}
-      onClick={(e) => {
+      onClick={(e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
         onSelect();
       }}
+      onDoubleClick={(e: ThreeEvent<MouseEvent>) => {
+        e.stopPropagation();
+        if (groupRef.current) onFrame(groupRef.current);
+      }}
     >
       <PartMesh libraryItem={libraryItem} selected={selected} locked={part.locked} />
+      {showLabel && (
+        <PartLabel
+          position={[0, 0.18, 0]}
+          text={part.part_name ?? "Part"}
+          tone={selected ? "primary" : "default"}
+        />
+      )}
     </group>
   );
+
+  if (!selected || part.locked) return inner;
+
+  return (
+    <PivotControls
+      anchor={[0, 0, 0]}
+      depthTest={false}
+      scale={75}
+      fixed
+      lineWidth={2}
+      activeAxes={[true, true, true]}
+      // PivotControls writes the matrix; we read it on drag-end and snap.
+      onDrag={(local) => {
+        const g = groupRef.current;
+        if (!g) return;
+        // Decompose drei's local matrix → t/r/s
+        const m = new THREE.Matrix4().fromArray(local.elements);
+        const t = new THREE.Vector3();
+        const q = new THREE.Quaternion();
+        const s = new THREE.Vector3();
+        m.decompose(t, q, s);
+        // Drei applies the matrix relative to the wrapped group's *initial* pose
+        // (anchor 0,0,0). We multiply with the part's stored transform to get
+        // the world-equivalent pose.
+        const base = new THREE.Matrix4().compose(
+          new THREE.Vector3(part.position.x, part.position.y, part.position.z),
+          new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(part.rotation.x, part.rotation.y, part.rotation.z),
+          ),
+          new THREE.Vector3(part.scale.x, part.scale.y, part.scale.z),
+        );
+        const world = base.clone().multiply(m);
+        const wt = new THREE.Vector3();
+        const wq = new THREE.Quaternion();
+        const ws = new THREE.Vector3();
+        world.decompose(wt, wq, ws);
+
+        // Snap translation to grid.
+        if (translateSnapM > 0) {
+          wt.x = Math.round(wt.x / translateSnapM) * translateSnapM;
+          wt.y = Math.round(wt.y / translateSnapM) * translateSnapM;
+          wt.z = Math.round(wt.z / translateSnapM) * translateSnapM;
+        }
+        // Snap rotation (around each axis) to nearest step.
+        const e = new THREE.Euler().setFromQuaternion(wq, "XYZ");
+        if (rotateSnapDeg > 0) {
+          const step = (rotateSnapDeg * Math.PI) / 180;
+          e.x = Math.round(e.x / step) * step;
+          e.y = Math.round(e.y / step) * step;
+          e.z = Math.round(e.z / step) * step;
+        }
+        // Apply visually so the next frame draws snapped.
+        g.position.copy(wt);
+        g.rotation.copy(e);
+        g.scale.copy(ws);
+      }}
+      onDragEnd={() => {
+        const g = groupRef.current;
+        if (!g) return;
+        onCommit({
+          position: { x: g.position.x, y: g.position.y, z: g.position.z },
+          rotation: { x: g.rotation.x, y: g.rotation.y, z: g.rotation.z },
+          scale: { x: g.scale.x, y: g.scale.y, z: g.scale.z },
+        });
+      }}
+    >
+      {inner}
+    </PivotControls>
+  );
 }
+
 
 /* ─── Camera preset driver ─── */
 function CameraRig({ preset, template }: { preset: CameraPreset; template?: CarTemplate | null }) {
@@ -539,20 +668,31 @@ export function BuildStudioViewport({
   quality = "studio",
   paintFinish,
   materialTags,
+  tool = "select",
+  clipAxis = "x",
+  translateSnapM = 0,
+  rotateSnapDeg = 0,
+  showLabels = true,
+  measureLines = [],
+  onMeasureLinesChange,
   onCommit,
 }: ViewportProps) {
   const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
   const settings = QUALITY_PRESETS[quality];
   const orbitRef = useRef<any>(null);
-  const transformRef = useRef<any>(null);
-  const shellTransformRef = useRef<any>(null);
   const shellGroupRef = useRef<THREE.Group | null>(null);
   const transformInteractionRef = useRef(false);
   const selected = parts.find((p) => p.id === selectedId) ?? null;
   const [meshNode, setMeshNode] = useState<THREE.Object3D | null>(null);
   const [shellNode, setShellNode] = useState<THREE.Object3D | null>(null);
+  const sceneRootRef = useRef<THREE.Group | null>(null);
 
   const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellNode;
+
+  // mm per scene-unit. We scale the car so its longest side ≈ wheelbase + 1.45m,
+  // so 1 scene unit = 1 metre = 1000 mm.
+  const worldToMm = 1000;
+  const carLength = ((template?.wheelbase_mm ?? 2575) / 1000) + 1.45;
 
   return (
     <Canvas
@@ -560,10 +700,10 @@ export function BuildStudioViewport({
       camera={{ position: [4.5, 3, 4.5], fov: 38, near: 0.1, far: 100 }}
       onPointerMissed={() => {
         if (transformInteractionRef.current) return;
-        onSelect(null);
+        if (tool === "select") onSelect(null);
       }}
       dpr={[1, 2]}
-      gl={{ antialias: true, preserveDrawingBuffer: true }}
+      gl={{ antialias: true, preserveDrawingBuffer: true, localClippingEnabled: true }}
     >
       <color attach="background" args={["#0a0a0c"]} />
       <ambientLight intensity={0.35} />
@@ -596,78 +736,62 @@ export function BuildStudioViewport({
 
       <ShowroomFloor reflector={settings.reflectorFloor} accumulative={settings.accumulativeShadows} />
 
-      {heroStlUrl ? (
-        <Suspense fallback={<CarPlaceholder template={template} />}>
-          <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} />
-        </Suspense>
-      ) : (
-        <CarPlaceholder template={template} />
-      )}
+      {/* Bounds wraps everything that should be framed by double-click. */}
+      <Bounds clip observe margin={1.2}>
+        <FrameOnDoubleClick scene={sceneRootRef.current} />
+        <group ref={sceneRootRef}>
+          {heroStlUrl ? (
+            <Suspense fallback={<CarPlaceholder template={template} />}>
+              <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} />
+            </Suspense>
+          ) : (
+            <CarPlaceholder template={template} />
+          )}
 
-      {bodySkinUrl && bodySkinKind && (
-        <Suspense fallback={null}>
-          <BodySkinOverlay
-            url={bodySkinUrl}
-            kind={bodySkinKind}
-            template={template}
-            transform={shellTransform ?? null}
-            groupRef={shellGroupRef}
-            onReady={setShellNode}
-            editing={!!shellEditMode}
-            highlight={!!shellEditMode}
+          {bodySkinUrl && bodySkinKind && (
+            <Suspense fallback={null}>
+              <BodySkinOverlay
+                url={bodySkinUrl}
+                kind={bodySkinKind}
+                template={template}
+                transform={shellTransform ?? null}
+                groupRef={shellGroupRef}
+                onReady={setShellNode}
+                editing={!!shellEditMode}
+                highlight={!!shellEditMode}
+              />
+            </Suspense>
+          )}
+
+          {showSnapZones && snapZones.map((z) => (
+            <SnapZoneViz
+              key={z.id}
+              zone={z}
+              active={selected?.snap_zone_id === z.id}
+              showLabel
+            />
+          ))}
+
+          <SceneParts
+            parts={parts}
+            libraryItemsById={libraryItemsById}
+            selectedId={selectedId}
+            showLabels={showLabels && tool === "select"}
+            translateSnapM={translateSnapM}
+            rotateSnapDeg={rotateSnapDeg}
+            onSelect={onSelect}
+            onMeshFound={setMeshNode}
+            onFrame={(obj) => {
+              // Defer one frame so PivotControls doesn't capture the dbl-click.
+              window.dispatchEvent(new CustomEvent("apex:frame-object", { detail: { object: obj } }));
+            }}
+            onCommit={(id, patch) => onCommit(id, patch)}
           />
-        </Suspense>
-      )}
+        </group>
+      </Bounds>
 
-      {showSnapZones && snapZones.map((z) => (
-        <SnapZoneViz
-          key={z.id}
-          zone={z}
-          active={selected?.snap_zone_id === z.id}
-          showLabel
-        />
-      ))}
-
-      <SceneParts
-        parts={parts}
-        libraryItemsById={libraryItemsById}
-        selectedId={selectedId}
-        onSelect={onSelect}
-        onMeshFound={setMeshNode}
-      />
-
-      {!shellEditMode && selected && meshNode && !selected.locked && (
-        <PartTransformGizmo
-          object={meshNode}
-          mode={transformMode}
-          orbitRef={orbitRef}
-          interactionRef={transformInteractionRef}
-          onRelease={() => {
-            if (!meshNode || !selected) return;
-            const pos: Vec3 = {
-              x: meshNode.position.x,
-              y: meshNode.position.y,
-              z: meshNode.position.z,
-            };
-            let snapPatch: Partial<Pick<PlacedPart, "position" | "snap_zone_id">> = { position: pos };
-            if (transformMode === "translate" && snapZones.length > 0) {
-              const nearest = nearestSnapZone(pos, snapZones, 0.35);
-              if (nearest) {
-                snapPatch = { position: { ...nearest.position }, snap_zone_id: nearest.id };
-                meshNode.position.set(nearest.position.x, nearest.position.y, nearest.position.z);
-              } else {
-                snapPatch = { position: pos, snap_zone_id: null };
-              }
-            }
-            onCommit(selected.id, {
-              ...snapPatch,
-              rotation: { x: meshNode.rotation.x, y: meshNode.rotation.y, z: meshNode.rotation.z },
-              scale: { x: meshNode.scale.x, y: meshNode.scale.y, z: meshNode.scale.z },
-            });
-          }}
-        />
-      )}
-
+      {/* Shell-fit gizmo stays a TransformControls (axis-locked feel works
+          better for big body alignments than a free pivot). */}
       {showShellGizmo && shellNode && (
         <PartTransformGizmo
           object={shellNode}
@@ -686,6 +810,18 @@ export function BuildStudioViewport({
           }}
         />
       )}
+
+      {/* Measurement tool — clicks pick on the scene root only (parts + car). */}
+      <MeasureTool
+        enabled={tool === "measure"}
+        lines={measureLines}
+        setLines={(l) => onMeasureLinesChange?.(l)}
+        pickRoot={sceneRootRef.current}
+        worldToMm={worldToMm}
+      />
+
+      {/* Section / clipping plane. */}
+      <ClippingPlane enabled={tool === "clip"} axis={clipAxis} carLength={carLength} />
 
       <CameraRig preset={preset} template={template} />
 
@@ -805,14 +941,24 @@ function SceneParts({
   parts,
   libraryItemsById,
   selectedId,
+  showLabels,
+  translateSnapM,
+  rotateSnapDeg,
   onSelect,
   onMeshFound,
+  onFrame,
+  onCommit,
 }: {
   parts: PlacedPart[];
   libraryItemsById: Map<string, LibraryItem>;
   selectedId: string | null;
+  showLabels: boolean;
+  translateSnapM: number;
+  rotateSnapDeg: number;
   onSelect: (id: string | null) => void;
   onMeshFound: (node: THREE.Object3D | null) => void;
+  onFrame: (object: THREE.Object3D) => void;
+  onCommit: (id: string, patch: { position: Vec3; rotation: Vec3; scale: Vec3 }) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
@@ -833,7 +979,12 @@ function SceneParts({
           part={p}
           libraryItem={p.library_item_id ? libraryItemsById.get(p.library_item_id) ?? null : null}
           selected={p.id === selectedId}
+          showLabel={showLabels}
+          translateSnapM={translateSnapM}
+          rotateSnapDeg={rotateSnapDeg}
           onSelect={() => onSelect(p.id)}
+          onFrame={onFrame}
+          onCommit={(patch) => onCommit(p.id, patch)}
         />
       ))}
     </group>
