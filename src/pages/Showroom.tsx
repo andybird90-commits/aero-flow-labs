@@ -505,7 +505,7 @@ export default function Showroom() {
 
       {/* Presentation-mode minimal HUD */}
       {presentationMode && (
-        <div className="pointer-events-auto absolute bottom-[14vh] left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface-1/90 px-3 py-1.5 shadow-xl backdrop-blur">
+        <div className="pointer-events-auto absolute bottom-[14vh] left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface-1/95 px-3 py-1.5 shadow-xl">
           <Button
             size="icon"
             variant="ghost"
@@ -532,7 +532,7 @@ export default function Showroom() {
       {/* Empty / loading state */}
       {!isReady && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-          <div className="rounded-lg border border-border bg-surface-1/90 px-4 py-3 text-sm text-muted-foreground backdrop-blur">
+          <div className="rounded-lg border border-border bg-surface-1/95 px-4 py-3 text-sm text-muted-foreground shadow-lg">
             <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
             Loading your build…
           </div>
@@ -541,7 +541,7 @@ export default function Showroom() {
 
       {/* WebXR support hint */}
       {!presentationMode && typeof navigator !== "undefined" && !(navigator as any).xr && (
-        <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface-1/80 px-3 py-1 text-[11px] text-muted-foreground backdrop-blur">
+        <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface-1/95 px-3 py-1 text-[11px] text-muted-foreground shadow-lg">
           <Glasses className="h-3.5 w-3.5" />
           WebXR not detected — open in a VR/AR-capable browser
           <Smartphone className="h-3.5 w-3.5" />
