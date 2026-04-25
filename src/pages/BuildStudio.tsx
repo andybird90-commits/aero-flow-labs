@@ -43,7 +43,13 @@ import {
   Undo2,
   Redo2,
   Sparkles,
+  Ruler,
+  Scissors,
+  MousePointer2,
+  Tag,
 } from "lucide-react";
+import type { MeasureLine } from "@/components/build-studio/ViewportTools";
+import type { ViewportTool } from "@/components/build-studio/BuildStudioViewport";
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/useAuth";
