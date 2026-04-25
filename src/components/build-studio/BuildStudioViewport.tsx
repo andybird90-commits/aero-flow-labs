@@ -62,6 +62,8 @@ interface ViewportProps {
   transformMode: TransformMode;
   showGrid: boolean;
   preset: CameraPreset;
+  /** Render quality preset — drives postprocessing + floor look. */
+  quality?: RenderQuality;
   /** Paint Studio finish (color + material + HDRI preset). */
   paintFinish?: PaintFinish | null;
   onCommit: (
