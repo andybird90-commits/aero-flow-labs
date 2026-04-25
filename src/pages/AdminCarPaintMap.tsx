@@ -887,29 +887,13 @@ function PaintMesh({
 
     const onPointerMove = (e: PointerEvent) => {
       const p = ndc(e);
-      // Update cursor preview (worldR for wheel previews via raycast distance)
-      let worldR: number | undefined;
-      if (tool === "wheel") {
-        const hit = raycastTriangle(e);
-        if (hit && meshRef.current) {
-          // Project a point at the radius distance into screen pixels.
-          const local = hit.point.clone();
-          meshRef.current.worldToLocal(local);
-          const tyreR = carLengthRef.current * (wheelOuterPct / 100);
-          // World-space r = tyreR * mesh.scale (uniform)
-          const worldScale = meshRef.current.getWorldScale(new THREE.Vector3()).x;
-          const rWorld = tyreR * worldScale;
-          // Screen-space r ≈ rWorld * (canvasH / 2) / dist / tan(fov/2)
-          const cam = camera as THREE.PerspectiveCamera;
-          const dist = camera.position.distanceTo(hit.point);
-          const fovRad = (cam.fov * Math.PI) / 180;
-          worldR = (rWorld * (size.height / 2)) / (dist * Math.tan(fovRad / 2));
-        }
-      }
+      // Keep hover lightweight: avoid raycasting the full high-poly STL on
+      // every mousemove. The actual wheel click still raycasts precisely.
+      const worldR = tool === "wheel" ? Math.max(18, Math.min(160, size.height * (wheelOuterPct / 180))) : undefined;
       onCursor({ x: p.x, y: p.y, worldR, visible: true });
 
       if (tool === "brush" && draggingRef.current) {
-        paintBrush(e);
+        schedulePaintBrush(e);
       }
     };
 
@@ -960,6 +944,7 @@ function PaintMesh({
       dom.removeEventListener("pointerleave", onPointerLeave);
       dom.removeEventListener("dblclick", onDblClick);
       window.removeEventListener("keydown", onKey);
+      if (brushFrameRef.current != null) cancelAnimationFrame(brushFrameRef.current);
     };
   }, [tool, activeTag, brushRadius, wheelOuterPct, wandAngleDeg, mirrorMode, camera, gl, size.width, size.height, onPaint, onPickTag, onCursor, onLasso]);
 
