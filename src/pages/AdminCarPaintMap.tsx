@@ -453,7 +453,22 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
           </Button>
         </div>
 
-        <Button variant="ghost" size="sm" className="mt-2 w-full text-warning hover:bg-warning/10" onClick={onResetToAuto} disabled={reclassifying}>
+        <Button
+          variant="accent"
+          size="sm"
+          className="mt-2 w-full"
+          onClick={onAiDetect}
+          disabled={aiDetecting || !ready || !!proposedTags}
+        >
+          {aiDetecting ? (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Bot className="mr-1.5 h-3.5 w-3.5" />
+          )}
+          {proposedTags ? "AI proposal pending" : "AI detect (Gemini)"}
+        </Button>
+
+        <Button variant="ghost" size="sm" className="mt-1 w-full text-warning hover:bg-warning/10" onClick={onResetToAuto} disabled={reclassifying}>
           {reclassifying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
           Reset to auto
         </Button>
