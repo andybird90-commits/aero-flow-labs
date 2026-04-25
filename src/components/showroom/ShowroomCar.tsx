@@ -266,12 +266,6 @@ export function ShowroomShell({
         }
       });
 
-      if (transform) {
-        wrapper.position.set(transform.position.x, transform.position.y, transform.position.z);
-        wrapper.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
-        wrapper.scale.set(transform.scale.x, transform.scale.y, transform.scale.z);
-      }
-
       setObject(wrapper);
     };
 
@@ -301,8 +295,16 @@ export function ShowroomShell({
     return () => {
       cancelled = true;
     };
-  }, [url, kind, template?.wheelbase_mm, transform]);
+  }, [url, kind, template?.wheelbase_mm]);
 
   if (!object) return null;
-  return <primitive object={object} />;
+  return (
+    <group
+      position={transform ? [transform.position.x, transform.position.y, transform.position.z] : [0, 0, 0]}
+      rotation={transform ? [transform.rotation.x, transform.rotation.y, transform.rotation.z] : [0, 0, 0]}
+      scale={transform ? [transform.scale.x, transform.scale.y, transform.scale.z] : [1, 1, 1]}
+    >
+      <primitive object={object} />
+    </group>
+  );
 }
