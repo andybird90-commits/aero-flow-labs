@@ -43,6 +43,10 @@ export interface ShowroomSceneHandle {
   resetView: () => void;
   /** Live three.js scene root — needed for USDZ / glTF export. */
   getSceneRoot: () => THREE.Scene | null;
+  /** Live WebGL renderer — needed for hi-res screenshots. */
+  getRenderer: () => THREE.WebGLRenderer | null;
+  /** Live camera — needed for hi-res screenshots. */
+  getCamera: () => THREE.Camera | null;
 }
 
 interface SceneProps {
