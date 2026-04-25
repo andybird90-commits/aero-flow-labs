@@ -88,6 +88,20 @@ interface ViewportProps {
   paintFinish?: PaintFinish | null;
   /** Per-triangle material tags (0=body,1=glass,2=wheel,3=tyre). */
   materialTags?: Uint8Array | null;
+  /** Active interactive tool (select / measure / clip). */
+  tool?: ViewportTool;
+  /** Section axis when tool = 'clip'. */
+  clipAxis?: ClipAxis;
+  /** Grid snap step in metres for translate (0 = off). */
+  translateSnapM?: number;
+  /** Rotation snap step in degrees for rotate (0 = off). */
+  rotateSnapDeg?: number;
+  /** Show floating part-name labels. */
+  showLabels?: boolean;
+  /** Persistent measurement lines (lifted state). */
+  measureLines?: MeasureLine[];
+  /** Setter for measurement lines. */
+  onMeasureLinesChange?: (lines: MeasureLine[]) => void;
   onCommit: (
     id: string,
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "snap_zone_id">>,
