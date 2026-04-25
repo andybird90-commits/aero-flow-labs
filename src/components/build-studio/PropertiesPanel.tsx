@@ -18,6 +18,8 @@ import {
   SNAP_ZONE_LABELS,
   findMirrorZone,
 } from "@/lib/build-studio/snap-zones";
+import type { LibraryItem } from "@/lib/repo";
+import { LiveFitPanel } from "@/components/build-studio/LiveFitPanel";
 
 interface Props {
   part: PlacedPart | null;
@@ -33,6 +35,16 @@ interface Props {
   onSnapToZone?: (zoneId: string | null) => void;
   /** Mirror the part to the opposite-side snap zone (creates a duplicate). */
   onMirrorToZone?: (zone: SnapZone) => void;
+  /** Resolved library item for the selected part (for Live Fit asset URL). */
+  selectedLibraryItem?: LibraryItem | null;
+  /** Signed URL for the project's base car STL/GLB (enables Live Fit). */
+  baseMeshUrl?: string | null;
+  /** Owner of the project, used when uploading baked Live Fit STLs. */
+  userId?: string | null;
+  /** Called after Live Fit Bake succeeds — parent invalidates library cache. */
+  onLiveFitBaked?: (newAssetUrl: string, newLibraryItemId: string) => void;
+  /** Optional handler for the "Print-ready" CTA inside Live Fit. */
+  onSendForPrint?: (snappedStlBlob: Blob) => void;
 }
 
 const NONE = "__none__";
@@ -83,6 +95,8 @@ function VecRow({
 export function PropertiesPanel({
   part, onPatch, onDuplicate, onDelete, onMirror,
   snapZones = [], onSnapToZone, onMirrorToZone,
+  selectedLibraryItem = null, baseMeshUrl = null, userId = null,
+  onLiveFitBaked, onSendForPrint,
 }: Props) {
   if (!part) {
     return (
@@ -163,6 +177,22 @@ export function PropertiesPanel({
         )}
 
         {snapZones.length > 0 && <Separator />}
+
+        {/* Live Fit — in-app body conform + CSG trim. Only shown when we have
+            a part asset and a base car mesh. */}
+        {selectedLibraryItem?.asset_url && baseMeshUrl && (
+          <>
+            <LiveFitPanel
+              part={part}
+              libraryItem={selectedLibraryItem}
+              baseMeshUrl={baseMeshUrl}
+              userId={userId}
+              onBaked={(url, id) => onLiveFitBaked?.(url, id)}
+              onSendForPrint={onSendForPrint}
+            />
+            <Separator />
+          </>
+        )}
 
         <VecRow
           label="Position (m)"

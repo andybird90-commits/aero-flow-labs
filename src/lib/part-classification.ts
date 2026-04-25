@@ -73,5 +73,18 @@ export const FIT_CLASS_DESCRIPTION: Record<PartFitClass, string> = {
   free_standing:
     "Bolt-on aero with its own clean shape (wings, diffusers, splitters, canards). CAD or mesh AI both work well.",
   body_conforming:
-    "Blends into the bodywork (arches, scoops, skirts, lips). Best fitted via Blender against the base car mesh, but you can still try mesh AI or CAD.",
+    "Blends into the bodywork (arches, scoops, skirts, lips). Live Fit conforms it to the car in-app — escalate to the worker only when you need a print-ready STL.",
 };
+
+/**
+ * Recommended fit pipeline per class:
+ *   • free_standing  → meshy / CAD recipe (existing flows)
+ *   • body_conforming → live-fit (in-app snap + CSG trim), worker only when
+ *                       wall thickness / manifold STL is required.
+ */
+export type FitPipeline = "meshy_or_cad" | "live_fit";
+export const FIT_PIPELINE: Record<PartFitClass, FitPipeline> = {
+  free_standing: "meshy_or_cad",
+  body_conforming: "live_fit",
+};
+

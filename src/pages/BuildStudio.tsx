@@ -11,6 +11,7 @@
  * current project (or the project from ?project=).
  */
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -89,6 +90,7 @@ import {
 
 export default function BuildStudio() {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const { projectId, project, isLoading: projectLoading, isEmpty } = useCurrentProject();
   const { data: templates = [] } = useCarTemplates();
   const { data: library, isLoading: libLoading } = useMyLibrary(user?.id);
@@ -517,6 +519,21 @@ export default function BuildStudio() {
     toast.success(`Design saved (${parts.length} parts)`);
   };
 
+  /** Selected part's resolved library item — used by Live Fit to load the asset. */
+  const selectedLibraryItem = selected?.library_item_id
+    ? libraryItemsById.get(selected.library_item_id) ?? null
+    : null;
+
+  /** Invalidate placed-parts + library caches when a Live Fit bake completes
+   *  so the viewport reloads the new mesh. */
+  const handleLiveFitBaked = () => {
+    if (!projectId) return;
+    qc.invalidateQueries({ queryKey: ["placed_parts", projectId] });
+    qc.invalidateQueries({ queryKey: ["library_items_by_ids"] });
+    qc.invalidateQueries({ queryKey: ["my_library", user?.id] });
+    toast.success("Live-fitted part baked into the build");
+  };
+
   /** Wrappers that surface a subtle toast on success. */
   const doUndo = async () => {
     const entry = await history.undo();
@@ -880,6 +897,10 @@ export default function BuildStudio() {
                     snapZones={snapZones}
                     onSnapToZone={handleSnapToZone}
                     onMirrorToZone={handleMirrorToZone}
+                    selectedLibraryItem={selectedLibraryItem}
+                    baseMeshUrl={heroStlUrl ?? null}
+                    userId={user?.id ?? null}
+                    onLiveFitBaked={handleLiveFitBaked}
                   />
                 </aside>
               </div>
