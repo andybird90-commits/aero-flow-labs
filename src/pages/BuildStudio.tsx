@@ -897,6 +897,10 @@ export default function BuildStudio() {
                     snapZones={snapZones}
                     onSnapToZone={handleSnapToZone}
                     onMirrorToZone={handleMirrorToZone}
+                    selectedLibraryItem={selectedLibraryItem}
+                    baseMeshUrl={heroStlUrl ?? null}
+                    userId={user?.id ?? null}
+                    onLiveFitBaked={handleLiveFitBaked}
                   />
                 </aside>
               </div>
