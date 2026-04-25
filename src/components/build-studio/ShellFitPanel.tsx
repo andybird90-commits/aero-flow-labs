@@ -101,6 +101,37 @@ export function ShellFitPanel({
     toast.success(`Snapped to wheelbase — fit ${describeFitQuality(transform.rms).toLowerCase()}`);
   };
 
+  const handleMatchWheelbase = () => {
+    if (!shellRoot) {
+      toast.error("Shell mesh not ready");
+      return;
+    }
+    if (!hasFrontRear) {
+      toast.error(
+        "Donor car needs front + rear wheel-centre hardpoints. Add them in Hardpoints admin first.",
+      );
+      return;
+    }
+    const result = matchWheelbaseExact(shellRoot, carHardpoints, currentTransform);
+    if (!result) {
+      toast.error(
+        "Couldn't detect wheel arches on this shell. Try Auto-fit or the manual hardpoint method.",
+      );
+      return;
+    }
+    setLastRms(0);
+    onApplyTransform({
+      position: result.transform.position,
+      rotation: result.transform.rotation,
+      scale: result.transform.scale,
+    });
+    const deltaMm = Math.round((result.donorWheelbaseM - result.shellWheelbaseM) * 1000);
+    const sign = deltaMm >= 0 ? "+" : "";
+    toast.success(
+      `Wheelbase matched (${result.donorWheelbaseM.toFixed(2)} m) — scaled ${(result.scaleFactor * 100).toFixed(1)}% (${sign}${deltaMm} mm)`,
+    );
+  };
+
   const handleSolveLocked = () => {
     if (!canSolveFromLocked) {
       toast.error("Lock at least 2 hardpoint pairs in Shell Fit Mode first.");
