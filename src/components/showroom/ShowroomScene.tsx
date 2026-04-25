@@ -19,6 +19,9 @@ import type { CarTemplate, LibraryItem } from "@/lib/repo";
 import type { PlacedPart } from "@/lib/build-studio/placed-parts";
 import { PartMesh } from "@/components/build-studio/PartMesh";
 import { ShowroomCar, ShowroomShell } from "./ShowroomCar";
+import { ARRig } from "./ARRig";
+import { ARReticle } from "./ARReticle";
+import { ARMeasureViz } from "./ARMeasureViz";
 import type { PaintFinish, EnvPreset } from "@/lib/build-studio/paint-finish";
 
 export interface ShowroomCameraState {
@@ -38,6 +41,8 @@ export interface ShowroomSceneHandle {
   orbitBy: (deltaRad: number) => void;
   /** Re-frame onto the car (reset camera). */
   resetView: () => void;
+  /** Live three.js scene root — needed for USDZ / glTF export. */
+  getSceneRoot: () => THREE.Scene | null;
 }
 
 interface SceneProps {
