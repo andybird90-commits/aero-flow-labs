@@ -46,7 +46,7 @@ import type { CarStl, CarTemplate } from "@/lib/repo";
 import {
   Loader2, ArrowLeft, Save, Undo2, Redo2, Check, AlertTriangle,
   Brush, CircleDashed, Lasso, Sparkles, FlipHorizontal, Wand2, Pipette,
-  Eye, EyeOff, Keyboard,
+  Eye, EyeOff, Keyboard, Bot, X, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -105,6 +105,9 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reclassifying, setReclassifying] = useState(false);
+  const [aiDetecting, setAiDetecting] = useState(false);
+  const [proposedTags, setProposedTags] = useState<Uint8Array | null>(null);
+  const [proposedStats, setProposedStats] = useState<{ body: number; glass: number; wheel: number; tyre: number; total: number; ai_assigned?: number } | null>(null);
 
   // Tool state
   const [tool, setTool] = useState<ToolKind>("brush");
@@ -228,6 +231,67 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
     } finally {
       setReclassifying(false);
     }
+  };
+
+  const onAiDetect = async () => {
+    if (!carStlId || !tags) return;
+    setAiDetecting(true);
+    setProposedTags(null);
+    setProposedStats(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-classify-car-materials", {
+        body: { car_stl_id: carStlId, base_tags_b64: encodeTagsB64(tags) },
+      });
+      if (error) throw error;
+      if (!data?.tags_b64) throw new Error("No tags returned by AI");
+      const proposed = decodeTagBlob(data.tags_b64);
+      if (proposed.length !== tags.length) {
+        throw new Error(`Triangle count mismatch (got ${proposed.length}, expected ${tags.length})`);
+      }
+      setProposedTags(proposed);
+      setProposedStats(data.stats ?? null);
+      const assigned = data.stats?.ai_assigned ?? 0;
+      toast({
+        title: "AI detection ready",
+        description: `Gemini tagged ${assigned.toLocaleString()} triangles. Review & choose Accept / Merge / Discard.`,
+      });
+    } catch (e: any) {
+      toast({ title: "AI detect failed", description: String(e.message ?? e), variant: "destructive" });
+    } finally {
+      setAiDetecting(false);
+    }
+  };
+
+  const onAcceptProposed = () => {
+    if (!proposedTags) return;
+    commitTags(new Uint8Array(proposedTags));
+    setProposedTags(null);
+    setProposedStats(null);
+    toast({ title: "AI tags applied", description: "Your previous map was replaced. Undo to revert." });
+  };
+
+  const onMergeProposed = () => {
+    if (!proposedTags || !tags) return;
+    // Merge: keep current map, but where AI assigned a non-body tag (glass/
+    // wheel/tyre), prefer the AI value. Body votes do not override curation.
+    const next = new Uint8Array(tags);
+    let changed = 0;
+    for (let i = 0; i < next.length; i++) {
+      const p = proposedTags[i];
+      if (p !== TAG_BODY && next[i] !== p) {
+        next[i] = p;
+        changed++;
+      }
+    }
+    commitTags(next);
+    setProposedTags(null);
+    setProposedStats(null);
+    toast({ title: "Merged AI tags", description: `${changed.toLocaleString()} triangles updated.` });
+  };
+
+  const onDiscardProposed = () => {
+    setProposedTags(null);
+    setProposedStats(null);
   };
 
   const onMirror = () => {
@@ -389,7 +453,22 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
           </Button>
         </div>
 
-        <Button variant="ghost" size="sm" className="mt-2 w-full text-warning hover:bg-warning/10" onClick={onResetToAuto} disabled={reclassifying}>
+        <Button
+          variant="accent"
+          size="sm"
+          className="mt-2 w-full"
+          onClick={onAiDetect}
+          disabled={aiDetecting || !ready || !!proposedTags}
+        >
+          {aiDetecting ? (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Bot className="mr-1.5 h-3.5 w-3.5" />
+          )}
+          {proposedTags ? "AI proposal pending" : "AI detect (Gemini)"}
+        </Button>
+
+        <Button variant="ghost" size="sm" className="mt-1 w-full text-warning hover:bg-warning/10" onClick={onResetToAuto} disabled={reclassifying}>
           {reclassifying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
           Reset to auto
         </Button>
@@ -426,7 +505,7 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
         ) : (
           <PaintMapCanvas
             stlUrl={stlUrl}
-            tags={tags}
+            tags={proposedTags ?? tags}
             tool={tool}
             activeTag={activeTag}
             brushRadius={brushRadius}
@@ -434,10 +513,43 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
             wandAngleDeg={wandAngleDeg}
             mirrorMode={mirrorMode}
             hiddenTags={hiddenTags}
-            onPaint={commitTags}
+            onPaint={proposedTags ? () => {} : commitTags}
             onPickTag={setActiveTag}
             onGeomReady={setGeomBundle}
           />
+        )}
+
+        {/* AI proposal review bar */}
+        {proposedTags && (
+          <div className="pointer-events-auto absolute left-1/2 top-4 z-20 flex max-w-[min(680px,calc(100%-2rem))] -translate-x-1/2 items-center gap-3 rounded-xl border border-primary/30 bg-surface-1/95 px-3 py-2 shadow-lg backdrop-blur">
+            <div className="flex items-center gap-2">
+              <span className="grid h-7 w-7 place-items-center rounded-md bg-primary/15 text-primary">
+                <Bot className="h-4 w-4" />
+              </span>
+              <div className="leading-tight">
+                <div className="text-xs font-semibold">AI proposal preview</div>
+                <div className="text-mono text-[10px] text-muted-foreground">
+                  {proposedStats?.ai_assigned != null
+                    ? `${proposedStats.ai_assigned.toLocaleString()} tris tagged · `
+                    : ""}
+                  G {proposedStats?.glass?.toLocaleString() ?? 0} ·
+                  W {proposedStats?.wheel?.toLocaleString() ?? 0} ·
+                  T {proposedStats?.tyre?.toLocaleString() ?? 0}
+                </div>
+              </div>
+            </div>
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button variant="hero" size="sm" onClick={onAcceptProposed}>
+                <Check className="mr-1 h-3.5 w-3.5" /> Accept
+              </Button>
+              <Button variant="outline" size="sm" onClick={onMergeProposed} title="Keep current map and overlay only AI-detected glass/wheel/tyre">
+                <Layers className="mr-1 h-3.5 w-3.5" /> Merge
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onDiscardProposed}>
+                <X className="mr-1 h-3.5 w-3.5" /> Discard
+              </Button>
+            </div>
+          </div>
         )}
 
         {showHotkeys && (
