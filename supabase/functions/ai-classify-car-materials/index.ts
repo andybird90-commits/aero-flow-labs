@@ -177,7 +177,7 @@ Deno.serve(async (req) => {
 
 /* ─── Gemini mask request ─────────────────────────────────── */
 
-interface MaskBatch { body: number[][]; glass: number[][]; wheel: number[][]; tyre: number[][]; }
+interface MaskBatch { body: number[][][]; glass: number[][][]; wheel: number[][][]; tyre: number[][][]; }
 
 async function askGeminiForMasks(
   imageDataUrl: string,
