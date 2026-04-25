@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Wand2, Move3d, Ruler, Scaling, AlertTriangle, CheckCircle2, Maximize2 } from "lucide-react";
+import { Wand2, Move3d, Ruler, Scaling, AlertTriangle, CheckCircle2, Maximize2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import {
   autoFitToWheelbase,
