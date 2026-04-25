@@ -221,6 +221,7 @@ export type Database = {
       }
       car_hardpoints: {
         Row: {
+          car_panel_id: string | null
           car_template_id: string
           created_at: string
           created_by: string | null
@@ -232,6 +233,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          car_panel_id?: string | null
           car_template_id: string
           created_at?: string
           created_by?: string | null
@@ -243,6 +245,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          car_panel_id?: string | null
           car_template_id?: string
           created_at?: string
           created_by?: string | null
@@ -254,6 +257,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "car_hardpoints_car_panel_id_fkey"
+            columns: ["car_panel_id"]
+            isOneToOne: false
+            referencedRelation: "car_panels"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "car_hardpoints_car_template_id_fkey"
             columns: ["car_template_id"]
@@ -302,6 +312,53 @@ export type Database = {
             foreignKeyName: "car_material_maps_car_stl_id_fkey"
             columns: ["car_stl_id"]
             isOneToOne: true
+            referencedRelation: "car_stls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      car_panels: {
+        Row: {
+          area_m2: number
+          bbox: Json
+          car_stl_id: string
+          confidence: number
+          created_at: string
+          id: string
+          slot: string
+          stl_path: string
+          triangle_count: number
+          updated_at: string
+        }
+        Insert: {
+          area_m2?: number
+          bbox?: Json
+          car_stl_id: string
+          confidence?: number
+          created_at?: string
+          id?: string
+          slot: string
+          stl_path: string
+          triangle_count?: number
+          updated_at?: string
+        }
+        Update: {
+          area_m2?: number
+          bbox?: Json
+          car_stl_id?: string
+          confidence?: number
+          created_at?: string
+          id?: string
+          slot?: string
+          stl_path?: string
+          triangle_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "car_panels_car_stl_id_fkey"
+            columns: ["car_stl_id"]
+            isOneToOne: false
             referencedRelation: "car_stls"
             referencedColumns: ["id"]
           },
