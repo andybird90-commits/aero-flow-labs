@@ -43,6 +43,10 @@ export interface ShowroomSceneHandle {
   resetView: () => void;
   /** Live three.js scene root — needed for USDZ / glTF export. */
   getSceneRoot: () => THREE.Scene | null;
+  /** Live WebGL renderer — needed for hi-res screenshots. */
+  getRenderer: () => THREE.WebGLRenderer | null;
+  /** Live camera — needed for hi-res screenshots. */
+  getCamera: () => THREE.Camera | null;
 }
 
 interface SceneProps {
@@ -183,6 +187,8 @@ export const ShowroomScene = forwardRef<ShowroomSceneHandle, SceneProps>(functio
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sceneRootRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef = useRef<THREE.Camera | null>(null);
   const apiRef = useRef<{
     getState: () => ShowroomCameraState | null;
     setState: (s: ShowroomCameraState) => void;
@@ -199,6 +205,8 @@ export const ShowroomScene = forwardRef<ShowroomSceneHandle, SceneProps>(functio
       orbitBy: (d) => apiRef.current?.orbitBy(d),
       resetView: () => apiRef.current?.reset(),
       getSceneRoot: () => sceneRootRef.current,
+      getRenderer: () => rendererRef.current,
+      getCamera: () => cameraRef.current,
     }),
     [],
   );
@@ -217,9 +225,11 @@ export const ShowroomScene = forwardRef<ShowroomSceneHandle, SceneProps>(functio
       camera={{ position: [4.5, 2.4, 4.5], fov: 38, near: 0.05, far: 200 }}
       dpr={[1, 2]}
       gl={{ antialias: true, preserveDrawingBuffer: true, alpha: !!arActive }}
-      onCreated={({ gl, scene }) => {
+      onCreated={({ gl, scene, camera }) => {
         canvasRef.current = gl.domElement;
         sceneRootRef.current = scene;
+        rendererRef.current = gl;
+        cameraRef.current = camera;
       }}
     >
       <XR>

@@ -1516,8 +1516,11 @@ export type Database = {
           name: string
           notes: string | null
           paint_finish: Json
+          share_enabled: boolean
+          share_token: string | null
           starred: boolean
           status: Database["public"]["Enums"]["project_status"]
+          thumbnail_url: string | null
           updated_at: string
           user_id: string
         }
@@ -1529,8 +1532,11 @@ export type Database = {
           name: string
           notes?: string | null
           paint_finish?: Json
+          share_enabled?: boolean
+          share_token?: string | null
           starred?: boolean
           status?: Database["public"]["Enums"]["project_status"]
+          thumbnail_url?: string | null
           updated_at?: string
           user_id: string
         }
@@ -1542,8 +1548,11 @@ export type Database = {
           name?: string
           notes?: string | null
           paint_finish?: Json
+          share_enabled?: boolean
+          share_token?: string | null
           starred?: boolean
           status?: Database["public"]["Enums"]["project_status"]
+          thumbnail_url?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -1864,6 +1873,7 @@ export type Database = {
         Returns: number
       }
       duplicate_project: { Args: { _project_id: string }; Returns: string }
+      generate_share_token: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
