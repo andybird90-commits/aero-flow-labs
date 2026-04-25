@@ -32,10 +32,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Anything above this gets vertex-clustering decimated in a Web Worker
+// Anything above this gets quadric-edge-collapse decimated in a Web Worker
 // before upload so the edge worker can repair it within its 256 MB cap.
-const DECIMATE_THRESHOLD_BYTES = 20 * 1024 * 1024;
-const DECIMATE_TARGET_TRIANGLES = 200_000;
+// Quadric collapse preserves silhouettes far better than vertex clustering,
+// so we can run with a much higher triangle budget without quality loss.
+const DECIMATE_THRESHOLD_BYTES = 30 * 1024 * 1024;
+const DECIMATE_TARGET_TRIANGLES = 500_000;
 
 const newTemplateSchema = z.object({
   make: z.string().trim().min(1, "Make required").max(60),
