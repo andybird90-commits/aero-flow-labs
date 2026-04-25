@@ -45,7 +45,7 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProject } from "@/hooks/useCurrentProject";
-import { useCarTemplates, useMyLibrary, useHeroStlForProject, useSignedCarStlUrl, type LibraryItem } from "@/lib/repo";
+import { useCarTemplates, useMyLibrary, useHeroStlForProject, useSignedCarStlUrl, useUpdateProject, type LibraryItem } from "@/lib/repo";
 import {
   usePlacedParts,
   useAddPlacedPart,
@@ -59,11 +59,13 @@ import { useSnapZones } from "@/lib/build-studio/snap-zones";
 import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
 import { useBodySkins, useSignedBodySkinUrl, type BodySkin } from "@/lib/body-skins";
 import { useShellAlignment, useUpsertShellAlignment } from "@/lib/build-studio/shell-alignments";
+import { DEFAULT_PAINT_FINISH, parsePaintFinish, type PaintFinish } from "@/lib/build-studio/paint-finish";
 
 import { BuildStudioViewport, type CameraPreset, type TransformMode, type ShellTransform } from "@/components/build-studio/BuildStudioViewport";
 import { PartLibraryRail } from "@/components/build-studio/PartLibraryRail";
 import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
+import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
 
 export default function BuildStudio() {
   const { user } = useAuth();
@@ -84,6 +86,25 @@ export default function BuildStudio() {
   const [showGrid, setShowGrid] = useState(true);
   const [showSnapZones, setShowSnapZones] = useState(true);
   const [preset, setPreset] = useState<CameraPreset>("free");
+
+  // Paint Studio finish — local for live preview, debounced-saved to project.
+  const updateProject = useUpdateProject();
+  const [paintFinish, setPaintFinish] = useState<PaintFinish>(DEFAULT_PAINT_FINISH);
+  // Hydrate from project when it loads / changes.
+  useEffect(() => {
+    if (project) setPaintFinish(parsePaintFinish((project as any).paint_finish));
+  }, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Debounced persist on change.
+  useEffect(() => {
+    if (!projectId || !project) return;
+    const t = setTimeout(() => {
+      updateProject.mutate({
+        id: projectId,
+        patch: { paint_finish: paintFinish } as any,
+      });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [paintFinish, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Shell Fit Mode
   const [shellSkinId, setShellSkinId] = useState<string | null>(null);
@@ -406,6 +427,14 @@ export default function BuildStudio() {
 
                 <Separator orientation="vertical" className="h-5" />
 
+                <PaintStudioPopover
+                  finish={paintFinish}
+                  onChange={setPaintFinish}
+                  disabled={!projectId}
+                />
+
+                <Separator orientation="vertical" className="h-5" />
+
                 {/* Shell Fit Mode */}
                 <Select
                   value={shellSkinId ?? "__none__"}
@@ -475,6 +504,7 @@ export default function BuildStudio() {
                     transformMode={mode}
                     showGrid={showGrid}
                     preset={preset}
+                    paintFinish={paintFinish}
                     onCommit={handleCommit}
                   />
                 </div>

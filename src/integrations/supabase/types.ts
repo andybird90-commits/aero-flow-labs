@@ -1471,6 +1471,7 @@ export type Database = {
           id: string
           name: string
           notes: string | null
+          paint_finish: Json
           starred: boolean
           status: Database["public"]["Enums"]["project_status"]
           updated_at: string
@@ -1483,6 +1484,7 @@ export type Database = {
           id?: string
           name: string
           notes?: string | null
+          paint_finish?: Json
           starred?: boolean
           status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string
@@ -1495,6 +1497,7 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
+          paint_finish?: Json
           starred?: boolean
           status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string

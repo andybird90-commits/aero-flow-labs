@@ -26,6 +26,7 @@ import type { SnapZone } from "@/lib/build-studio/snap-zones";
 import { nearestSnapZone } from "@/lib/build-studio/snap-zones";
 import { PartMesh } from "@/components/build-studio/PartMesh";
 import { SnapZoneViz } from "@/components/build-studio/SnapZoneViz";
+import { DEFAULT_PAINT_FINISH, type EnvPreset, type PaintFinish } from "@/lib/build-studio/paint-finish";
 
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
@@ -60,6 +61,8 @@ interface ViewportProps {
   transformMode: TransformMode;
   showGrid: boolean;
   preset: CameraPreset;
+  /** Paint Studio finish (color + material + HDRI preset). */
+  paintFinish?: PaintFinish | null;
   onCommit: (
     id: string,
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "snap_zone_id">>,
@@ -67,8 +70,17 @@ interface ViewportProps {
 }
 
 /* ─── Real hero STL car (preferred) ─── */
-function HeroStlCar({ url, template }: { url: string; template?: CarTemplate | null }) {
+function HeroStlCar({
+  url,
+  template,
+  paintFinish,
+}: {
+  url: string;
+  template?: CarTemplate | null;
+  paintFinish: PaintFinish;
+}) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
+  const materialRef = useRef<THREE.MeshPhysicalMaterial | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,13 +93,14 @@ function HeroStlCar({ url, template }: { url: string; template?: CarTemplate | n
         if (cancelled) return;
         geo.computeVertexNormals();
         const mat = new THREE.MeshPhysicalMaterial({
-          color: "#0a1622",
-          metalness: 0.85,
-          roughness: 0.32,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.18,
-          envMapIntensity: 1.4,
+          color: paintFinish.color,
+          metalness: paintFinish.metalness,
+          roughness: paintFinish.roughness,
+          clearcoat: paintFinish.clearcoat,
+          clearcoatRoughness: paintFinish.clearcoat_roughness,
+          envMapIntensity: paintFinish.env_intensity,
         });
+        materialRef.current = mat;
         const mesh = new THREE.Mesh(geo, mat);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -121,7 +134,22 @@ function HeroStlCar({ url, template }: { url: string; template?: CarTemplate | n
     return () => {
       cancelled = true;
     };
+    // Intentionally NOT depending on paintFinish — material is mutated live below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, template?.wheelbase_mm]);
+
+  // Live-apply paint changes without reloading the STL.
+  useEffect(() => {
+    const m = materialRef.current;
+    if (!m) return;
+    m.color.set(paintFinish.color);
+    m.metalness = paintFinish.metalness;
+    m.roughness = paintFinish.roughness;
+    m.clearcoat = paintFinish.clearcoat;
+    m.clearcoatRoughness = paintFinish.clearcoat_roughness;
+    m.envMapIntensity = paintFinish.env_intensity;
+    m.needsUpdate = true;
+  }, [paintFinish]);
 
   if (!object) return null;
   return <primitive object={object} />;
@@ -360,8 +388,10 @@ export function BuildStudioViewport({
   transformMode,
   showGrid,
   preset,
+  paintFinish,
   onCommit,
 }: ViewportProps) {
+  const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
   const orbitRef = useRef<any>(null);
   const transformRef = useRef<any>(null);
   const shellTransformRef = useRef<any>(null);
@@ -390,7 +420,7 @@ export function BuildStudioViewport({
       <directionalLight position={[-6, 4, -3]} intensity={0.45} color="#fb923c" />
 
       <Suspense fallback={null}>
-        <Environment preset="warehouse" />
+        <Environment preset={finish.env_preset} />
       </Suspense>
 
       {showGrid && (
@@ -412,7 +442,7 @@ export function BuildStudioViewport({
 
       {heroStlUrl ? (
         <Suspense fallback={<CarPlaceholder template={template} />}>
-          <HeroStlCar url={heroStlUrl} template={template} />
+          <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} />
         </Suspense>
       ) : (
         <CarPlaceholder template={template} />
