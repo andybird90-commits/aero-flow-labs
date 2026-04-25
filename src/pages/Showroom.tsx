@@ -162,6 +162,8 @@ export default function Showroom() {
   const [exportingUsdz, setExportingUsdz] = useState(false);
 
   const { bookmarks, add, remove } = useCameraBookmarks(projectId);
+  const { data: shareState } = useProjectShareState(projectId);
+  const toggleShare = useToggleShare(projectId);
 
   /** Approx car length (m) used by AR rig + HUD readout. */
   const carLengthMeters = useMemo(
