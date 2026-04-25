@@ -200,7 +200,7 @@ export function ShellFitPanel({
           <>
             <Separator className="my-3" />
             <div className="flex items-center gap-2 text-xs">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              <CheckCircle2 className="h-3.5 w-3.5 text-success" />
               <span className="text-muted-foreground">Last fit:</span>
               <span className="font-medium">{describeFitQuality(lastRms)}</span>
               <span className="ml-auto text-[10px] text-muted-foreground">
