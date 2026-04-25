@@ -202,6 +202,7 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
   const rear = rW > 0 ? v(rSx / rW, rSy / rW, rSz / rW) : null;
 
   return { front, rear, sampleCount: total, lengthAxis: lenAxis };
+}
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Auto-fit to wheelbase
