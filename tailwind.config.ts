@@ -83,6 +83,7 @@ export default {
       },
       backgroundImage: {
         'gradient-primary': 'var(--gradient-primary)',
+        'gradient-brand': 'var(--gradient-brand)',
         'gradient-glow': 'var(--gradient-glow)',
         'gradient-surface': 'var(--gradient-surface)',
         'gradient-data': 'var(--gradient-data)',
@@ -90,6 +91,7 @@ export default {
       boxShadow: {
         card: 'var(--shadow-card)',
         glow: 'var(--shadow-glow)',
+        'glow-violet': 'var(--shadow-glow-violet)',
         elevated: 'var(--shadow-elevated)',
       },
       borderRadius: {
