@@ -74,6 +74,7 @@ import { useBodySkins, useSignedBodySkinUrl, type BodySkin } from "@/lib/body-sk
 import { useShellAlignment, useUpsertShellAlignment, type LockedHardpointPair } from "@/lib/build-studio/shell-alignments";
 import { useCarHardpoints } from "@/lib/build-studio/hardpoints";
 import { ShellFitPanel } from "@/components/build-studio/ShellFitPanel";
+import { BakeBodyKitButton } from "@/components/build-studio/BakeBodyKitButton";
 import type * as THREE from "three";
 import { DEFAULT_PAINT_FINISH, parsePaintFinish, type PaintFinish } from "@/lib/build-studio/paint-finish";
 
@@ -860,6 +861,17 @@ export default function BuildStudio() {
                   onApplyTransform={handleShellCommit}
                   onStretchChange={handleStretchChange}
                 />
+
+                <BakeBodyKitButton
+                  projectId={projectId}
+                  userId={user?.id ?? null}
+                  bodySkinId={shellSkinId}
+                  donorCarTemplateId={carTemplateIdForHp}
+                  shellAlignmentId={alignment?.id ?? null}
+                  shellTransform={shellTransform}
+                  stretchEnabled={stretchEnabled}
+                />
+
 
                 <div className="ml-auto flex items-center gap-2">
                   <Button asChild size="sm" variant="outline" className="h-9 px-3 text-xs" title="Open in Showroom (AR/VR & presentation)">
