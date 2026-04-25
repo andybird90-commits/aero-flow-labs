@@ -105,6 +105,9 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reclassifying, setReclassifying] = useState(false);
+  const [aiDetecting, setAiDetecting] = useState(false);
+  const [proposedTags, setProposedTags] = useState<Uint8Array | null>(null);
+  const [proposedStats, setProposedStats] = useState<{ body: number; glass: number; wheel: number; tyre: number; total: number; ai_assigned?: number } | null>(null);
 
   // Tool state
   const [tool, setTool] = useState<ToolKind>("brush");
