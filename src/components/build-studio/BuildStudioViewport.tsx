@@ -668,20 +668,31 @@ export function BuildStudioViewport({
   quality = "studio",
   paintFinish,
   materialTags,
+  tool = "select",
+  clipAxis = "x",
+  translateSnapM = 0,
+  rotateSnapDeg = 0,
+  showLabels = true,
+  measureLines = [],
+  onMeasureLinesChange,
   onCommit,
 }: ViewportProps) {
   const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
   const settings = QUALITY_PRESETS[quality];
   const orbitRef = useRef<any>(null);
-  const transformRef = useRef<any>(null);
-  const shellTransformRef = useRef<any>(null);
   const shellGroupRef = useRef<THREE.Group | null>(null);
   const transformInteractionRef = useRef(false);
   const selected = parts.find((p) => p.id === selectedId) ?? null;
   const [meshNode, setMeshNode] = useState<THREE.Object3D | null>(null);
   const [shellNode, setShellNode] = useState<THREE.Object3D | null>(null);
+  const sceneRootRef = useRef<THREE.Group | null>(null);
 
   const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellNode;
+
+  // mm per scene-unit. We scale the car so its longest side ≈ wheelbase + 1.45m,
+  // so 1 scene unit = 1 metre = 1000 mm.
+  const worldToMm = 1000;
+  const carLength = ((template?.wheelbase_mm ?? 2575) / 1000) + 1.45;
 
   return (
     <Canvas
@@ -689,10 +700,10 @@ export function BuildStudioViewport({
       camera={{ position: [4.5, 3, 4.5], fov: 38, near: 0.1, far: 100 }}
       onPointerMissed={() => {
         if (transformInteractionRef.current) return;
-        onSelect(null);
+        if (tool === "select") onSelect(null);
       }}
       dpr={[1, 2]}
-      gl={{ antialias: true, preserveDrawingBuffer: true }}
+      gl={{ antialias: true, preserveDrawingBuffer: true, localClippingEnabled: true }}
     >
       <color attach="background" args={["#0a0a0c"]} />
       <ambientLight intensity={0.35} />
@@ -725,78 +736,62 @@ export function BuildStudioViewport({
 
       <ShowroomFloor reflector={settings.reflectorFloor} accumulative={settings.accumulativeShadows} />
 
-      {heroStlUrl ? (
-        <Suspense fallback={<CarPlaceholder template={template} />}>
-          <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} />
-        </Suspense>
-      ) : (
-        <CarPlaceholder template={template} />
-      )}
+      {/* Bounds wraps everything that should be framed by double-click. */}
+      <Bounds clip observe margin={1.2}>
+        <FrameOnDoubleClick scene={sceneRootRef.current} />
+        <group ref={sceneRootRef}>
+          {heroStlUrl ? (
+            <Suspense fallback={<CarPlaceholder template={template} />}>
+              <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} />
+            </Suspense>
+          ) : (
+            <CarPlaceholder template={template} />
+          )}
 
-      {bodySkinUrl && bodySkinKind && (
-        <Suspense fallback={null}>
-          <BodySkinOverlay
-            url={bodySkinUrl}
-            kind={bodySkinKind}
-            template={template}
-            transform={shellTransform ?? null}
-            groupRef={shellGroupRef}
-            onReady={setShellNode}
-            editing={!!shellEditMode}
-            highlight={!!shellEditMode}
+          {bodySkinUrl && bodySkinKind && (
+            <Suspense fallback={null}>
+              <BodySkinOverlay
+                url={bodySkinUrl}
+                kind={bodySkinKind}
+                template={template}
+                transform={shellTransform ?? null}
+                groupRef={shellGroupRef}
+                onReady={setShellNode}
+                editing={!!shellEditMode}
+                highlight={!!shellEditMode}
+              />
+            </Suspense>
+          )}
+
+          {showSnapZones && snapZones.map((z) => (
+            <SnapZoneViz
+              key={z.id}
+              zone={z}
+              active={selected?.snap_zone_id === z.id}
+              showLabel
+            />
+          ))}
+
+          <SceneParts
+            parts={parts}
+            libraryItemsById={libraryItemsById}
+            selectedId={selectedId}
+            showLabels={showLabels && tool === "select"}
+            translateSnapM={translateSnapM}
+            rotateSnapDeg={rotateSnapDeg}
+            onSelect={onSelect}
+            onMeshFound={setMeshNode}
+            onFrame={(obj) => {
+              // Defer one frame so PivotControls doesn't capture the dbl-click.
+              window.dispatchEvent(new CustomEvent("apex:frame-object", { detail: { object: obj } }));
+            }}
+            onCommit={(id, patch) => onCommit(id, patch)}
           />
-        </Suspense>
-      )}
+        </group>
+      </Bounds>
 
-      {showSnapZones && snapZones.map((z) => (
-        <SnapZoneViz
-          key={z.id}
-          zone={z}
-          active={selected?.snap_zone_id === z.id}
-          showLabel
-        />
-      ))}
-
-      <SceneParts
-        parts={parts}
-        libraryItemsById={libraryItemsById}
-        selectedId={selectedId}
-        onSelect={onSelect}
-        onMeshFound={setMeshNode}
-      />
-
-      {!shellEditMode && selected && meshNode && !selected.locked && (
-        <PartTransformGizmo
-          object={meshNode}
-          mode={transformMode}
-          orbitRef={orbitRef}
-          interactionRef={transformInteractionRef}
-          onRelease={() => {
-            if (!meshNode || !selected) return;
-            const pos: Vec3 = {
-              x: meshNode.position.x,
-              y: meshNode.position.y,
-              z: meshNode.position.z,
-            };
-            let snapPatch: Partial<Pick<PlacedPart, "position" | "snap_zone_id">> = { position: pos };
-            if (transformMode === "translate" && snapZones.length > 0) {
-              const nearest = nearestSnapZone(pos, snapZones, 0.35);
-              if (nearest) {
-                snapPatch = { position: { ...nearest.position }, snap_zone_id: nearest.id };
-                meshNode.position.set(nearest.position.x, nearest.position.y, nearest.position.z);
-              } else {
-                snapPatch = { position: pos, snap_zone_id: null };
-              }
-            }
-            onCommit(selected.id, {
-              ...snapPatch,
-              rotation: { x: meshNode.rotation.x, y: meshNode.rotation.y, z: meshNode.rotation.z },
-              scale: { x: meshNode.scale.x, y: meshNode.scale.y, z: meshNode.scale.z },
-            });
-          }}
-        />
-      )}
-
+      {/* Shell-fit gizmo stays a TransformControls (axis-locked feel works
+          better for big body alignments than a free pivot). */}
       {showShellGizmo && shellNode && (
         <PartTransformGizmo
           object={shellNode}
@@ -815,6 +810,18 @@ export function BuildStudioViewport({
           }}
         />
       )}
+
+      {/* Measurement tool — clicks pick on the scene root only (parts + car). */}
+      <MeasureTool
+        enabled={tool === "measure"}
+        lines={measureLines}
+        setLines={(l) => onMeasureLinesChange?.(l)}
+        pickRoot={sceneRootRef.current}
+        worldToMm={worldToMm}
+      />
+
+      {/* Section / clipping plane. */}
+      <ClippingPlane enabled={tool === "clip"} axis={clipAxis} carLength={carLength} />
 
       <CameraRig preset={preset} template={template} />
 
