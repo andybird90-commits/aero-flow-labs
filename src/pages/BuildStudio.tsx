@@ -645,6 +645,27 @@ export default function BuildStudio() {
 
                 <Separator orientation="vertical" className="h-7" />
 
+                <Select value={quality} onValueChange={(v) => setQuality(v as RenderQuality)}>
+                  <SelectTrigger className="h-9 w-[150px] text-xs" title={QUALITY_DESCRIPTION[quality]}>
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["draft", "studio", "cinematic"] as RenderQuality[]).map((q) => (
+                      <SelectItem key={q} value={q}>
+                        <div className="flex flex-col">
+                          <span>{QUALITY_LABEL[q]}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {QUALITY_DESCRIPTION[q]}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Separator orientation="vertical" className="h-7" />
+
                 <PaintStudioPopover
                   finish={paintFinish}
                   onChange={setPaintFinish}
