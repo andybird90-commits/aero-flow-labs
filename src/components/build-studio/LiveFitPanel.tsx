@@ -135,6 +135,30 @@ export function LiveFitPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseMeshUrl, partUrl, baseKind, partKind, baseTargetSizeM]);
 
+  /**
+   * The part geometry is loaded normalised to its own bounding box (centred at
+   * origin, scaled to PART_TARGET_SIZE). To snap it correctly against the base
+   * body we must put it in the *same* world frame the base lives in — i.e.
+   * apply the placed_part's position / rotation / scale from the viewport.
+   * Without this, every vertex thinks it lives at the origin and the snap
+   * pass shoots rays in random directions, exploding the part into spikes.
+   */
+  const partWorldMatrix = useMemo(() => {
+    const m = new THREE.Matrix4();
+    m.compose(
+      new THREE.Vector3(part.position.x, part.position.y, part.position.z),
+      new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(part.rotation.x, part.rotation.y, part.rotation.z),
+      ),
+      new THREE.Vector3(part.scale.x, part.scale.y, part.scale.z),
+    );
+    return m;
+  }, [
+    part.position.x, part.position.y, part.position.z,
+    part.rotation.x, part.rotation.y, part.rotation.z,
+    part.scale.x, part.scale.y, part.scale.z,
+  ]);
+
   // 2) Run snap (fast) on every offset change. Debounce trim (slower).
   const snapTimer = useRef<number | null>(null);
   const trimTimer = useRef<number | null>(null);
@@ -146,7 +170,7 @@ export function LiveFitPanel({
       if (snapTimer.current) window.clearTimeout(snapTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offsetMm, partGeo, baseReady]);
+  }, [offsetMm, partGeo, baseReady, partWorldMatrix]);
 
   useEffect(() => {
     if (!partGeo || !baseReady) return;
@@ -157,13 +181,36 @@ export function LiveFitPanel({
       if (trimTimer.current) window.clearTimeout(trimTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offsetMm, trim, partGeo, baseReady]);
+  }, [offsetMm, trim, partGeo, baseReady, partWorldMatrix]);
 
-  const partAsFitGeometry = (g: THREE.BufferGeometry): FitGeometry => ({
-    positions: (g.attributes.position.array as Float32Array).slice(),
-    normals: g.attributes.normal ? (g.attributes.normal.array as Float32Array).slice() : null,
-    indices: g.index ? new Uint32Array(g.index.array as ArrayLike<number>) : null,
-  });
+  const partAsFitGeometry = (g: THREE.BufferGeometry): FitGeometry => {
+    const worked = g.clone();
+    worked.applyMatrix4(partWorldMatrix);
+    worked.computeVertexNormals();
+    return {
+      positions: (worked.attributes.position.array as Float32Array).slice(),
+      normals: (worked.attributes.normal.array as Float32Array).slice(),
+      indices: worked.index ? new Uint32Array(worked.index.array as ArrayLike<number>) : null,
+    };
+  };
+
+  /** Convert worker output (in world space) back to part-local space. */
+  function resultToLocalGeometry(result: {
+    positions: Float32Array;
+    normals: Float32Array;
+    indices?: Uint32Array | null;
+  }) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(result.positions, 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(result.normals, 3));
+    if (result.indices) g.setIndex(new THREE.BufferAttribute(result.indices, 1));
+    const inv = new THREE.Matrix4().copy(partWorldMatrix).invert();
+    g.applyMatrix4(inv);
+    g.computeVertexNormals();
+    g.computeBoundingBox();
+    g.computeBoundingSphere();
+    return g;
+  }
 
   async function runSnap() {
     if (!partGeo || !baseReady) return;
@@ -172,13 +219,8 @@ export function LiveFitPanel({
       const result = await run("snap", baseId, partAsFitGeometry(partGeo), {
         offsetM: offsetMm / 1000,
       });
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.BufferAttribute(result.positions, 3));
-      g.setAttribute("normal", new THREE.BufferAttribute(result.normals, 3));
-      g.computeBoundingBox();
-      g.computeBoundingSphere();
       // Only show snap result when trim is off — otherwise wait for trim.
-      if (!trim) setPreviewGeo(g);
+      if (!trim) setPreviewGeo(resultToLocalGeometry(result));
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -193,13 +235,7 @@ export function LiveFitPanel({
       const result = await run("snap-and-trim", baseId, partAsFitGeometry(partGeo), {
         offsetM: offsetMm / 1000,
       });
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.BufferAttribute(result.positions, 3));
-      g.setAttribute("normal", new THREE.BufferAttribute(result.normals, 3));
-      if (result.indices) g.setIndex(new THREE.BufferAttribute(result.indices, 1));
-      g.computeBoundingBox();
-      g.computeBoundingSphere();
-      setPreviewGeo(g);
+      setPreviewGeo(resultToLocalGeometry(result));
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
