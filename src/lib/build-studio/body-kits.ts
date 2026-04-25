@@ -98,7 +98,20 @@ export function useBakeBodyKit() {
         .select("*")
         .single();
       if (error) throw error;
-      return data as BodyKit;
+      const kit = data as BodyKit;
+
+      // Fire-and-await the bake worker. It updates the row through the
+      // baking → subtracting → splitting → ready pipeline.
+      const { error: invokeErr } = await supabase.functions.invoke(
+        "bake-bodykit-from-shell",
+        { body: { body_kit_id: kit.id } },
+      );
+      if (invokeErr) {
+        // Worker errored — the function itself flips the row to `failed`,
+        // but surface the message to the caller too.
+        throw new Error(invokeErr.message ?? "Bake worker failed");
+      }
+      return kit;
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["body_kits", vars.project_id] });
