@@ -267,13 +267,24 @@ const BodySkinOverlay = function BodySkinOverlay({
     g.scale.set(transform.scale.x, transform.scale.y, transform.scale.z);
   }, [transform, editing]);
 
+  // Notify parent once the group is actually mounted in the scene graph
+  // (ref callbacks fire before parent attachment; TransformControls requires
+  // a valid object.parent to drag).
+  useEffect(() => {
+    if (!object) {
+      onReady?.(null);
+      return;
+    }
+    onReady?.(localRef.current ?? null);
+    return () => onReady?.(null);
+  }, [object, onReady]);
+
   if (!object) return null;
   return (
     <group
       ref={(node) => {
         localRef.current = node;
         if (groupRef) groupRef.current = node;
-        onReady?.(node);
       }}
       name="shell-overlay"
       onClick={
