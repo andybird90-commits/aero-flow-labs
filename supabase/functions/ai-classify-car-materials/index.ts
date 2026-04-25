@@ -381,12 +381,8 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
   return out;
 }
 
-// Use Deno's built-in deflate via CompressionStream
-async function zlibDeflateAsync(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate"));
-  const buf = await new Response(stream).arrayBuffer();
-  return new Uint8Array(buf);
-}
+// (CompressionStream-based async deflate path removed — we use the sync
+// stored-block deflate below which is plenty fast for 384x384 grayscale.)
 
 // Synchronous-ish wrapper using a top-level await is not allowed inside
 // the encoder caller chain, so we provide a sync fallback (uncompressed
