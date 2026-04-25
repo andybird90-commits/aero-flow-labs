@@ -46,15 +46,18 @@ export function useCarMaterialMap(carStlId: string | null | undefined) {
     },
   });
 
-  // Auto-trigger classification if missing.
+  // Auto-trigger classification if missing OR if cached at an older method
+  // version. Bump this string when the server-side classifier improves.
+  const CURRENT_METHOD = "geometric-v2";
+
   useEffect(() => {
     if (!carStlId || query.isLoading) return;
-    if (query.data) return;
+    if (query.data && query.data.method === CURRENT_METHOD) return;
     let cancelled = false;
     (async () => {
       try {
         const { error } = await supabase.functions.invoke("classify-car-materials", {
-          body: { car_stl_id: carStlId },
+          body: { car_stl_id: carStlId, force: !!query.data },
         });
         if (cancelled || error) return;
         qc.invalidateQueries({ queryKey: ["car_material_map", carStlId] });
