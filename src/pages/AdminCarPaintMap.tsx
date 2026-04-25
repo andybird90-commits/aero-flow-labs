@@ -503,22 +503,20 @@ function PaintMapEditorScreen({ carStlId }: { carStlId: string }) {
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : (
-          <div className={cn("h-full w-full", proposedTags && "pointer-events-none")}>
-            <PaintMapCanvas
-              stlUrl={stlUrl}
-              tags={proposedTags ?? tags}
-              tool={tool}
-              activeTag={activeTag}
-              brushRadius={brushRadius}
-              wheelOuterPct={wheelOuterPct}
-              wandAngleDeg={wandAngleDeg}
-              mirrorMode={mirrorMode}
-              hiddenTags={hiddenTags}
-              onPaint={commitTags}
-              onPickTag={setActiveTag}
-              onGeomReady={setGeomBundle}
-            />
-          </div>
+          <PaintMapCanvas
+            stlUrl={stlUrl}
+            tags={proposedTags ?? tags}
+            tool={tool}
+            activeTag={activeTag}
+            brushRadius={brushRadius}
+            wheelOuterPct={wheelOuterPct}
+            wandAngleDeg={wandAngleDeg}
+            mirrorMode={mirrorMode}
+            hiddenTags={hiddenTags}
+            onPaint={proposedTags ? () => {} : commitTags}
+            onPickTag={setActiveTag}
+            onGeomReady={setGeomBundle}
+          />
         )}
 
         {/* AI proposal review bar */}
