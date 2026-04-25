@@ -41,8 +41,8 @@ export function ARMeasureViz() {
       ))}
       {ar.measurePoints.length === 2 && (
         <>
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          <line ref={lineRef as unknown as any} geometry={geom}>
+          {/* @ts-expect-error r3f primitive `line` clashes with the SVG element type */}
+          <line ref={lineRef as unknown as React.Ref<THREE.Line>} geometry={geom}>
             <lineBasicMaterial color="#22d3ee" depthTest={false} linewidth={2} />
           </line>
           <Html
