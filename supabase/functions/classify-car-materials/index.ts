@@ -147,7 +147,7 @@ function classifyGeometric(mesh: Mesh3): Uint8Array {
   const triCount = mesh.indices.length / 3;
   const tags = new Uint8Array(triCount);
 
-  // Bounding box (Z-up assumption)
+  // Bounding box (Z-up, X-forward assumption)
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
   let minZ = Infinity, maxZ = -Infinity;
@@ -162,19 +162,28 @@ function classifyGeometric(mesh: Mesh3): Uint8Array {
   const width = maxY - minY;
   const height = maxZ - minZ;
   const groundZ = minZ;
-  // Tyres: bottom band of about 12% of total height
-  const tyreBandTop = groundZ + height * 0.13;
-  // Wheel/tyre footprint X extent: typical wheel arches sit at ~25% from each end
-  const wheelHalfRadius = Math.min(length, width) * 0.18;
-  const frontWheelX = maxX - length * 0.22;
-  const rearWheelX = minX + length * 0.22;
-  // Track (Y) — wheels are at the outer edges
-  const wheelHalfWidth = width * 0.5 - width * 0.05;
-  // Glass band: upper 35% of body excluding the very top (roof) and very bottom
-  const glassBottomZ = groundZ + height * 0.45;
-  const glassTopZ = groundZ + height * 0.92;
+  const centerY = (minY + maxY) / 2;
+  const halfWidth = width / 2;
 
-  // Pre-compute triangle centroids and normals
+  // ── Wheel geometry ────────────────────────────────────────
+  // Wheels sit at the corners. Tyre OD ≈ 32% of car length for sports cars,
+  // 28% for sedans. Use 30% to be safe → radius ≈ 15% of length.
+  const wheelRadius = length * 0.16;
+  const wheelCenterZ = groundZ + wheelRadius; // wheel hub height
+  const frontWheelX = maxX - length * 0.20;
+  const rearWheelX = minX + length * 0.20;
+  // Outer edge band (where wheels live) — outer ~30% of width on each side
+  const wheelInnerY = halfWidth * 0.55;
+  // Inside the wheel-radius envelope, distinguish tyre (outer ring, far from hub)
+  // vs rim (inner disc, close to hub). Boundary ≈ 65% of wheelRadius.
+  const tyreInnerR = wheelRadius * 0.62;
+
+  // ── Glass geometry ────────────────────────────────────────
+  // Glass starts above the belt-line. For sports cars belt-line ≈ 55% height.
+  const glassBottomZ = groundZ + height * 0.52;
+  // Roof line ≈ 92% — above this is bodywork roof not glass.
+  const glassTopZ = groundZ + height * 0.95;
+
   for (let t = 0; t < triCount; t++) {
     const ai = mesh.indices[t * 3] * 3;
     const bi = mesh.indices[t * 3 + 1] * 3;
@@ -186,53 +195,85 @@ function classifyGeometric(mesh: Mesh3): Uint8Array {
     const cxm = (ax + bx + cx) / 3;
     const cym = (ay + by + cy) / 3;
     const czm = (az + bz + cz) / 3;
+    const cyRel = cym - centerY; // signed Y relative to car centerline
 
     const ux = bx - ax, uy = by - ay, uz = bz - az;
     const vx = cx - ax, vy = cy - ay, vz = cz - az;
     let nx = uy * vz - uz * vy;
     let ny = uz * vx - ux * vz;
     let nz = ux * vy - uy * vx;
-    const len = Math.hypot(nx, ny, nz) || 1;
-    nx /= len; ny /= len; nz /= len;
-    const absNz = Math.abs(nz);
+    const nlen = Math.hypot(nx, ny, nz) || 1;
+    nx /= nlen; ny /= nlen; nz /= nlen;
 
-    // Default body
     let tag = TAG_BODY;
 
-    // 1) Tyre/wheel detection: in tyre band Z, near a wheel-corner X position,
-    //    and near the outer edge of width.
-    if (czm <= tyreBandTop) {
-      const isFrontWheel = Math.abs(cxm - frontWheelX) <= wheelHalfRadius;
-      const isRearWheel = Math.abs(cxm - rearWheelX) <= wheelHalfRadius;
-      const isOuterY = Math.abs(cym) >= wheelHalfWidth * 0.45;
-      if ((isFrontWheel || isRearWheel) && isOuterY) {
-        // Tyres lie in the lower half of the wheel band. Rims/spokes typically
-        // have a higher cylindrical-axis contribution (normal mostly along Y),
-        // while tyres curl around the rolling axis (normal mostly in XZ).
-        const wheelAxisY = Math.abs(ny); // wheels rotate about Y-axis
-        if (wheelAxisY > 0.55) {
-          tag = TAG_WHEEL; // disc face / spoke face
+    // ── 1) Wheel/tyre detection ─────────────────────────────
+    // The triangle must sit inside the spherical envelope of one of the four
+    // wheel hubs. We check distance from hub centre in the X-Z plane (radial
+    // in the wheel's rotational frame).
+    const isFrontHub = Math.abs(cxm - frontWheelX) <= wheelRadius;
+    const isRearHub = Math.abs(cxm - rearWheelX) <= wheelRadius;
+    const isOuterTrack = Math.abs(cyRel) >= wheelInnerY;
+
+    if ((isFrontHub || isRearHub) && isOuterTrack && czm <= wheelCenterZ + wheelRadius) {
+      // Distance from wheel hub in the X-Z plane (the wheel's "radius" axis)
+      const hubX = isFrontHub ? frontWheelX : rearWheelX;
+      const dx = cxm - hubX;
+      const dz = czm - wheelCenterZ;
+      const radial = Math.hypot(dx, dz);
+
+      if (radial <= wheelRadius * 1.05) {
+        // Inside wheel envelope. Discriminate by radial position:
+        //   - Outer ring (radial > tyreInnerR) → TYRE
+        //   - Inner disc (radial <= tyreInnerR) → WHEEL
+        // Plus a normal-direction tiebreaker for the boundary zone:
+        //   rim faces have normals strongly along ±Y (face the camera from
+        //   the side). Tread/sidewall normals are radial → mostly in X-Z.
+        const absNy = Math.abs(ny);
+        if (radial > tyreInnerR) {
+          // Outer ring — almost certainly tyre, unless it's clearly a rim
+          // face poking out (rare).
+          tag = absNy > 0.85 && radial < wheelRadius * 0.85
+            ? TAG_WHEEL
+            : TAG_TYRE;
         } else {
-          tag = TAG_TYRE; // sidewall + tread
+          // Inner disc → rim/spoke
+          tag = TAG_WHEEL;
         }
       }
     }
 
-    // 2) Glass detection: large flat-ish planes, in upper body band, normals
-    //    leaning upward (windscreen/rear screen) or sideways and tall (side glass).
+    // ── 2) Glass detection ──────────────────────────────────
+    // Only consider triangles in the glasshouse band that haven't already
+    // been claimed by the wheel zone.
     if (tag === TAG_BODY && czm >= glassBottomZ && czm <= glassTopZ) {
-      // Side glass: vertical-ish triangle whose Y normal dominates and X normal
-      // is small (means the panel faces sideways). Side glass sits on +/- Y outer.
+      const absNx = Math.abs(nx);
+      const absNy = Math.abs(ny);
+      const absNz = Math.abs(nz);
+
+      // Side glass: triangle is on the outer edge of the body, normal points
+      // mostly sideways (±Y), surface is roughly vertical (low Nz).
       const sideGlass =
-        Math.abs(ny) > 0.55 &&
-        Math.abs(cym) > width * 0.32 &&
-        absNz < 0.6;
-      // Front/rear screen: normal slants upward and along ±X.
+        absNy > 0.5 &&
+        Math.abs(cyRel) > halfWidth * 0.30 &&
+        absNz < 0.55;
+
+      // Windscreen / rear screen: normal slopes upward and forward/backward.
+      // Excludes roof (which has nz≈1 and small nx).
       const frontRearScreen =
-        nz > 0.25 &&
-        Math.abs(nx) > 0.35 &&
-        absNz < 0.92; // exclude the roof which is flat-up
-      if (sideGlass || frontRearScreen) {
+        nz > 0.20 &&
+        absNx > 0.30 &&
+        absNz < 0.88;
+
+      // Quarter glass (small triangular pane behind the door): similar to
+      // side glass but sits closer to the centerline and high up.
+      const quarterGlass =
+        absNy > 0.55 &&
+        Math.abs(cyRel) > halfWidth * 0.22 &&
+        czm > groundZ + height * 0.65 &&
+        absNz < 0.5;
+
+      if (sideGlass || frontRearScreen || quarterGlass) {
         tag = TAG_GLASS;
       }
     }
