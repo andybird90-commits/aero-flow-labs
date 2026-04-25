@@ -54,7 +54,7 @@ export function ARMeasureViz() {
             center
             distanceFactor={6}
           >
-            <div className="rounded-md bg-cyan-500 px-2 py-0.5 text-xs font-semibold text-white shadow-lg">
+            <div className="rounded-md bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground shadow-lg">
               {(distance(ar.measurePoints[0], ar.measurePoints[1]) * 100).toFixed(1)} cm
             </div>
           </Html>
