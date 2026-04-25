@@ -64,7 +64,7 @@ import {
 } from "@/lib/build-studio/placed-parts";
 import { useLibraryItemsByIds } from "@/lib/build-studio/part-mesh";
 import { useBodySkins, useSignedBodySkinUrl } from "@/lib/body-skins";
-import { useShellAlignment } from "@/lib/build-studio/shell-alignments";
+import { useShellAlignment, useLatestShellAlignmentForProject } from "@/lib/build-studio/shell-alignments";
 import { useCarMaterialMap } from "@/lib/build-studio/use-car-material-map";
 import {
   DEFAULT_PAINT_FINISH,
@@ -118,12 +118,19 @@ export default function Showroom() {
   );
   const { data: libraryItemsById = new Map() } = useLibraryItemsByIds(libraryItemIds);
 
-  // Body skin overlay (read-only here)
+  // Body skin overlay (read-only here).
+  // Priority order:
+  //   1. A `placed_part` whose metadata pins a body_skin_id (explicit).
+  //   2. The most-recently-updated `shell_alignments` row for this project
+  //      — this is what the Build Studio writes when the user fits a shell,
+  //      so it's the right "what's been built" fallback.
   const { data: bodySkins = [] } = useBodySkins();
-  const skinId =
+  const partSkinId =
     parts.find((p) => p.metadata && (p.metadata as any).body_skin_id)?.metadata
       ? ((parts.find((p) => (p.metadata as any).body_skin_id)!.metadata as any).body_skin_id as string)
       : null;
+  const { data: latestAlignment } = useLatestShellAlignmentForProject(projectId);
+  const skinId = partSkinId ?? latestAlignment?.body_skin_id ?? null;
   const activeSkin = bodySkins.find((s) => s.id === skinId) ?? null;
   const skinAssetPath = activeSkin?.file_url_glb ?? activeSkin?.file_url_stl ?? null;
   const skinKind: "glb" | "stl" | null = activeSkin?.file_url_glb
@@ -132,7 +139,8 @@ export default function Showroom() {
       ? "stl"
       : null;
   const { data: bodySkinUrl } = useSignedBodySkinUrl(skinAssetPath);
-  const { data: alignment } = useShellAlignment(projectId, skinId);
+  const { data: pinnedAlignment } = useShellAlignment(projectId, partSkinId);
+  const alignment = pinnedAlignment ?? latestAlignment ?? null;
   const shellTransform = alignment
     ? {
         position: alignment.position as any,
