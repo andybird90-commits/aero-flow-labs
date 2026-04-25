@@ -85,6 +85,7 @@ export default function BuildStudio() {
   const { data: parts = [] } = usePlacedParts(projectId);
   const { data: heroStl } = useHeroStlForProject(projectId);
   const { data: heroStlUrl } = useSignedCarStlUrl(heroStl);
+  const { tags: materialTags } = useCarMaterialMap(heroStl?.id);
 
   const addPart = useAddPlacedPart();
   const updatePart = useUpdatePlacedPart();
@@ -748,6 +749,7 @@ export default function BuildStudio() {
                     preset={preset}
                     quality={quality}
                     paintFinish={paintFinish}
+                    materialTags={materialTags}
                     onCommit={handleCommit}
                   />
                 </div>
