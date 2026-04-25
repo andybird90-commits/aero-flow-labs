@@ -117,38 +117,54 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
     (k) => k !== lenAxis && k !== heightAxis,
   ) as "x" | "y" | "z";
 
-  // Bottom band: lower 35% of height — wheel arches live there.
-  const yCut = min.y + size.y * 0.35;
-
-  // Outer band: |width-axis - centre| > 55% of half-width — outermost only.
-  const halfWidth = size[widthAxis] / 2;
-  const widthCut = halfWidth * 0.55;
-  const widthCentre = (min[widthAxis] + max[widthAxis]) / 2;
-
-  // ── Arch-LIP detection via length-binned local Y minima ───────────────
-  // The real arch lip is the LOCAL MINIMUM of Y inside each length-axis
-  // bin — i.e. the lowest body point at that length position. We bin the
-  // length axis, take the min-Y vertex in each, then fit two clusters
-  // (front half, rear half) weighted by arch depth.
-  //
-  // CRITICAL: we exclude the outermost ~12% at each end of the length axis
-  // because splitters, diffusers and rear wings dip lower than wheel arches
-  // and, if included, drag the detected arch centre off the wheels —
-  // producing a wildly wrong shell wheelbase. Real wheel arches always sit
-  // within the 12–88% length band on production cars.
-  const N_BINS = 80;
-  const binMinY = new Float32Array(N_BINS).fill(Infinity);
-  const binAtMinX = new Float32Array(N_BINS);
-  const binAtMinY = new Float32Array(N_BINS);
-  const binAtMinZ = new Float32Array(N_BINS);
   const lenSpan = max[lenAxis] - min[lenAxis];
   if (lenSpan < 1e-6)
     return { front: null, rear: null, sampleCount: 0, lengthAxis: lenAxis };
 
-  // Length-axis trim band — ignore overhanging aero appendages.
-  const lenTrim = 0.12;
-  const lenLo = min[lenAxis] + lenSpan * lenTrim;
-  const lenHi = max[lenAxis] - lenSpan * lenTrim;
+  // ── Side-silhouette arch detection ────────────────────────────────────
+  // The OLD heuristic (length-binned lowest-Y) failed catastrophically on
+  // wide-body kits where the SIDE SKIRT is the lowest point, not the
+  // wheel arches — every bin in the wheelbase region picked up the same
+  // flat skirt line, collapsing the front/rear arch centroids onto each
+  // other and producing a tiny "wheelbase" → 2-3× over-scale.
+  //
+  // The correct cue: a wheel arch is a **concave cutout in the SIDE of
+  // the body**, visible as a region where the body's lowest edge
+  // **rises**. So: project the lower side onto the (length, height) plane
+  // at the OUTER edge (the wheel face is more outboard than the skirt),
+  // find the two highest "valley peaks" of the lower outline.
+  //
+  // Concretely:
+  //   1. Restrict to vertices in the outer ~15% of width (the wheel arch
+  //      face sits AT the outer surface of the fender, the skirt sits
+  //      slightly inboard).
+  //   2. For each length bin, record the LOWEST y at that length (this
+  //      is the body's bottom outline silhouette on the side).
+  //   3. Look for the two highest peaks of that outline — those are the
+  //      arch centres. The skirt between them sits LOWER (negative-y).
+  //   4. Verify: peaks must be in opposite halves (front + rear) AND must
+  //      be at least 30% of vehicle length apart.
+  const halfWidth = size[widthAxis] / 2;
+  const widthCentre = (min[widthAxis] + max[widthAxis]) / 2;
+  // Use the OUTER 15% rim only — wheel arch surface lives there, skirt is
+  // ~5-10% inboard.
+  const widthCut = halfWidth * 0.85;
+  // Bottom 45% of height — gives us the entire lower-side band incl. arch.
+  const yCut = min.y + size.y * 0.45;
+
+  const N_BINS = 60;
+  const binMaxY = new Float32Array(N_BINS).fill(-Infinity); // highest "low-edge" Y
+  const binAtMaxX = new Float32Array(N_BINS);
+  const binAtMaxY = new Float32Array(N_BINS);
+  const binAtMaxZ = new Float32Array(N_BINS);
+  const binMinY = new Float32Array(N_BINS).fill(Infinity); // lowest Y per bin (skirt)
+
+  // For each length bin we want the LOWEST Y on the outer edge (the
+  // outline of the side as you look at it from outside). That outline
+  // _rises_ at the arches.
+  const binOutlineY = new Float32Array(N_BINS).fill(Infinity);
+  const binOutlineX = new Float32Array(N_BINS);
+  const binOutlineZ = new Float32Array(N_BINS);
 
   let total = 0;
   for (const flat of allPositions) {
@@ -158,56 +174,80 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
       const z = flat[i + 2];
       total++;
       if (y > yCut) continue;
-      const lenVal = lenAxis === "x" ? x : lenAxis === "y" ? y : z;
-      if (lenVal < lenLo || lenVal > lenHi) continue; // skip splitter/diffuser/wing zone
       const widthVal = widthAxis === "x" ? x : widthAxis === "y" ? y : z;
       if (Math.abs(widthVal - widthCentre) < widthCut) continue;
-      const t = (lenVal - lenLo) / (lenHi - lenLo);
+      const lenVal = lenAxis === "x" ? x : lenAxis === "y" ? y : z;
+      const t = (lenVal - min[lenAxis]) / lenSpan;
       const bin = Math.min(N_BINS - 1, Math.max(0, Math.floor(t * N_BINS)));
-      if (y < binMinY[bin]) {
-        binMinY[bin] = y;
-        binAtMinX[bin] = x;
-        binAtMinY[bin] = y;
-        binAtMinZ[bin] = z;
+      if (y < binOutlineY[bin]) {
+        binOutlineY[bin] = y;
+        binOutlineX[bin] = x;
+        binOutlineZ[bin] = z;
+      }
+      if (y < binMinY[bin]) binMinY[bin] = y;
+      if (y > binMaxY[bin]) {
+        binMaxY[bin] = y;
+        binAtMaxX[bin] = x;
+        binAtMaxY[bin] = y;
+        binAtMaxZ[bin] = z;
       }
     }
   }
 
-  const archBins: { len: number; x: number; y: number; z: number; depth: number }[] = [];
-  const validYs = Array.from(binMinY).filter((y) => Number.isFinite(y));
-  if (validYs.length < 8)
-    return { front: null, rear: null, sampleCount: total, lengthAxis: lenAxis };
-  validYs.sort((a, b) => a - b);
-  // Body floor (between arches) ≈ 85th percentile of bin min-Ys.
-  const groundY = validYs[Math.floor(validYs.length * 0.85)];
+  // Build the lower-outline series and find the skirt baseline (the
+  // lowest stable region — the median of valid bin outlines).
+  type Pt = { bin: number; len: number; x: number; y: number; z: number };
+  const outline: Pt[] = [];
   for (let bin = 0; bin < N_BINS; bin++) {
-    if (!Number.isFinite(binMinY[bin])) continue;
+    if (!Number.isFinite(binOutlineY[bin])) continue;
     const len =
-      lenAxis === "x" ? binAtMinX[bin] : lenAxis === "y" ? binAtMinY[bin] : binAtMinZ[bin];
-    const depth = groundY - binMinY[bin]; // positive = bin dips lower than body floor
-    if (depth <= 0) continue;
-    archBins.push({ len, x: binAtMinX[bin], y: binAtMinY[bin], z: binAtMinZ[bin], depth });
+      lenAxis === "x" ? binOutlineX[bin] : lenAxis === "y" ? binOutlineY[bin] : binOutlineZ[bin];
+    outline.push({ bin, len, x: binOutlineX[bin], y: binOutlineY[bin], z: binOutlineZ[bin] });
   }
-  if (archBins.length < 4)
+  if (outline.length < 8)
     return { front: null, rear: null, sampleCount: total, lengthAxis: lenAxis };
 
-  // Split into front/rear by length midpoint, weight by depth² so the
-  // *deepest* dip in each half (the wheel arch peak) dominates over
-  // shallower undulations.
-  const lenMid = (lenLo + lenHi) / 2;
-  let fSx = 0, fSy = 0, fSz = 0, fW = 0;
-  let rSx = 0, rSy = 0, rSz = 0, rW = 0;
-  for (const b of archBins) {
-    const w = b.depth * b.depth;
-    if (b.len > lenMid) {
-      fSx += b.x * w; fSy += b.y * w; fSz += b.z * w; fW += w;
-    } else {
-      rSx += b.x * w; rSy += b.y * w; rSz += b.z * w; rW += w;
-    }
-  }
+  // Skirt baseline = 25th percentile of low-edge Ys.
+  const sortedYs = outline.map((p) => p.y).sort((a, b) => a - b);
+  const skirtY = sortedYs[Math.floor(sortedYs.length * 0.25)];
 
-  const front = fW > 0 ? v(fSx / fW, fSy / fW, fSz / fW) : null;
-  const rear = rW > 0 ? v(rSx / rW, rSy / rW, rSz / rW) : null;
+  // Arch peaks = bins where the outline rises significantly above the
+  // skirt baseline. Threshold: at least 8% of total height above skirt.
+  const peakThresh = skirtY + size.y * 0.08;
+  const peaks: Pt[] = outline.filter((p) => p.y >= peakThresh);
+  if (peaks.length < 2)
+    return { front: null, rear: null, sampleCount: total, lengthAxis: lenAxis };
+
+  // Cluster peaks into front-half and rear-half by length midpoint.
+  const lenMid = (min[lenAxis] + max[lenAxis]) / 2;
+  const frontPeaks = peaks.filter((p) => p.len > lenMid);
+  const rearPeaks = peaks.filter((p) => p.len <= lenMid);
+  if (frontPeaks.length === 0 || rearPeaks.length === 0)
+    return { front: null, rear: null, sampleCount: total, lengthAxis: lenAxis };
+
+  // Centroid of each cluster, weighted by how high above the skirt the
+  // peak is (so the actual arch APEX dominates over its shoulders).
+  const centroid = (pts: Pt[]): Vec3 => {
+    let sx = 0, sy = 0, sz = 0, sw = 0;
+    for (const p of pts) {
+      const w = Math.max(p.y - skirtY, 1e-4);
+      sx += p.x * w; sy += p.y * w; sz += p.z * w; sw += w;
+    }
+    return v(sx / sw, sy / sw, sz / sw);
+  };
+
+  const front = centroid(frontPeaks);
+  const rear = centroid(rearPeaks);
+
+  // Sanity check: front and rear must be at least 35% of vehicle length
+  // apart, otherwise the heuristic has collapsed onto a single feature.
+  const archSpan = Math.abs(
+    (lenAxis === "x" ? front.x : lenAxis === "y" ? front.y : front.z) -
+      (lenAxis === "x" ? rear.x : lenAxis === "y" ? rear.y : rear.z),
+  );
+  if (archSpan < lenSpan * 0.35) {
+    return { front: null, rear: null, sampleCount: total, lengthAxis: lenAxis };
+  }
 
   return { front, rear, sampleCount: total, lengthAxis: lenAxis };
 }
