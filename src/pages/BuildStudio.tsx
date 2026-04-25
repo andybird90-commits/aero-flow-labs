@@ -87,6 +87,25 @@ export default function BuildStudio() {
   const [showSnapZones, setShowSnapZones] = useState(true);
   const [preset, setPreset] = useState<CameraPreset>("free");
 
+  // Paint Studio finish — local for live preview, debounced-saved to project.
+  const updateProject = useUpdateProject();
+  const [paintFinish, setPaintFinish] = useState<PaintFinish>(DEFAULT_PAINT_FINISH);
+  // Hydrate from project when it loads / changes.
+  useEffect(() => {
+    if (project) setPaintFinish(parsePaintFinish((project as any).paint_finish));
+  }, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Debounced persist on change.
+  useEffect(() => {
+    if (!projectId || !project) return;
+    const t = setTimeout(() => {
+      updateProject.mutate({
+        id: projectId,
+        patch: { paint_finish: paintFinish } as any,
+      });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [paintFinish, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Shell Fit Mode
   const [shellSkinId, setShellSkinId] = useState<string | null>(null);
   const [shellEditMode, setShellEditMode] = useState(false);
