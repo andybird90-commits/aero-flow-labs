@@ -538,6 +538,7 @@ export function BuildStudioViewport({
   preset,
   quality = "studio",
   paintFinish,
+  materialTags,
   onCommit,
 }: ViewportProps) {
   const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
@@ -597,7 +598,7 @@ export function BuildStudioViewport({
 
       {heroStlUrl ? (
         <Suspense fallback={<CarPlaceholder template={template} />}>
-          <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} />
+          <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} />
         </Suspense>
       ) : (
         <CarPlaceholder template={template} />
