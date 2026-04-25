@@ -572,18 +572,14 @@ function PaintMapCanvas(props: CanvasProps) {
         width={viewportSize.w}
         height={viewportSize.h}
       >
-        {/* Lasso polyline preview */}
+        {/* Lasso polyline preview (NDC → SVG) */}
         {lassoPath.length > 0 && (
-          <polyline
+          <polygon
             points={lassoPath
-              .map(([x, y]) => `${((x + 1) / 2) * viewportSize.w},${((1 - y) / 2 + 0) * viewportSize.h - 0}`)
-              .map((s) => {
-                // rebuild correctly: y NDC is +up, screen is +down
-                return s;
-              })
+              .map(([x, y]) => `${((x + 1) / 2) * viewportSize.w},${((1 - y) / 2) * viewportSize.h}`)
               .join(" ")}
-            fill={`hsl(var(--primary) / 0.12)`}
-            stroke={`hsl(var(--primary))`}
+            fill="hsl(var(--primary) / 0.12)"
+            stroke="hsl(var(--primary))"
             strokeWidth={1.5}
             strokeDasharray="5 4"
           />
