@@ -114,6 +114,15 @@ export default function BuildStudio() {
   const [preset, setPreset] = useState<CameraPreset>("free");
   const { quality, setQuality } = useRenderQuality();
 
+  // Tier 2 interaction tools
+  const [tool, setTool] = useState<ViewportTool>("select");
+  const [clipAxis, setClipAxis] = useState<"x" | "y" | "z">("x");
+  const [snapEnabled, setSnapEnabled] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
+  const [measureLines, setMeasureLines] = useState<MeasureLine[]>([]);
+  const translateSnapM = snapEnabled ? 0.05 : 0;   // 5 cm
+  const rotateSnapDeg = snapEnabled ? 15 : 0;
+
   // Paint Studio finish — local for live preview, debounced-saved to project.
   const updateProject = useUpdateProject();
   const [paintFinish, setPaintFinish] = useState<PaintFinish>(DEFAULT_PAINT_FINISH);
