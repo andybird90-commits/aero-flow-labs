@@ -1,0 +1,1 @@
+ALTER TABLE public.car_material_maps DROP CONSTRAINT IF EXISTS car_material_maps_method_check;
