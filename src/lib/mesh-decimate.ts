@@ -248,19 +248,23 @@ function runQuadricCollapse(s: CollapseState): DecimateResult {
     const h = Q[o0+7] + Q[o1+7];
     const i = Q[o0+8] + Q[o1+8];
     const j = Q[o0+9] + Q[o1+9];
-    // Solve [[a,b,c],[b,e,f],[c,f,h]] · v = -[d,g,i].
-    const det =
-      a * (e * h - f * f) -
-      b * (b * h - f * c) +
-      c * (b * f - e * c);
+    // Solve A * v = rhs where A = [[a,b,c],[b,e,f],[c,f,h]] (symmetric)
+    // and rhs = [-d, -g, -i]. Use cofactor expansion / Cramer's rule.
+    const C00 = e * h - f * f;
+    const C01 = c * f - b * h;
+    const C02 = b * f - e * c;
+    const C11 = a * h - c * c;
+    const C12 = b * c - a * f;
+    const C22 = a * e - b * b;
+    const det = a * C00 + b * C01 + c * C02;
     let vx: number, vy: number, vz: number;
     if (Math.abs(det) > 1e-12) {
       const invDet = 1 / det;
-      vx = ( -d * (e * h - f * f)  + b * ( -g * h - (-i) * f * 0  ) ) * 0; // placeholder, real formula below
-      // Use Cramer's rule properly:
-      vx = ( -d * (e * h - f * f) - b * (-g * h - (-i) * f) + c * (-g * f - (-i) * e) ) * invDet;
-      vy = (  a * (-g * h - (-i) * f) - (-d) * (b * h - f * c) + c * (b * (-i) - (-g) * c) ) * invDet;
-      vz = (  a * (e * (-i) - (-g) * f) - b * (b * (-i) - (-g) * c) + (-d) * (b * f - e * c) ) * invDet;
+      const r0 = -d, r1 = -g, r2 = -i;
+      // For symmetric A, A^-1 = adj/det; adj is symmetric too.
+      vx = (C00 * r0 + C01 * r1 + C02 * r2) * invDet;
+      vy = (C01 * r0 + C11 * r1 + C12 * r2) * invDet;
+      vz = (C02 * r0 + C12 * r1 + C22 * r2) * invDet;
     } else {
       vx = (pos[v0*3]   + pos[v1*3])   * 0.5;
       vy = (pos[v0*3+1] + pos[v1*3+1]) * 0.5;
