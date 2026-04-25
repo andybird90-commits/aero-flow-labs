@@ -47,7 +47,7 @@ interface Props {
 }
 
 export function PartLibraryRail({ items, isLoading, onAdd, onAddBlank }: Props) {
-  const meshes = (items ?? []).filter((i) => MESH_KINDS.has(i.kind));
+  const meshes = (items ?? []).filter((i) => MESH_KINDS.has(i.kind) && hasUsableMesh(i));
 
   return (
     <div className="flex h-full flex-col">
