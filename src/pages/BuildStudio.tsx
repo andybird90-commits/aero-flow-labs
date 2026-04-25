@@ -719,7 +719,7 @@ export default function BuildStudio() {
 
               {/* 3-column body */}
               <div className="grid flex-1 min-h-0 grid-cols-[260px_1fr_280px]">
-                <aside className="border-r border-border bg-card/20">
+                <aside className="min-h-0 overflow-hidden border-r border-border bg-card/20">
                   <PartLibraryRail
                     items={library}
                     isLoading={libLoading}
@@ -752,7 +752,7 @@ export default function BuildStudio() {
                   />
                 </div>
 
-                <aside className="border-l border-border bg-card/20">
+                <aside className="min-h-0 overflow-hidden border-l border-border bg-card/20">
                   <PropertiesPanel
                     part={selected}
                     onPatch={handlePatch}
