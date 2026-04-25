@@ -504,6 +504,7 @@ export default function BuildStudio() {
                     transformMode={mode}
                     showGrid={showGrid}
                     preset={preset}
+                    paintFinish={paintFinish}
                     onCommit={handleCommit}
                   />
                 </div>
