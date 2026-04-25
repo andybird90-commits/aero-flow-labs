@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
       for (const [name, polys] of Object.entries(masks)) {
         const tag = nameToTag(name);
         if (tag == null || !Array.isArray(polys)) continue;
-        for (const poly of polys as number[][][]) {
+        for (const poly of polys as unknown as number[][][]) {
           if (!Array.isArray(poly) || poly.length < 3) continue;
           stampPolygon(poly, view.size, view.triIndex, votes, seen, tag);
         }
