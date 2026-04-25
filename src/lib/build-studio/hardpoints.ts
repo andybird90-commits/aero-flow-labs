@@ -117,27 +117,14 @@ export function useDeleteCarHardpoint() {
 /* ─── Display metadata ─── */
 
 export const HARDPOINT_LABELS: Record<CarHardpointType, string> = {
-  front_bumper_center: "Front bumper centre",
-  rear_bumper_center: "Rear bumper centre",
-  front_left_wheel_hub: "Wheel hub — FL",
-  front_right_wheel_hub: "Wheel hub — FR",
-  rear_left_wheel_hub: "Wheel hub — RL",
-  rear_right_wheel_hub: "Wheel hub — RR",
-  windshield_base: "Windshield base",
-  windshield_top: "Windshield top",
-  rear_window_base: "Rear window base",
-  rear_window_top: "Rear window top",
-  left_mirror_base: "Mirror base — L",
-  right_mirror_base: "Mirror base — R",
-  left_a_pillar_base: "A-pillar base — L",
-  right_a_pillar_base: "A-pillar base — R",
-  left_rocker_front: "Rocker front — L",
-  right_rocker_front: "Rocker front — R",
-  left_rocker_rear: "Rocker rear — L",
-  right_rocker_rear: "Rocker rear — R",
-  roof_center: "Roof centre",
-  hood_front_center: "Hood front centre",
-  trunk_rear_center: "Trunk rear centre",
+  front_wheel_centre: "Front wheel centre",
+  rear_wheel_centre: "Rear wheel centre",
+  centreline: "Centreline reference",
+  sill_line: "Sill line",
+  windscreen_base: "Windscreen base",
+  windscreen_top: "Windscreen top",
+  roof_peak: "Roof peak",
+  door_corner: "Door corner",
 };
 
 export const HARDPOINT_TYPES: CarHardpointType[] = Object.keys(
