@@ -816,6 +816,11 @@ export default function BuildStudio() {
                 </Toggle>
 
                 <div className="ml-auto flex items-center gap-2">
+                  <Button asChild size="sm" variant="outline" className="h-9 px-3 text-xs" title="Open in Showroom (AR/VR & presentation)">
+                    <Link to={`/showroom?project=${projectId}`}>
+                      <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Showroom
+                    </Link>
+                  </Button>
                   <Button size="sm" variant="outline" onClick={handleSaveDesign} className="h-9 px-3 text-xs">
                     <Save className="mr-1.5 h-3.5 w-3.5" /> Save
                   </Button>
