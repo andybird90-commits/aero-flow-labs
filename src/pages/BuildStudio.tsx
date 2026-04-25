@@ -70,6 +70,12 @@ import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
 import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
 import { useHistory, useHistoryShortcuts } from "@/lib/build-studio/history";
+import {
+  useRenderQuality,
+  QUALITY_LABEL,
+  QUALITY_DESCRIPTION,
+  type RenderQuality,
+} from "@/lib/build-studio/render-quality";
 
 export default function BuildStudio() {
   const { user } = useAuth();
