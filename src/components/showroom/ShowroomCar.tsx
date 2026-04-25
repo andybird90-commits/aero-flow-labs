@@ -215,7 +215,7 @@ export function ShowroomCar({
 }
 
 /**
- * ShowroomShell — translucent body-skin overlay (matches BuildStudio's look).
+ * ShowroomShell — solid fitted body skin for presentation view.
  */
 export function ShowroomShell({
   url,
@@ -253,15 +253,14 @@ export function ShowroomShell({
       wrapper.traverse((c) => {
         const m = c as THREE.Mesh;
         if (m.isMesh) {
-          m.castShadow = false;
-          m.receiveShadow = false;
+          m.castShadow = true;
+          m.receiveShadow = true;
           m.material = new THREE.MeshPhysicalMaterial({
             color: "#fb923c",
-            metalness: 0.2,
-            roughness: 0.6,
-            transparent: true,
-            opacity: 0.42,
-            clearcoat: 0.3,
+            metalness: 0.35,
+            roughness: 0.42,
+            clearcoat: 0.55,
+            clearcoatRoughness: 0.22,
           });
         }
       });
