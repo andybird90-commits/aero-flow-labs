@@ -420,7 +420,7 @@ export function BuildStudioViewport({
       <directionalLight position={[-6, 4, -3]} intensity={0.45} color="#fb923c" />
 
       <Suspense fallback={null}>
-        <Environment preset="warehouse" />
+        <Environment preset={finish.env_preset} />
       </Suspense>
 
       {showGrid && (
