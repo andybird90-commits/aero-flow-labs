@@ -24,7 +24,7 @@ declare const EdgeRuntime: {
  * preserved when fed into the multi-view mesh reconstructor (Rodin Gen-2).
  */
 const CARBON_CANVAS_PX = 1536;
-const CARBON_BG_GREY = 0xb4b4b4ff; // medium grey, matches isolation prompt
+const CARBON_BG_WHITE = 0xffffffff; // plain white studio backdrop
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
