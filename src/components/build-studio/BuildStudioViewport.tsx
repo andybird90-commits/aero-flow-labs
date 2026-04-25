@@ -934,14 +934,24 @@ function SceneParts({
   parts,
   libraryItemsById,
   selectedId,
+  showLabels,
+  translateSnapM,
+  rotateSnapDeg,
   onSelect,
   onMeshFound,
+  onFrame,
+  onCommit,
 }: {
   parts: PlacedPart[];
   libraryItemsById: Map<string, LibraryItem>;
   selectedId: string | null;
+  showLabels: boolean;
+  translateSnapM: number;
+  rotateSnapDeg: number;
   onSelect: (id: string | null) => void;
   onMeshFound: (node: THREE.Object3D | null) => void;
+  onFrame: (object: THREE.Object3D) => void;
+  onCommit: (id: string, patch: { position: Vec3; rotation: Vec3; scale: Vec3 }) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
@@ -962,7 +972,12 @@ function SceneParts({
           part={p}
           libraryItem={p.library_item_id ? libraryItemsById.get(p.library_item_id) ?? null : null}
           selected={p.id === selectedId}
+          showLabel={showLabels}
+          translateSnapM={translateSnapM}
+          rotateSnapDeg={rotateSnapDeg}
           onSelect={() => onSelect(p.id)}
+          onFrame={onFrame}
+          onCommit={(patch) => onCommit(p.id, patch)}
         />
       ))}
     </group>
