@@ -499,6 +499,7 @@ export default function BuildStudio() {
                   parts={parts}
                   selectedId={selectedId}
                   onSelect={setSelectedId}
+                  onDelete={handleDeleteById}
                 />
               </div>
             </div>
