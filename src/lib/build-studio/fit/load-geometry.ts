@@ -26,9 +26,13 @@ export async function loadGeometryNormalised(
   targetSize: number,
   groundToOrigin: boolean,
 ): Promise<LoadedFitGeometry> {
-  const raw = await loadRaw(url, kind);
+  // Sniff the file before trusting the caller-supplied kind — Supabase signed
+  // URLs often have no extension and a part flagged "stl" can really be GLB
+  // (or vice-versa), which crashes the GLTFLoader with a JSON parse error.
+  const actualKind = await sniffMeshKind(url, kind);
+  const raw = await loadRaw(url, actualKind);
   // Z-up STL → Y-up rotation handled here to match HeroStlCar.
-  if (kind === "stl") raw.rotateX(-Math.PI / 2);
+  if (actualKind === "stl") raw.rotateX(-Math.PI / 2);
 
   raw.computeBoundingBox();
   const box = raw.boundingBox!;
