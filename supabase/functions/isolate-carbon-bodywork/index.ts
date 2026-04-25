@@ -97,7 +97,7 @@ const ISOLATION_PROMPT_BODYSWAP =
   `• Rear deck, ducktail, swan-neck wing, end-plates, gurney\n` +
   `• Roof skin (only if the swap kit replaces it; keep stock if it's untouched)\n` +
   `• Any other body panel that is part of the swap kit\n\n` +
-  `ERASE (replace with clean medium-grey studio backdrop):\n` +
+  `ERASE (replace with clean PLAIN WHITE studio backdrop):\n` +
   `• Glass: windscreen, side windows, rear screen, headlight lenses, tail-light lenses\n` +
   `• Wheels, tyres, brake calipers, brake discs, lug nuts\n` +
   `• Mirrors (housings AND glass)\n` +
@@ -111,14 +111,14 @@ const ISOLATION_PROMPT_BODYSWAP =
   `  outer body removed and the body re-finished in raw carbon.\n` +
   `• Do NOT centre, recompose, re-frame, zoom, crop, or rescale.\n` +
   `• Preserve every panel line, shut line, vent and crease of the swap shell.\n` +
-  `• The window apertures should appear as clean cut-outs to the grey backdrop ` +
+  `• The window apertures should appear as clean cut-outs to the white backdrop ` +
   `  (no glass, no interior visible behind them).\n` +
   `• Wheel arches should appear as empty arches (no wheel inside).\n\n` +
   `OUTPUT: a single product photograph of the FULL swap shell rendered in ` +
   `raw carbon-fibre twill weave, in its original on-car position, on a clean ` +
-  `medium-grey studio backdrop with soft even product lighting and a subtle ` +
-  `ground shadow. No glass, no wheels, no interior, no background, no text, ` +
-  `no watermark.`;
+  `PLAIN WHITE studio backdrop (pure #FFFFFF) with soft even product lighting and a ` +
+  `very subtle ground shadow. No glass, no wheels, no interior, no background, ` +
+  `no text, no watermark.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
