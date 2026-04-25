@@ -173,12 +173,25 @@ export function ShellFitPanel({
 
         <div className="space-y-2">
           <Button
-            onClick={handleAutoFit}
+            onClick={handleMatchWheelbase}
             disabled={!shellRoot || !hasFrontRear}
             size="sm"
             className="h-8 w-full justify-start text-xs"
           >
-            <Ruler className="mr-2 h-3.5 w-3.5" /> Auto-fit to wheelbase
+            <Maximize2 className="mr-2 h-3.5 w-3.5" /> Match wheelbase exactly
+          </Button>
+          <p className="text-[10px] leading-snug text-muted-foreground">
+            Best fix when the shell silhouette is right but length is off — pure uniform scale, no rotation guess.
+          </p>
+
+          <Button
+            onClick={handleAutoFit}
+            disabled={!shellRoot || !hasFrontRear}
+            size="sm"
+            variant="outline"
+            className="h-8 w-full justify-start text-xs"
+          >
+            <Ruler className="mr-2 h-3.5 w-3.5" /> Auto-fit (scale + rotate)
           </Button>
           {!hasFrontRear && (
             <p className="flex items-start gap-1.5 text-[10px] text-warning">
