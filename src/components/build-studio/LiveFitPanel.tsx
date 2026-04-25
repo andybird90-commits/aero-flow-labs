@@ -216,11 +216,16 @@ export function LiveFitPanel({
       const filename = `live-fit-${part.id}-${Date.now()}.stl`;
       const path = `${userId}/${filename}`;
       const { error: upErr } = await supabase.storage
-        .from("library")
+        .from("geometries")
         .upload(path, blob, { contentType: "model/stl", upsert: true });
       if (upErr) throw upErr;
-      const { data: pub } = supabase.storage.from("library").getPublicUrl(path);
-      const url = pub.publicUrl;
+      // 7-day signed URL — Build Studio re-resolves library_items via React Query
+      // when the placed_part repoints, and the URL is refreshed on each session.
+      const { data: signed, error: signErr } = await supabase.storage
+        .from("geometries")
+        .createSignedUrl(path, 60 * 60 * 24 * 7);
+      if (signErr || !signed?.signedUrl) throw signErr ?? new Error("Failed to sign URL");
+      const url = signed.signedUrl;
 
       const insertItem = {
         user_id: userId,
