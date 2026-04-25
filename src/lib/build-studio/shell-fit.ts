@@ -334,35 +334,44 @@ export function matchWheelbaseExact(
   const arches = detectWheelArches(shellRoot);
   if (!arches.front || !arches.rear) return null;
 
-  // Detected arches are in shell-LOCAL coords. The shell mesh has already
-  // had `currentTransform` applied in the viewport, so to match world
-  // distances we need to apply the same scale we're about to compute.
-  const shellWb = distance(arches.front, arches.rear); // shell-local metres
-  const donorWb = distance(front.position, rear.position); // world metres
-  if (shellWb < 1e-4) return null;
-
-  // Scale factor needed to make the shell arch span equal donor wheelbase.
-  const scaleFactor = donorWb / shellWb;
+  // ── Critical: detected arches are in shell-LOCAL space (i.e. AFTER the
+  // wrapper's load-time normalize-scale, but BEFORE the user's
+  // currentTransform). The shell rendered in the scene = local × scale +
+  // position, so to compare its rendered wheelbase to the donor wheelbase
+  // we must include `currentTransform.scale` on the length axis.
   const baseScale = currentTransform?.scale ?? { x: 1, y: 1, z: 1 };
-  // Apply scale uniformly relative to current scale so we honour any user
-  // height/width tweaks (we replace the *X* component which controls length).
+  const basePosition = currentTransform?.position ?? { x: 0, y: 0, z: 0 };
+  const lenAxis = arches.lengthAxis; // "x" | "y" | "z" of shell-local frame
+  const localShellWb = distance(arches.front, arches.rear);
+  if (localShellWb < 1e-4) return null;
+  // World wheelbase the user is currently *seeing* on screen.
+  const worldShellWb = localShellWb * baseScale[lenAxis];
+  const donorWb = distance(front.position, rear.position); // world metres
+  if (worldShellWb < 1e-4) return null;
+
+  // Correction factor: how much we need to multiply the *current* scale by
+  // so the rendered arch span matches the donor wheelbase exactly.
+  const correctionFactor = donorWb / worldShellWb;
   const newScale: Vec3 = {
-    x: baseScale.x * scaleFactor,
-    y: baseScale.y * scaleFactor,
-    z: baseScale.z * scaleFactor,
+    x: baseScale.x * correctionFactor,
+    y: baseScale.y * correctionFactor,
+    z: baseScale.z * correctionFactor,
   };
 
-  // Where does the midpoint of the shell arches end up in WORLD space after
-  // the new scale + current translation? We re-derive translation so the
-  // shell-arch midpoint lands on the donor wheel-centre midpoint.
+  // Re-derive translation so the shell-arch midpoint lands on the donor
+  // wheel-centre midpoint. After scale: rendered point = (local * newScale) +
+  // position. We want (shellMid * newScale) + position = donorMid.
   const shellMid = midpoint3D(arches.front, arches.rear, false);
   const donorMid = midpoint3D(front.position, rear.position, false);
-  // After scaling, shell-local point P maps to (P * newScale) + position.
-  // We want (shellMid * newScale) + position = donorMid.
   const newPosition: Vec3 = {
+    // For X/Z (length + width) — clamp the midpoint to donor.
     x: donorMid.x - shellMid.x * newScale.x,
-    y: donorMid.y - shellMid.y * newScale.y,
     z: donorMid.z - shellMid.z * newScale.z,
+    // For Y (height) — preserve the user's current vertical placement so
+    // we don't drop the body into the ground or float it above the car.
+    // We compensate for the scale change so the *current* world Y of the
+    // shell-arch midpoint stays put.
+    y: basePosition.y + shellMid.y * (baseScale.y - newScale.y),
   };
 
   return {
@@ -373,9 +382,9 @@ export function matchWheelbaseExact(
       // RMS = 0 by construction (we made the wheelbase exact).
       rms: 0,
     },
-    shellWheelbaseM: shellWb,
+    shellWheelbaseM: worldShellWb,
     donorWheelbaseM: donorWb,
-    scaleFactor,
+    scaleFactor: correctionFactor,
   };
 }
 
