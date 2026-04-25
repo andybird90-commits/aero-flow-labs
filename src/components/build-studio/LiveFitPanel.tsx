@@ -135,6 +135,30 @@ export function LiveFitPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseMeshUrl, partUrl, baseKind, partKind, baseTargetSizeM]);
 
+  /**
+   * The part geometry is loaded normalised to its own bounding box (centred at
+   * origin, scaled to PART_TARGET_SIZE). To snap it correctly against the base
+   * body we must put it in the *same* world frame the base lives in — i.e.
+   * apply the placed_part's position / rotation / scale from the viewport.
+   * Without this, every vertex thinks it lives at the origin and the snap
+   * pass shoots rays in random directions, exploding the part into spikes.
+   */
+  const partWorldMatrix = useMemo(() => {
+    const m = new THREE.Matrix4();
+    m.compose(
+      new THREE.Vector3(part.position.x, part.position.y, part.position.z),
+      new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(part.rotation.x, part.rotation.y, part.rotation.z),
+      ),
+      new THREE.Vector3(part.scale.x, part.scale.y, part.scale.z),
+    );
+    return m;
+  }, [
+    part.position.x, part.position.y, part.position.z,
+    part.rotation.x, part.rotation.y, part.rotation.z,
+    part.scale.x, part.scale.y, part.scale.z,
+  ]);
+
   // 2) Run snap (fast) on every offset change. Debounce trim (slower).
   const snapTimer = useRef<number | null>(null);
   const trimTimer = useRef<number | null>(null);
