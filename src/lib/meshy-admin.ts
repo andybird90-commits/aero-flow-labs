@@ -69,6 +69,38 @@ export function useRecordMeshyGeneration() {
   });
 }
 
+/**
+ * Kick off a new Meshy 6 image-to-3d run via the meshy-run edge function.
+ * Returns { generation_id, task_id } on success. The Admin UI then polls
+ * `meshy-run` with action="status" until the row flips to status="complete".
+ */
+export function useRunMeshy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      generation_type: MeshyGenerationType;
+      prompt: string;
+      image_url: string;
+      texture_image_url?: string | null;
+      donor_car_template_id?: string | null;
+    }) => {
+      const { data, error } = await supabase.functions.invoke("meshy-run", {
+        body: { action: "start", ...input },
+      });
+      if (error) throw error;
+      return data as { generation_id: string; task_id: string; status: string };
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["meshy_generations"] }),
+  });
+}
+
+/** Poll a single Meshy run; returns the latest status payload. */
+export function pollMeshyRun(generation_id: string) {
+  return supabase.functions.invoke("meshy-run", {
+    body: { action: "status", generation_id },
+  });
+}
+
 export function useDeleteMeshyGeneration() {
   const qc = useQueryClient();
   return useMutation({
