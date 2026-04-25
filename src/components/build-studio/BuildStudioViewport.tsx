@@ -83,17 +83,32 @@ interface ViewportProps {
 }
 
 /* ─── Real hero STL car (preferred) ─── */
+/**
+ * The car is rendered as a single THREE.Mesh whose BufferGeometry is split
+ * into up to 4 `groups` (body / glass / wheel / tyre). Each group binds to
+ * its own MeshPhysicalMaterial in the materials[] array, so users can paint
+ * the body without affecting the rims and the glass stays smoky/transparent
+ * regardless of body colour. When no material map is available yet, the mesh
+ * falls back to a single body material.
+ */
 function HeroStlCar({
   url,
   template,
   paintFinish,
+  materialTags,
 }: {
   url: string;
   template?: CarTemplate | null;
   paintFinish: PaintFinish;
+  materialTags?: Uint8Array | null;
 }) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
-  const materialRef = useRef<THREE.MeshPhysicalMaterial | null>(null);
+  const matRefs = useRef<{
+    body: THREE.MeshPhysicalMaterial | null;
+    glass: THREE.MeshPhysicalMaterial | null;
+    wheel: THREE.MeshPhysicalMaterial | null;
+    tyre: THREE.MeshPhysicalMaterial | null;
+  }>({ body: null, glass: null, wheel: null, tyre: null });
 
   useEffect(() => {
     let cancelled = false;
@@ -105,7 +120,12 @@ function HeroStlCar({
       (geo) => {
         if (cancelled) return;
         geo.computeVertexNormals();
-        const mat = new THREE.MeshPhysicalMaterial({
+
+        const triCount = geo.attributes.position.count / 3;
+        const tagsValid = materialTags && materialTags.length === triCount;
+
+        // Build materials in fixed order: 0=body, 1=glass, 2=wheel, 3=tyre.
+        const bodyMat = new THREE.MeshPhysicalMaterial({
           color: paintFinish.color,
           metalness: paintFinish.metalness,
           roughness: paintFinish.roughness,
@@ -113,8 +133,91 @@ function HeroStlCar({
           clearcoatRoughness: paintFinish.clearcoat_roughness,
           envMapIntensity: paintFinish.env_intensity,
         });
-        materialRef.current = mat;
-        const mesh = new THREE.Mesh(geo, mat);
+        matRefs.current.body = bodyMat;
+
+        let materials: THREE.Material[] = [bodyMat];
+
+        if (tagsValid) {
+          const glassFinish = paintFinish.glass ?? DEFAULT_GLASS_FINISH;
+          const wheelFinish = paintFinish.wheels ?? DEFAULT_WHEEL_FINISH;
+          const tyreFinish = paintFinish.tyres ?? DEFAULT_TYRE_FINISH;
+
+          const glassMat = new THREE.MeshPhysicalMaterial({
+            color: glassFinish.color,
+            metalness: glassFinish.metalness,
+            roughness: glassFinish.roughness,
+            clearcoat: glassFinish.clearcoat,
+            clearcoatRoughness: glassFinish.clearcoat_roughness,
+            transparent: true,
+            opacity: glassFinish.opacity ?? 0.55,
+            transmission: 0.6,
+            thickness: 0.05,
+            envMapIntensity: paintFinish.env_intensity,
+            depthWrite: false,
+          });
+          const wheelMat = new THREE.MeshPhysicalMaterial({
+            color: wheelFinish.color,
+            metalness: wheelFinish.metalness,
+            roughness: wheelFinish.roughness,
+            clearcoat: wheelFinish.clearcoat,
+            clearcoatRoughness: wheelFinish.clearcoat_roughness,
+            envMapIntensity: paintFinish.env_intensity,
+          });
+          const tyreMat = new THREE.MeshPhysicalMaterial({
+            color: tyreFinish.color,
+            metalness: tyreFinish.metalness,
+            roughness: tyreFinish.roughness,
+            clearcoat: tyreFinish.clearcoat,
+            clearcoatRoughness: tyreFinish.clearcoat_roughness,
+          });
+          matRefs.current.glass = glassMat;
+          matRefs.current.wheel = wheelMat;
+          matRefs.current.tyre = tyreMat;
+          materials = [bodyMat, glassMat, wheelMat, tyreMat];
+
+          // Build geometry groups by sorting triangles by tag so each group
+          // is a contiguous run. STLLoader produces non-indexed geometry where
+          // every 3 vertices = 1 triangle, so we permute the position buffer.
+          const positions = geo.attributes.position.array as Float32Array;
+          const normals = geo.attributes.normal.array as Float32Array;
+          const triIndices = new Uint32Array(triCount);
+          for (let i = 0; i < triCount; i++) triIndices[i] = i;
+          // Stable sort by tag.
+          triIndices.sort((a, b) => materialTags![a] - materialTags![b]);
+
+          const newPos = new Float32Array(positions.length);
+          const newNorm = new Float32Array(normals.length);
+          for (let i = 0; i < triCount; i++) {
+            const src = triIndices[i] * 9;
+            const dst = i * 9;
+            for (let k = 0; k < 9; k++) {
+              newPos[dst + k] = positions[src + k];
+              newNorm[dst + k] = normals[src + k];
+            }
+          }
+          geo.setAttribute("position", new THREE.BufferAttribute(newPos, 3));
+          geo.setAttribute("normal", new THREE.BufferAttribute(newNorm, 3));
+          geo.attributes.position.needsUpdate = true;
+          geo.attributes.normal.needsUpdate = true;
+
+          // Build groups by counting consecutive runs of the same tag.
+          geo.clearGroups();
+          let runStart = 0;
+          let runTag = materialTags![triIndices[0]];
+          for (let i = 1; i <= triCount; i++) {
+            const t = i < triCount ? materialTags![triIndices[i]] : -1;
+            if (t !== runTag) {
+              const start = runStart * 3;
+              const count = (i - runStart) * 3;
+              const matIndex = Math.min(3, Math.max(0, runTag));
+              geo.addGroup(start, count, matIndex);
+              runStart = i;
+              runTag = t;
+            }
+          }
+        }
+
+        const mesh = new THREE.Mesh(geo, materials.length === 1 ? materials[0] : (materials as THREE.Material[]));
         mesh.castShadow = true;
         mesh.receiveShadow = true;
 
@@ -147,21 +250,34 @@ function HeroStlCar({
     return () => {
       cancelled = true;
     };
-    // Intentionally NOT depending on paintFinish — material is mutated live below.
+    // Reload when the URL or the tag map changes (a new classification arriving
+    // needs to rebuild the geometry groups).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, template?.wheelbase_mm]);
+  }, [url, template?.wheelbase_mm, materialTags]);
 
   // Live-apply paint changes without reloading the STL.
   useEffect(() => {
-    const m = materialRef.current;
-    if (!m) return;
-    m.color.set(paintFinish.color);
-    m.metalness = paintFinish.metalness;
-    m.roughness = paintFinish.roughness;
-    m.clearcoat = paintFinish.clearcoat;
-    m.clearcoatRoughness = paintFinish.clearcoat_roughness;
-    m.envMapIntensity = paintFinish.env_intensity;
-    m.needsUpdate = true;
+    const apply = (m: THREE.MeshPhysicalMaterial | null, f: MaterialFinish | undefined, env: number) => {
+      if (!m || !f) return;
+      m.color.set(f.color);
+      m.metalness = f.metalness;
+      m.roughness = f.roughness;
+      m.clearcoat = f.clearcoat;
+      m.clearcoatRoughness = f.clearcoat_roughness;
+      m.envMapIntensity = env;
+      if (f.opacity !== undefined) m.opacity = f.opacity;
+      m.needsUpdate = true;
+    };
+    apply(matRefs.current.body, {
+      color: paintFinish.color,
+      metalness: paintFinish.metalness,
+      roughness: paintFinish.roughness,
+      clearcoat: paintFinish.clearcoat,
+      clearcoat_roughness: paintFinish.clearcoat_roughness,
+    }, paintFinish.env_intensity);
+    apply(matRefs.current.wheel, paintFinish.wheels, paintFinish.env_intensity);
+    apply(matRefs.current.tyre, paintFinish.tyres, paintFinish.env_intensity);
+    apply(matRefs.current.glass, paintFinish.glass, paintFinish.env_intensity);
   }, [paintFinish]);
 
   if (!object) return null;
