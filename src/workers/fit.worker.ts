@@ -69,7 +69,7 @@ self.onmessage = (e: MessageEvent) => {
       const nor = (result.attributes.normal.array as Float32Array);
       (self as any).postMessage(
         { type: "snap-result", reqId: msg.reqId, positions: pos, normals: nor },
-        [pos.buffer, nor.buffer],
+        [pos.buffer as ArrayBuffer, nor.buffer as ArrayBuffer],
       );
       return;
     }
@@ -92,8 +92,8 @@ self.onmessage = (e: MessageEvent) => {
       const idxAttr = trimmed.index;
       const idx = idxAttr ? (idxAttr.array as Uint32Array).slice() : null;
 
-      const transfer: ArrayBuffer[] = [pos.buffer, nor.buffer];
-      if (idx) transfer.push(idx.buffer);
+      const transfer: ArrayBuffer[] = [pos.buffer as ArrayBuffer, nor.buffer as ArrayBuffer];
+      if (idx) transfer.push(idx.buffer as ArrayBuffer);
 
       (self as any).postMessage(
         {
