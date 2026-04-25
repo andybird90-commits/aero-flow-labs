@@ -491,34 +491,137 @@ function CarPlaceholder({ template }: { template?: CarTemplate | null }) {
 }
 
 /* ─── Single placed part wrapper (transform + mesh) ─── */
+/**
+ * When `selected && !locked`, wraps the part in a drei <PivotControls> gizmo.
+ * The gizmo is anchored to the object so it lives *on* the part — much nicer
+ * for fine work than a centred TransformControls. We commit on `onDragEnd`.
+ *
+ * Snapping: drei's PivotControls does not have built-in snap props, so we
+ * post-process the matrix in `onDrag` to round translation to the configured
+ * grid (and rotation to multiples of `rotateSnapDeg`).
+ */
 function PlacedPartGroup({
   part,
   libraryItem,
   selected,
+  showLabel,
+  translateSnapM = 0,
+  rotateSnapDeg = 0,
   onSelect,
+  onFrame,
+  onCommit,
 }: {
   part: PlacedPart;
   libraryItem: LibraryItem | null;
   selected: boolean;
+  showLabel: boolean;
+  translateSnapM?: number;
+  rotateSnapDeg?: number;
   onSelect: () => void;
+  onFrame: (object: THREE.Object3D) => void;
+  onCommit: (patch: { position: Vec3; rotation: Vec3; scale: Vec3 }) => void;
 }) {
+  const groupRef = useRef<THREE.Group>(null);
+
   if (part.hidden) return null;
 
-  return (
+  const inner = (
     <group
+      ref={groupRef}
       name={`placed-${part.id}`}
       position={[part.position.x, part.position.y, part.position.z]}
       rotation={[part.rotation.x, part.rotation.y, part.rotation.z]}
       scale={[part.scale.x, part.scale.y, part.scale.z]}
-      onClick={(e) => {
+      onClick={(e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
         onSelect();
       }}
+      onDoubleClick={(e: ThreeEvent<MouseEvent>) => {
+        e.stopPropagation();
+        if (groupRef.current) onFrame(groupRef.current);
+      }}
     >
       <PartMesh libraryItem={libraryItem} selected={selected} locked={part.locked} />
+      {showLabel && (
+        <PartLabel
+          position={[0, 0.18, 0]}
+          text={part.part_name ?? "Part"}
+          tone={selected ? "primary" : "default"}
+        />
+      )}
     </group>
   );
+
+  if (!selected || part.locked) return inner;
+
+  return (
+    <PivotControls
+      anchor={[0, 0, 0]}
+      depthTest={false}
+      scale={75}
+      fixed
+      lineWidth={2}
+      activeAxes={[true, true, true]}
+      // PivotControls writes the matrix; we read it on drag-end and snap.
+      onDrag={(local) => {
+        const g = groupRef.current;
+        if (!g) return;
+        // Decompose drei's local matrix → t/r/s
+        const m = new THREE.Matrix4().fromArray(local.elements);
+        const t = new THREE.Vector3();
+        const q = new THREE.Quaternion();
+        const s = new THREE.Vector3();
+        m.decompose(t, q, s);
+        // Drei applies the matrix relative to the wrapped group's *initial* pose
+        // (anchor 0,0,0). We multiply with the part's stored transform to get
+        // the world-equivalent pose.
+        const base = new THREE.Matrix4().compose(
+          new THREE.Vector3(part.position.x, part.position.y, part.position.z),
+          new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(part.rotation.x, part.rotation.y, part.rotation.z),
+          ),
+          new THREE.Vector3(part.scale.x, part.scale.y, part.scale.z),
+        );
+        const world = base.clone().multiply(m);
+        const wt = new THREE.Vector3();
+        const wq = new THREE.Quaternion();
+        const ws = new THREE.Vector3();
+        world.decompose(wt, wq, ws);
+
+        // Snap translation to grid.
+        if (translateSnapM > 0) {
+          wt.x = Math.round(wt.x / translateSnapM) * translateSnapM;
+          wt.y = Math.round(wt.y / translateSnapM) * translateSnapM;
+          wt.z = Math.round(wt.z / translateSnapM) * translateSnapM;
+        }
+        // Snap rotation (around each axis) to nearest step.
+        const e = new THREE.Euler().setFromQuaternion(wq, "XYZ");
+        if (rotateSnapDeg > 0) {
+          const step = (rotateSnapDeg * Math.PI) / 180;
+          e.x = Math.round(e.x / step) * step;
+          e.y = Math.round(e.y / step) * step;
+          e.z = Math.round(e.z / step) * step;
+        }
+        // Apply visually so the next frame draws snapped.
+        g.position.copy(wt);
+        g.rotation.copy(e);
+        g.scale.copy(ws);
+      }}
+      onDragEnd={() => {
+        const g = groupRef.current;
+        if (!g) return;
+        onCommit({
+          position: { x: g.position.x, y: g.position.y, z: g.position.z },
+          rotation: { x: g.rotation.x, y: g.rotation.y, z: g.rotation.z },
+          scale: { x: g.scale.x, y: g.scale.y, z: g.scale.z },
+        });
+      }}
+    >
+      {inner}
+    </PivotControls>
+  );
 }
+
 
 /* ─── Camera preset driver ─── */
 function CameraRig({ preset, template }: { preset: CameraPreset; template?: CarTemplate | null }) {
