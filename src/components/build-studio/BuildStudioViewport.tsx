@@ -13,7 +13,6 @@ import {
   OrbitControls,
   Grid,
   Environment,
-  ContactShadows,
   GizmoHelper,
   GizmoViewcube,
 } from "@react-three/drei";
@@ -26,6 +25,9 @@ import { nearestSnapZone } from "@/lib/build-studio/snap-zones";
 import { PartMesh } from "@/components/build-studio/PartMesh";
 import { SnapZoneViz } from "@/components/build-studio/SnapZoneViz";
 import { DEFAULT_PAINT_FINISH, type EnvPreset, type PaintFinish } from "@/lib/build-studio/paint-finish";
+import { PostFX } from "@/components/build-studio/PostFX";
+import { ShowroomFloor } from "@/components/build-studio/ShowroomFloor";
+import { QUALITY_PRESETS, type RenderQuality } from "@/lib/build-studio/render-quality";
 
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
