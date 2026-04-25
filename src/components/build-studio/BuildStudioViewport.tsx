@@ -12,14 +12,13 @@ import { Canvas, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   Grid,
-  TransformControls,
   Environment,
   ContactShadows,
   GizmoHelper,
   GizmoViewcube,
 } from "@react-three/drei";
 import * as THREE from "three";
-import { STLLoader, GLTFLoader } from "three-stdlib";
+import { STLLoader, GLTFLoader, TransformControls as TransformControlsImpl } from "three-stdlib";
 import type { CarTemplate, LibraryItem } from "@/lib/repo";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import type { SnapZone } from "@/lib/build-studio/snap-zones";
@@ -570,22 +569,50 @@ function PartTransformGizmo({
   orbitRef: React.MutableRefObject<any>;
   onRelease: () => void;
 }) {
-  const ref = useRef<any>(null);
+  const { camera, gl, scene, invalidate } = useThree();
+  const controlsRef = useRef<TransformControlsImpl | null>(null);
   const releaseRef = useRef(onRelease);
   releaseRef.current = onRelease;
 
   useEffect(() => {
-    const controls = ref.current;
-    if (!controls) return;
-    const handler = (e: { value: boolean }) => {
+    const controls = new TransformControlsImpl(camera, gl.domElement);
+    controlsRef.current = controls;
+    controls.setMode(mode);
+    controls.setSize(size);
+    controls.attach(object);
+
+    const handleDragging = (e: { value: boolean }) => {
       if (orbitRef.current) orbitRef.current.enabled = !e.value;
       if (!e.value) releaseRef.current();
+      invalidate();
     };
-    controls.addEventListener("dragging-changed", handler);
-    return () => controls.removeEventListener("dragging-changed", handler);
-  }, [object, mode, orbitRef]);
+    const handleChange = () => invalidate();
 
-  return <TransformControls ref={ref} object={object} mode={mode} size={size} />;
+    controls.addEventListener("dragging-changed", handleDragging as any);
+    controls.addEventListener("change", handleChange);
+    scene.add(controls);
+
+    return () => {
+      controls.removeEventListener("dragging-changed", handleDragging as any);
+      controls.removeEventListener("change", handleChange);
+      controls.detach();
+      scene.remove(controls);
+      controls.dispose();
+      controlsRef.current = null;
+    };
+  }, [camera, gl, scene, object, orbitRef, invalidate]);
+
+  useEffect(() => {
+    controlsRef.current?.setMode(mode);
+    invalidate();
+  }, [mode, invalidate]);
+
+  useEffect(() => {
+    controlsRef.current?.setSize(size);
+    invalidate();
+  }, [size, invalidate]);
+
+  return null;
 }
 
 /** Renders all placed parts and reports the selected mesh node up. */
