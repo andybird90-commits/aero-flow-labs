@@ -24,7 +24,7 @@ declare const EdgeRuntime: {
  * preserved when fed into the multi-view mesh reconstructor (Rodin Gen-2).
  */
 const CARBON_CANVAS_PX = 1536;
-const CARBON_BG_GREY = 0xb4b4b4ff; // medium grey, matches isolation prompt
+const CARBON_BG_WHITE = 0xffffffff; // plain white studio backdrop
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,7 +53,7 @@ const ISOLATION_PROMPT_BOLTON =
   `• Rear wing, swan-neck stays, end-plates, gurney\n` +
   `• Ducktail, rear deck carbon panels\n` +
   `• Any other carbon-fibre bolt-on parts\n\n` +
-  `ERASE (replace with clean medium-grey studio backdrop):\n` +
+  `ERASE (replace with clean PLAIN WHITE studio backdrop):\n` +
   `• The painted base car body, doors, roof, A/B/C-pillars\n` +
   `• Wheels, tyres, brake calipers\n` +
   `• Glass, headlights, tail lights, mirrors, badges\n` +
@@ -68,8 +68,8 @@ const ISOLATION_PROMPT_BOLTON =
   `• Preserve the carbon weave direction, twill pattern, and clearcoat reflections ` +
   `  exactly as they appear in the input.\n\n` +
   `OUTPUT: a single product photograph of the carbon kit only, parts in their ` +
-  `original on-car positions, on a clean medium-grey studio backdrop with soft ` +
-  `even product lighting and a subtle ground shadow under each part. ` +
+  `original on-car positions, on a clean PLAIN WHITE studio backdrop (pure #FFFFFF) ` +
+  `with soft even product lighting and a very subtle ground shadow under each part. ` +
   `No car body, no wheels, no glass, no background, no text, no watermark.`;
 
 /**
@@ -97,7 +97,7 @@ const ISOLATION_PROMPT_BODYSWAP =
   `• Rear deck, ducktail, swan-neck wing, end-plates, gurney\n` +
   `• Roof skin (only if the swap kit replaces it; keep stock if it's untouched)\n` +
   `• Any other body panel that is part of the swap kit\n\n` +
-  `ERASE (replace with clean medium-grey studio backdrop):\n` +
+  `ERASE (replace with clean PLAIN WHITE studio backdrop):\n` +
   `• Glass: windscreen, side windows, rear screen, headlight lenses, tail-light lenses\n` +
   `• Wheels, tyres, brake calipers, brake discs, lug nuts\n` +
   `• Mirrors (housings AND glass)\n` +
@@ -111,14 +111,14 @@ const ISOLATION_PROMPT_BODYSWAP =
   `  outer body removed and the body re-finished in raw carbon.\n` +
   `• Do NOT centre, recompose, re-frame, zoom, crop, or rescale.\n` +
   `• Preserve every panel line, shut line, vent and crease of the swap shell.\n` +
-  `• The window apertures should appear as clean cut-outs to the grey backdrop ` +
+  `• The window apertures should appear as clean cut-outs to the white backdrop ` +
   `  (no glass, no interior visible behind them).\n` +
   `• Wheel arches should appear as empty arches (no wheel inside).\n\n` +
   `OUTPUT: a single product photograph of the FULL swap shell rendered in ` +
   `raw carbon-fibre twill weave, in its original on-car position, on a clean ` +
-  `medium-grey studio backdrop with soft even product lighting and a subtle ` +
-  `ground shadow. No glass, no wheels, no interior, no background, no text, ` +
-  `no watermark.`;
+  `PLAIN WHITE studio backdrop (pure #FFFFFF) with soft even product lighting and a ` +
+  `very subtle ground shadow. No glass, no wheels, no interior, no background, ` +
+  `no text, no watermark.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -281,7 +281,7 @@ async function isolateOne(sourceUrl: string, prompt: string): Promise<{ bytes: U
   const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const ext = mime.includes("jpeg") ? "jpg" : "png";
 
-  // Pad/letterbox onto a uniform NxN grey canvas so all four carbon views
+  // Pad/letterbox onto a uniform NxN white canvas so all four carbon views
   // share the exact same pixel scale before they hit Rodin. This is what
   // keeps the kit's inter-view proportions truthful when reconstructed.
   try {
@@ -293,7 +293,7 @@ async function isolateOne(sourceUrl: string, prompt: string): Promise<{ bytes: U
   }
 }
 
-/** Letterbox a PNG/JPG onto a square `size` canvas with neutral grey backdrop. */
+/** Letterbox a PNG/JPG onto a square `size` canvas with a plain white backdrop. */
 async function padToSquareCanvas(bytes: Uint8Array, size: number): Promise<Uint8Array> {
   const decoded = await decodeImg(bytes);
   // imagescript returns Image | GIF — for our purposes we coerce to Image.
@@ -305,7 +305,7 @@ async function padToSquareCanvas(bytes: Uint8Array, size: number): Promise<Uint8
   const th = Math.max(1, Math.round(sh * scale));
   const resized = src.clone().resize(tw, th);
   const canvas = new Image(size, size);
-  canvas.fill(CARBON_BG_GREY);
+  canvas.fill(CARBON_BG_WHITE);
   const dx = Math.floor((size - tw) / 2);
   const dy = Math.floor((size - th) / 2);
   canvas.composite(resized, dx, dy);
