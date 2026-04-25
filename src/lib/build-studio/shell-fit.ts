@@ -126,13 +126,16 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
   const widthCentre = (min[widthAxis] + max[widthAxis]) / 2;
 
   // ── Arch-LIP detection via length-binned local Y minima ───────────────
-  // Old approach (centroid of lower-outer band) was dragged toward rear
-  // wings, side skirts and diffusers. The *real* arch lip is the LOCAL
-  // MINIMUM of Y inside each length-axis bin — i.e. the lowest body
-  // point at that X position. We bin the length axis into N slots, take
-  // the min-Y vertex in each, then fit two clusters (front half, rear
-  // half) and return the *length-axis weighted mean of arch lips* — which
-  // sits very close to the wheel hub for almost every car body.
+  // The real arch lip is the LOCAL MINIMUM of Y inside each length-axis
+  // bin — i.e. the lowest body point at that length position. We bin the
+  // length axis, take the min-Y vertex in each, then fit two clusters
+  // (front half, rear half) weighted by arch depth.
+  //
+  // CRITICAL: we exclude the outermost ~12% at each end of the length axis
+  // because splitters, diffusers and rear wings dip lower than wheel arches
+  // and, if included, drag the detected arch centre off the wheels —
+  // producing a wildly wrong shell wheelbase. Real wheel arches always sit
+  // within the 12–88% length band on production cars.
   const N_BINS = 80;
   const binMinY = new Float32Array(N_BINS).fill(Infinity);
   const binAtMinX = new Float32Array(N_BINS);
@@ -142,6 +145,11 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
   if (lenSpan < 1e-6)
     return { front: null, rear: null, sampleCount: 0, lengthAxis: lenAxis };
 
+  // Length-axis trim band — ignore overhanging aero appendages.
+  const lenTrim = 0.12;
+  const lenLo = min[lenAxis] + lenSpan * lenTrim;
+  const lenHi = max[lenAxis] - lenSpan * lenTrim;
+
   let total = 0;
   for (const flat of allPositions) {
     for (let i = 0; i < flat.length; i += 3) {
@@ -150,10 +158,11 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
       const z = flat[i + 2];
       total++;
       if (y > yCut) continue;
+      const lenVal = lenAxis === "x" ? x : lenAxis === "y" ? y : z;
+      if (lenVal < lenLo || lenVal > lenHi) continue; // skip splitter/diffuser/wing zone
       const widthVal = widthAxis === "x" ? x : widthAxis === "y" ? y : z;
       if (Math.abs(widthVal - widthCentre) < widthCut) continue;
-      const lenVal = lenAxis === "x" ? x : lenAxis === "y" ? y : z;
-      const t = (lenVal - min[lenAxis]) / lenSpan;
+      const t = (lenVal - lenLo) / (lenHi - lenLo);
       const bin = Math.min(N_BINS - 1, Math.max(0, Math.floor(t * N_BINS)));
       if (y < binMinY[bin]) {
         binMinY[bin] = y;
@@ -164,16 +173,13 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
     }
   }
 
-  // Bin centres along length axis — used to split front/rear and to
-  // weight by depth-of-arch (deeper = more confident arch lip).
   const archBins: { len: number; x: number; y: number; z: number; depth: number }[] = [];
-  // The body's "ground" Y inside the bottom band is the median min-Y across
-  // bins that have *any* sample — we use it to compute arch depth.
   const validYs = Array.from(binMinY).filter((y) => Number.isFinite(y));
   if (validYs.length < 8)
     return { front: null, rear: null, sampleCount: total, lengthAxis: lenAxis };
   validYs.sort((a, b) => a - b);
-  const groundY = validYs[Math.floor(validYs.length * 0.85)]; // top of distribution = body floor between arches
+  // Body floor (between arches) ≈ 85th percentile of bin min-Ys.
+  const groundY = validYs[Math.floor(validYs.length * 0.85)];
   for (let bin = 0; bin < N_BINS; bin++) {
     if (!Number.isFinite(binMinY[bin])) continue;
     const len =
@@ -185,8 +191,10 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
   if (archBins.length < 4)
     return { front: null, rear: null, sampleCount: total, lengthAxis: lenAxis };
 
-  // Split into front/rear by length midpoint, weight by depth².
-  const lenMid = (min[lenAxis] + max[lenAxis]) / 2;
+  // Split into front/rear by length midpoint, weight by depth² so the
+  // *deepest* dip in each half (the wheel arch peak) dominates over
+  // shallower undulations.
+  const lenMid = (lenLo + lenHi) / 2;
   let fSx = 0, fSy = 0, fSz = 0, fW = 0;
   let rSx = 0, rSy = 0, rSz = 0, rW = 0;
   for (const b of archBins) {
