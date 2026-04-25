@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
       .upsert(
         {
           car_stl_id: body.car_stl_id,
-          method: "geometric",
+          method: CLASSIFIER_VERSION,
           triangle_count: triCount,
           tag_blob_b64: tagBlobB64,
           stats,
