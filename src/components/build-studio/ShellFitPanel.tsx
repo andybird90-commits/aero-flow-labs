@@ -115,7 +115,7 @@ export function ShellFitPanel({
     const result = matchWheelbaseExact(shellRoot, carHardpoints, currentTransform);
     if (!result) {
       toast.error(
-        "Couldn't detect wheel arches on this shell. Try Auto-fit or the manual hardpoint method.",
+        "Couldn't detect wheel arches on this shell — the side outline may be too smooth or the body too wide. Try the manual hardpoint method.",
       );
       return;
     }
@@ -127,9 +127,19 @@ export function ShellFitPanel({
     });
     const deltaMm = Math.round((result.donorWheelbaseM - result.shellWheelbaseM) * 1000);
     const sign = deltaMm >= 0 ? "+" : "";
-    toast.success(
-      `Wheelbase matched (${result.donorWheelbaseM.toFixed(2)} m) — scaled ${(result.scaleFactor * 100).toFixed(1)}% (${sign}${deltaMm} mm)`,
-    );
+    // Warn if the detection looks suspect (correction factor outside 0.6–1.6)
+    // — that usually means the heuristic latched onto the skirt or splitter,
+    // not the actual wheel arches.
+    const f = result.scaleFactor;
+    if (f < 0.6 || f > 1.6) {
+      toast.warning(
+        `Detected wheelbase ${result.shellWheelbaseM.toFixed(2)} m vs donor ${result.donorWheelbaseM.toFixed(2)} m — that's a ${(f * 100).toFixed(0)}% correction. Likely a mis-detected arch. Use manual hardpoint pairs for a reliable fit.`,
+      );
+    } else {
+      toast.success(
+        `Wheelbase matched (${result.donorWheelbaseM.toFixed(2)} m) — scaled ${(f * 100).toFixed(1)}% (${sign}${deltaMm} mm)`,
+      );
+    }
   };
 
   const handleSolveLocked = () => {
