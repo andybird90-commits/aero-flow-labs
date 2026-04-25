@@ -63,6 +63,8 @@
         "tailwind-merge": "^2.6.0",
         "tailwindcss-animate": "^1.0.7",
         "three": "^0.160.0",
+        "three-bvh-csg": "0.0.17",
+        "three-mesh-bvh": "0.7.8",
         "three-stdlib": "^2.36.1",
         "vaul": "^0.9.9",
         "zod": "^4.3.6",
@@ -1156,6 +1158,8 @@
     "thenify-all": ["thenify-all@1.6.0", "", { "dependencies": { "thenify": ">= 3.1.0 < 4" } }, "sha512-RNxQH/qI8/t3thXJDwcstUO4zeqo64+Uy/+sNVRBx4Xn2OX+OZ9oP+iJnNFqplFra2ZUVeKCSa2oVWi3T4uVmA=="],
 
     "three": ["three@0.160.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/three/-/three-0.160.1.tgz", {}, "sha512-Bgl2wPJypDOZ1stAxwfWAcJ0WQf7QzlptsxkjYiURPz+n5k4RBDLsq+6f9Y75TYxn6aHLcWz+JNmwTOXWrQTBQ=="],
+
+    "three-bvh-csg": ["three-bvh-csg@0.0.17", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/three-bvh-csg/-/three-bvh-csg-0.0.17.tgz", { "peerDependencies": { "three": ">=0.151.0", "three-mesh-bvh": ">=0.6.6" } }, "sha512-iEkHDF8GRfGM6593Cuw8SnF1vfENCp46gIAtRzuL4nGXGWPcR1sbTBwM9ptDONb5twqlZp5WkAKya5aBKe2qcA=="],
 
     "three-mesh-bvh": ["three-mesh-bvh@0.7.8", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/three-mesh-bvh/-/three-mesh-bvh-0.7.8.tgz", { "peerDependencies": { "three": ">= 0.151.0" } }, "sha512-BGEZTOIC14U0XIRw3tO4jY7IjP7n7v24nv9JXS1CyeVRWOCkcOMhRnmENUjuV39gktAw4Ofhr0OvIAiTspQrrw=="],
 
