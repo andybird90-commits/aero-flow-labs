@@ -48,6 +48,10 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 /** Distance (in donor mm) below which a shell vertex is considered "on the donor". */
 const TOLERANCE_MM = 4;
 const MIN_SPLIT_TRIANGLES = 80;
+/** Cap input triangle counts so the bake stays under the edge CPU budget. */
+const MAX_INPUT_TRIS = 60_000;
+
+declare const EdgeRuntime: { waitUntil: (p: Promise<unknown>) => void } | undefined;
 
 interface Vec3 { x: number; y: number; z: number }
 
