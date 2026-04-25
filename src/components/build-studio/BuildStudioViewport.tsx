@@ -26,6 +26,7 @@ import type { SnapZone } from "@/lib/build-studio/snap-zones";
 import { nearestSnapZone } from "@/lib/build-studio/snap-zones";
 import { PartMesh } from "@/components/build-studio/PartMesh";
 import { SnapZoneViz } from "@/components/build-studio/SnapZoneViz";
+import { DEFAULT_PAINT_FINISH, type EnvPreset, type PaintFinish } from "@/lib/build-studio/paint-finish";
 
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
