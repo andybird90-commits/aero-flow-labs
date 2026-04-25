@@ -655,6 +655,7 @@ export function BuildStudioViewport({
   shellTransform,
   shellEditMode,
   onShellCommit,
+  onShellMeshReady,
   parts,
   libraryItemsById,
   snapZones = [],
