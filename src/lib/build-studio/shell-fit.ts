@@ -97,7 +97,8 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
     allPositions.push(flat);
   });
 
-  if (localBox.isEmpty()) return { front: null, rear: null, sampleCount: 0 };
+  if (localBox.isEmpty())
+    return { front: null, rear: null, sampleCount: 0, lengthAxis: "x" };
 
   const size = new THREE.Vector3();
   localBox.getSize(size);
@@ -119,29 +120,29 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
   // Bottom band: lower 35% of height — wheel arches live there.
   const yCut = min.y + size.y * 0.35;
 
-  // Outer band: |width-axis| > 60% of half-width — outermost surfaces only.
-  // This rejects the inside-of-cabin verts that would otherwise drag the
-  // centroid inward.
+  // Outer band: |width-axis - centre| > 55% of half-width — outermost only.
   const halfWidth = size[widthAxis] / 2;
   const widthCut = halfWidth * 0.55;
   const widthCentre = (min[widthAxis] + max[widthAxis]) / 2;
 
-  // Length midpoint — splits front/rear.
-  const lenMid = (min[lenAxis] + max[lenAxis]) / 2;
+  // ── Arch-LIP detection via length-binned local Y minima ───────────────
+  // Old approach (centroid of lower-outer band) was dragged toward rear
+  // wings, side skirts and diffusers. The *real* arch lip is the LOCAL
+  // MINIMUM of Y inside each length-axis bin — i.e. the lowest body
+  // point at that X position. We bin the length axis into N slots, take
+  // the min-Y vertex in each, then fit two clusters (front half, rear
+  // half) and return the *length-axis weighted mean of arch lips* — which
+  // sits very close to the wheel hub for almost every car body.
+  const N_BINS = 80;
+  const binMinY = new Float32Array(N_BINS).fill(Infinity);
+  const binAtMinX = new Float32Array(N_BINS);
+  const binAtMinY = new Float32Array(N_BINS);
+  const binAtMinZ = new Float32Array(N_BINS);
+  const lenSpan = max[lenAxis] - min[lenAxis];
+  if (lenSpan < 1e-6)
+    return { front: null, rear: null, sampleCount: 0, lengthAxis: lenAxis };
 
-  // Accumulators for front + rear arch centroids.
-  let frontSum = new THREE.Vector3();
-  let frontCount = 0;
-  let rearSum = new THREE.Vector3();
-  let rearCount = 0;
   let total = 0;
-
-  // Track lowest Y per side too — arch lip is roughly at min-Y of the cluster
-  // and we want the *centre* of the wheel cutout (~hub height), which is
-  // ~0.5 * (lip height + lip height + arch radius). For a simple, robust
-  // proxy we use the arithmetic mean Y of the bottom-band outer-band points
-  // in each X cluster. Empirically this lands within ~5cm of true hub for
-  // production car bodies.
   for (const flat of allPositions) {
     for (let i = 0; i < flat.length; i += 3) {
       const x = flat[i + 0];
@@ -152,40 +153,55 @@ export function detectWheelArches(root: THREE.Object3D): DetectedArches {
       const widthVal = widthAxis === "x" ? x : widthAxis === "y" ? y : z;
       if (Math.abs(widthVal - widthCentre) < widthCut) continue;
       const lenVal = lenAxis === "x" ? x : lenAxis === "y" ? y : z;
-      const p = new THREE.Vector3(x, y, z);
-      if (lenVal > lenMid) {
-        frontSum.add(p);
-        frontCount++;
-      } else {
-        rearSum.add(p);
-        rearCount++;
+      const t = (lenVal - min[lenAxis]) / lenSpan;
+      const bin = Math.min(N_BINS - 1, Math.max(0, Math.floor(t * N_BINS)));
+      if (y < binMinY[bin]) {
+        binMinY[bin] = y;
+        binAtMinX[bin] = x;
+        binAtMinY[bin] = y;
+        binAtMinZ[bin] = z;
       }
     }
   }
 
-  // Need a meaningful sample on each side or we can't trust the centroid.
-  const minSamples = 60;
-  const front =
-    frontCount >= minSamples
-      ? toVec(frontSum.multiplyScalar(1 / frontCount))
-      : null;
-  const rear =
-    rearCount >= minSamples
-      ? toVec(rearSum.multiplyScalar(1 / rearCount))
-      : null;
-
-  // The detected arch is car-front vs car-rear *in shell local space*. The
-  // donor car's "front" hardpoint sits at the front of the donor car. The
-  // shell loader does not guarantee either orientation, so we tag by which
-  // cluster has the larger length-axis value (= "front of shell"). The
-  // caller is responsible for matching that to the donor's front hardpoint
-  // — we expose both candidates and let auto-fit pair them.
-  return { front, rear, sampleCount: total };
-
-  function toVec(p: THREE.Vector3): Vec3 {
-    return v(p.x, p.y, p.z);
+  // Bin centres along length axis — used to split front/rear and to
+  // weight by depth-of-arch (deeper = more confident arch lip).
+  const archBins: { len: number; x: number; y: number; z: number; depth: number }[] = [];
+  // The body's "ground" Y inside the bottom band is the median min-Y across
+  // bins that have *any* sample — we use it to compute arch depth.
+  const validYs = Array.from(binMinY).filter((y) => Number.isFinite(y));
+  if (validYs.length < 8)
+    return { front: null, rear: null, sampleCount: total, lengthAxis: lenAxis };
+  validYs.sort((a, b) => a - b);
+  const groundY = validYs[Math.floor(validYs.length * 0.85)]; // top of distribution = body floor between arches
+  for (let bin = 0; bin < N_BINS; bin++) {
+    if (!Number.isFinite(binMinY[bin])) continue;
+    const len =
+      lenAxis === "x" ? binAtMinX[bin] : lenAxis === "y" ? binAtMinY[bin] : binAtMinZ[bin];
+    const depth = groundY - binMinY[bin]; // positive = bin dips lower than body floor
+    if (depth <= 0) continue;
+    archBins.push({ len, x: binAtMinX[bin], y: binAtMinY[bin], z: binAtMinZ[bin], depth });
   }
-}
+  if (archBins.length < 4)
+    return { front: null, rear: null, sampleCount: total, lengthAxis: lenAxis };
+
+  // Split into front/rear by length midpoint, weight by depth².
+  const lenMid = (min[lenAxis] + max[lenAxis]) / 2;
+  let fSx = 0, fSy = 0, fSz = 0, fW = 0;
+  let rSx = 0, rSy = 0, rSz = 0, rW = 0;
+  for (const b of archBins) {
+    const w = b.depth * b.depth;
+    if (b.len > lenMid) {
+      fSx += b.x * w; fSy += b.y * w; fSz += b.z * w; fW += w;
+    } else {
+      rSx += b.x * w; rSy += b.y * w; rSz += b.z * w; rW += w;
+    }
+  }
+
+  const front = fW > 0 ? v(fSx / fW, fSy / fW, fSz / fW) : null;
+  const rear = rW > 0 ? v(rSx / rW, rSy / rW, rSz / rW) : null;
+
+  return { front, rear, sampleCount: total, lengthAxis: lenAxis };
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Auto-fit to wheelbase
