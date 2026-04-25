@@ -263,6 +263,50 @@ export type Database = {
           },
         ]
       }
+      car_material_maps: {
+        Row: {
+          ai_notes: string | null
+          car_stl_id: string
+          created_at: string
+          id: string
+          method: string
+          stats: Json
+          tag_blob_b64: string
+          triangle_count: number
+          updated_at: string
+        }
+        Insert: {
+          ai_notes?: string | null
+          car_stl_id: string
+          created_at?: string
+          id?: string
+          method?: string
+          stats?: Json
+          tag_blob_b64: string
+          triangle_count: number
+          updated_at?: string
+        }
+        Update: {
+          ai_notes?: string | null
+          car_stl_id?: string
+          created_at?: string
+          id?: string
+          method?: string
+          stats?: Json
+          tag_blob_b64?: string
+          triangle_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "car_material_maps_car_stl_id_fkey"
+            columns: ["car_stl_id"]
+            isOneToOne: true
+            referencedRelation: "car_stls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       car_stls: {
         Row: {
           bbox_max_mm: Json | null
