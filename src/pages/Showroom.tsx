@@ -34,6 +34,7 @@ import {
   Smartphone,
   Sparkles,
   Trash2,
+  Box,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -78,6 +79,9 @@ import {
 } from "@/components/showroom/ShowroomScene";
 import { useCameraBookmarks, type CameraBookmark } from "@/lib/showroom/bookmarks";
 import { captureCanvasPng, recordTurntable } from "@/lib/showroom/capture";
+import { exportSceneToUSDZ, isIOSDevice } from "@/lib/showroom/usdz-export";
+import { ARHud } from "@/components/showroom/ARHud";
+import { arStore } from "@/lib/showroom/ar-anchor";
 
 type CameraPreset = "front" | "rear" | "left" | "right" | "top" | "three_quarter";
 
