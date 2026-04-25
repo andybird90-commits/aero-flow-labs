@@ -8,10 +8,10 @@
  *   - one row per detected panel in `body_kit_parts` (front_splitter,
  *     side_skirt, rear_wing, ...).
  *
- * Step 2 ships the read/queue hooks only — the actual baking happens in a
- * follow-up edge function (`bake-bodykit-from-shell`). Until that lands,
- * `useBakeBodyKit` simply creates a queued row so the UI can show progress
- * once the worker is wired up.
+ * Step 2 ships the read/queue hooks only — the actual baking happens in the
+ * `bake-bodykit-from-shell` edge function, which dispatches to the external
+ * Blender worker (boolean subtract + island split) and ingests the panels
+ * back as `body_kit_parts` rows.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -145,7 +145,7 @@ export function bodyKitStatusLabel(status: BodyKitStatus): string {
   switch (status) {
     case "idle": return "Draft";
     case "queued": return "Queued";
-    case "baking": return "Baking";
+    case "baking": return "Baking (Blender)";
     case "subtracting": return "Subtracting donor";
     case "splitting": return "Splitting panels";
     case "ready": return "Ready";

@@ -1,138 +1,82 @@
-# One-click auto-split for clean CAD car meshes
+# Fix stuck bodykit bake by moving it to Blender
 
-**Goal:** Upload a hero STL, click **Auto-split into panels**, get back ~10–14 named panels (hood, doors, bumpers, fenders, roof, mirrors, wheels), each registered as a swappable Build Studio part with auto-placed hardpoints — with **zero manual cleanup** on clean inputs.
+## Diagnosis (confirmed from logs)
 
-**Honest scope:** Targets clean CAD/game-ready meshes (your stated input). Will refuse gracefully on heavily smoothed scans rather than producing garbage.
+- `body_kits` row `472b54fe…` is stuck in status `baking` since 21:43.
+- `bake-bodykit-from-shell` edge function logs show **`ERROR CPU Time exceeded`** ~4 seconds after invocation.
+- The current implementation tries to do CSG-style subtraction + crease splitting + welding **inside the Lovable Cloud edge runtime**, which has a hard ~5s CPU-time cap. `EdgeRuntime.waitUntil()` does *not* extend that cap — it only extends the response window.
+- Result: every non-trivial shell mesh fails. The pipeline is fundamentally in the wrong place.
 
----
+## Why fix this with Blender (not by tuning the edge function)
 
-## 1 · Backend: shut-line splitter
+Blender already runs as `apex-blender-worker` on the Hetzner box at `https://blender.apexnext.co.uk`. It:
+- has minutes of CPU, not seconds;
+- does proper boolean CSG (donor-subtract) instead of our vertex-distance heuristic, which gives clean panel edges;
+- can do mesh-island separation + bbox-based slot classification natively;
+- already has the upload-back path wired (`upload-blender-output` edge function).
 
-**New file:** `supabase/functions/_shared/stl-split-by-creases.ts`
+The cost is one new Blender op + a refactor of the bake function into a dispatcher.
 
-Pure-TS, no Blender needed. Pipeline:
+## Changes
 
-1. **Weld vertices** — spatial hash at 1e-5 m tolerance so welded but coincident vertices share an index.
-2. **Build edge → triangle adjacency** — `Map<edgeKey, [triA, triB]>`.
-3. **Mark sharp edges** — for each shared edge, compute dihedral angle from face normals. Mark sharp if `angle > threshold` (default **45°**, tuned for game-ready CAD where shut lines are typically 60–90°).
-4. **Constrained flood-fill** — BFS from each unvisited triangle, traversing only across non-sharp edges. Each fill = one raw component.
-5. **Sliver merge** — components with `< 200 triangles` OR `< 0.5%` of total mesh area get merged into their largest neighboring component (across the sharp edge with the most shared length).
-6. **Boundary extraction** — for each surviving component, collect the loop(s) of edges that border another component. These are the **mating surfaces**.
+### 1. New Blender op: `bake_bodykit`
+File: `blender-worker/worker.py` (add a new operation alongside the existing fit/repair/decimate ops).
 
-Returns: `{ components: Array<{ triangleIndices, vertexCount, areaM2, bbox, boundaryLoops }> }`.
+Inputs:
+- `donor_stl_url` — signed URL to donor car STL
+- `shell_stl_url` — signed URL to body skin STL
+- `baked_transform` — `{position, rotation, scale}` snapshot
+- `tolerance_mm` — default 4
+- `min_panel_tris` — default 80
 
-## 2 · Backend: panel slot classifier
+Pipeline inside Blender:
+1. Import donor + shell STLs.
+2. Apply baked transform to shell (convert m→mm for translation, XYZ Euler for rotation).
+3. Boolean DIFFERENCE: `shell - donor` (with a small inflation on donor to absorb tolerance_mm).
+4. Separate by loose parts.
+5. For each island: compute bbox, centroid, area, dominant normal.
+6. Classify slot from bbox position vs. donor bbox (front/rear by X, side_skirt by |Y|, rear_wing by Z high + rear, splitter by Z low + front, etc.) — same rules currently in `classify-car-panels.ts`, ported to Python.
+7. Export combined STL + one STL per island.
+8. POST each STL back via `upload-blender-output` and return:
+   ```json
+   { "combined_url": "...", "panels": [{slot, label, confidence, url, triangle_count, bbox, centroid}] }
+   ```
 
-**New file:** `supabase/functions/_shared/classify-car-panels.ts`
+### 2. Rewrite `supabase/functions/bake-bodykit-from-shell/index.ts` as a dispatcher
+- Keep the same request signature (`{ body_kit_id }`).
+- Load kit + skin + donor rows (cheap DB work, well under CPU budget).
+- Sign donor + shell STLs.
+- POST to `${BLENDER_WORKER_URL}/bake_bodykit` with the payload above + bearer `BLENDER_WORKER_TOKEN`.
+- Use `EdgeRuntime.waitUntil()` only for the *fetch + DB writes*, not for any mesh math.
+- On worker response: download each panel's signed URL, upload to `body-skins/bodykits/<kit_id>/...`, insert `body_kit_parts` rows, flip status `ready`.
+- On any failure (worker timeout, classification empty, etc.): flip to `failed` with the error message.
 
-Given the split components and the car's known forward axis (already stored in `car_stls.forward_axis`), classify each component into one of these slots by bounding-box geometry relative to the car's overall bbox:
+### 3. Status transitions
+Stay aligned with existing UI labels in `body-kits.ts`:
+`queued → baking → splitting → ready` (we drop the `subtracting` intermediate since Blender does it in one shot).
 
-| Slot | Heuristic |
-|---|---|
-| `hood` | Top surface, front 1/3 length, full width, near-flat normal-up area > 60% |
-| `roof` | Top surface, middle 1/3 length, full width |
-| `front_bumper` | Front 15% length, bottom-to-mid height, full width |
-| `rear_bumper` | Rear 15% length, bottom-to-mid height, full width |
-| `door_l` / `door_r` | Mid length, mid height, one side only (Y < 0 / Y > 0) |
-| `fender_l` / `fender_r` | Front 1/3, mid height, one side, contains a wheel arch cut-out |
-| `mirror_l` / `mirror_r` | Small (< 2% mesh area), high Y offset, mid height, attached to door region |
-| `wheel_l_f`, `wheel_l_r`, `wheel_r_f`, `wheel_r_r` | Cylindrical (analyzed via normal distribution), at known wheel positions |
-| `unknown_<n>` | Anything that fails all classifiers — kept but flagged |
+### 4. Recover the currently-stuck row
+The existing `472b54fe…` row will be left in `baking` forever. After deploying:
+- Add a one-shot SQL migration that flips any `body_kits` row stuck in `baking`/`subtracting`/`splitting` for >10 minutes to `failed` with error "Stale bake — please retry".
+- Then the UI's existing delete button + "Bake bodykit" can be retried by the user.
 
-Components scoring `< 0.6` confidence on their best slot get tagged `unknown_<n>` and surfaced in the UI for manual labeling (this respects your "zero clicks" rule for the success path while not silently mislabeling edge cases).
+### 5. Worker side: confirm `BLENDER_WORKER_URL` is reachable from edge
+Already verified earlier today: `https://blender.apexnext.co.uk/health` returns `{ok:true, blender_exists:true}`. No infra work needed.
 
-## 3 · Backend: hardpoint auto-placement
+## Out of scope (explicitly)
 
-**Inside the same edge function:** for each classified panel, walk its `boundaryLoops`:
+- We're **not** changing the bake UI, the `body_kits` schema, or the `body_kit_parts` schema.
+- We're **not** porting all 14 ops from the schema file — only `bake_bodykit` for now. The other ops can move to Blender opportunistically as users hit similar limits.
+- The browser-side viewer code that reads `body_kit_parts` rows is unchanged.
 
-- **Centroid** of each loop = candidate hardpoint position
-- **Normal** = average of triangle normals along the loop
-- **Tangent** = principal axis of the loop's vertex covariance matrix
+## Risk / rollback
 
-These three vectors define a snap frame. Save as rows in the existing `hardpoints` table (already used by `HardpointsAdminViewport`). Each panel gets 1–4 hardpoints depending on how many neighbors it had.
+- If the Blender worker is down, bakes will fail fast with a clear error (instead of hanging) — strictly better than today.
+- Old behaviour is fully replaced; there is no fallback path. If we need to revert, restore `bake-bodykit-from-shell/index.ts` from git.
 
-This is the high-value bit: hardpoints come from **actual mating geometry**, not from a human guessing where the bumper bolts on.
+## Acceptance test
 
-## 4 · New edge function
-
-**New file:** `supabase/functions/auto-split-car-stl/index.ts`
-
-```
-POST /auto-split-car-stl  { car_stl_id }
-```
-
-Flow:
-1. Load `repaired_stl_path` (auto-split requires the repair pass to have run — enforced in UI).
-2. Fetch STL bytes from `car-stls` bucket.
-3. Run `stl-split-by-creases` → raw components.
-4. Run `classify-car-panels` → labeled panels.
-5. Compute auto-hardpoints per panel.
-6. Write each panel as a separate STL into `car-stls/<car_stl_id>/panels/<slot>.stl`.
-7. Insert rows into a new `car_panels` table (see below) and matching `hardpoints` rows.
-8. Return summary: `{ totalPanels, namedPanels, unknownPanels, splitConfidence }`.
-
-Runs synchronously — typical clean CAD STL (~500k tris) processes in 8–15s server-side, well within edge timeout.
-
-## 5 · Database migration
-
-**New table `car_panels`:**
-
-```
-id, car_stl_id (fk), slot (text), confidence (real),
-stl_path (text), triangle_count (int), area_m2 (real),
-bbox jsonb, created_at
-```
-
-RLS: only admins can write; authenticated can read panels for any car_stl they have access to (i.e., same as `car_stls`).
-
-Existing `hardpoints` table gets a new optional FK `car_panel_id`. When present, the hardpoint represents an auto-derived mating surface; when null, it's a hand-placed one from `HardpointsAdmin`.
-
-## 6 · UI: Admin (`AdminCarStls.tsx`)
-
-After the **Run repair** button, add a third action per row:
-
-- **`✂️ Auto-split panels`** — disabled until repaired & manifold. Shows a confirmation dialog with the dihedral threshold slider (default 45°, advanced users only) and a "this will replace existing panels" warning if `car_panels` rows already exist for this car.
-- After running, the row expands inline to show a **preview panel list** with each detected slot, triangle count, confidence chip (green / yellow / red), and a "View" button that opens a 3D viewer with each panel colored differently.
-- For any `unknown_<n>` panels, a dropdown lets the admin pick the correct slot label without re-running the split. This is the only "click" required, and only on imperfect inputs.
-
-## 7 · UI: Build Studio integration
-
-- `PartLibraryRail` gets a new **"Body panels"** section, populated from `car_panels` rows for the currently active hero car.
-- Selecting a panel in the rail **toggles its visibility** on the base car (the existing single-mesh base car is still rendered, but with the toggled panel's triangles masked out via vertex group).
-- Replacement parts can now snap to the hardpoints derived from that panel's boundary loops — no more guessing where the bumper attaches.
-
-## 8 · Honest fallback for the 15%
-
-If the splitter returns `< 4` components for the entire car, that's a strong signal the input doesn't have detectable shut lines (heavily smoothed scan, single watertight blob). Edge function returns `{ ok: false, reason: 'no_shut_lines_detected', componentsFound: N }` and the UI shows:
-
-> "This mesh doesn't have detectable panel seams. The car will still work as a non-splittable base. To enable panel-level swaps, re-export from CAD with separate panel objects, or use a higher-quality source mesh."
-
-No silent corruption, no fake panels.
-
----
-
-## Files touched
-
-**New:**
-- `supabase/functions/_shared/stl-split-by-creases.ts`
-- `supabase/functions/_shared/classify-car-panels.ts`
-- `supabase/functions/auto-split-car-stl/index.ts`
-- `src/lib/build-studio/car-panels.ts` (client repo helpers + React Query hooks)
-- `src/components/admin/CarPanelsPreview.tsx` (3D coloured-by-component viewer)
-- DB migration: `car_panels` table + `hardpoints.car_panel_id` column
-
-**Modified:**
-- `src/pages/AdminCarStls.tsx` — Auto-split button + inline preview
-- `src/components/build-studio/PartLibraryRail.tsx` — Body panels section
-- `src/components/build-studio/BuildStudioViewport.tsx` — panel-masked base car render
-- `src/lib/build-studio/hardpoints.ts` — read auto-derived hardpoints
-
----
-
-## What I'm explicitly NOT doing in v1
-
-- No paint/brush manual splitter (you said zero clicks — adding it would imply auto isn't trusted)
-- No symmetry detection to guarantee `door_l` and `door_r` are mirror-perfect (they will be 99% of the time on clean CAD; if not, it's a signal the car itself isn't symmetric)
-- No segmentation of underbody/interior (out of scope for aero-kit work)
-
-If after testing on real STLs the unknown-rate is too high, the realistic next step is **option B: a 5-second manual touch-up brush**, not "make the auto-detector smarter" — at some point the input quality is the bottleneck, not the algorithm.
+1. On `/build-studio` with the `986 Hypercar` project, click "Bake bodykit from current shell".
+2. Status chip transitions `queued → baking → splitting → ready` within ~30–60s.
+3. `body_kit_parts` rows appear with sensible slot labels (`front_splitter`, `side_skirt`, etc.).
+4. Each panel STL downloads from the `body-skins` bucket and renders in the viewer.
