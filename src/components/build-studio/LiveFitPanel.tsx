@@ -183,34 +183,6 @@ export function LiveFitPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offsetMm, trim, partGeo, baseReady, partWorldMatrix]);
 
-  /**
-   * The part geometry is loaded normalised to its own bounding box (centred at
-   * origin, scaled to PART_TARGET_SIZE). To snap it correctly against the base
-   * body we must put it in the *same* world frame the base lives in — i.e.
-   * apply the placed_part's position / rotation / scale from the viewport.
-   *
-   * We bake that transform into the positions before sending to the worker,
-   * then bake the inverse onto the result so the preview renders centred and
-   * the saved geometry stays in part-local space (the placed_part transform
-   * still positions it in the world).
-   */
-  const partWorldMatrix = useMemo(() => {
-    const m = new THREE.Matrix4();
-    m.compose(
-      new THREE.Vector3(part.position.x, part.position.y, part.position.z),
-      new THREE.Quaternion().setFromEuler(
-        new THREE.Euler(part.rotation.x, part.rotation.y, part.rotation.z),
-      ),
-      new THREE.Vector3(part.scale.x, part.scale.y, part.scale.z),
-    );
-    return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    part.position.x, part.position.y, part.position.z,
-    part.rotation.x, part.rotation.y, part.rotation.z,
-    part.scale.x, part.scale.y, part.scale.z,
-  ]);
-
   const partAsFitGeometry = (g: THREE.BufferGeometry): FitGeometry => {
     const worked = g.clone();
     worked.applyMatrix4(partWorldMatrix);
