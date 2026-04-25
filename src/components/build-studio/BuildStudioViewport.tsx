@@ -552,6 +552,42 @@ export function BuildStudioViewport({
   );
 }
 
+/**
+ * Wraps drei's TransformControls and reliably wires `dragging-changed`
+ * (the underlying three.js event) so rotate/scale releases also trigger
+ * orbit re-enable + commit. drei's `onMouseUp` only fires for translate.
+ */
+function PartTransformGizmo({
+  object,
+  mode,
+  size = 0.7,
+  orbitRef,
+  onRelease,
+}: {
+  object: THREE.Object3D;
+  mode: TransformMode;
+  size?: number;
+  orbitRef: React.MutableRefObject<any>;
+  onRelease: () => void;
+}) {
+  const ref = useRef<any>(null);
+  const releaseRef = useRef(onRelease);
+  releaseRef.current = onRelease;
+
+  useEffect(() => {
+    const controls = ref.current;
+    if (!controls) return;
+    const handler = (e: { value: boolean }) => {
+      if (orbitRef.current) orbitRef.current.enabled = !e.value;
+      if (!e.value) releaseRef.current();
+    };
+    controls.addEventListener("dragging-changed", handler);
+    return () => controls.removeEventListener("dragging-changed", handler);
+  }, [object, mode, orbitRef]);
+
+  return <TransformControls ref={ref} object={object} mode={mode} size={size} />;
+}
+
 /** Renders all placed parts and reports the selected mesh node up. */
 function SceneParts({
   parts,
