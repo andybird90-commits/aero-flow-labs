@@ -160,3 +160,30 @@ export const SNAP_ZONE_LABELS: Record<SnapZoneType, string> = {
 };
 
 export const SNAP_ZONE_TYPES: SnapZoneType[] = Object.keys(SNAP_ZONE_LABELS) as SnapZoneType[];
+
+/**
+ * Heuristic: which zone type pairs with which on the opposite side?
+ * Used by the admin "auto-pair" tool and by the user-side mirror button.
+ */
+export const MIRROR_TYPE: Partial<Record<SnapZoneType, SnapZoneType>> = {
+  front_left_arch: "front_right_arch",
+  front_right_arch: "front_left_arch",
+  rear_left_arch: "rear_right_arch",
+  rear_right_arch: "rear_left_arch",
+  left_sill: "right_sill",
+  right_sill: "left_sill",
+  left_door: "right_door",
+  right_door: "left_door",
+  left_quarter: "right_quarter",
+  right_quarter: "left_quarter",
+};
+
+/** Find the mirror partner of a zone (explicit mirror_zone_id wins, else heuristic). */
+export function findMirrorZone(zone: SnapZone, all: SnapZone[]): SnapZone | null {
+  if (zone.mirror_zone_id) {
+    return all.find((z) => z.id === zone.mirror_zone_id) ?? null;
+  }
+  const partnerType = MIRROR_TYPE[zone.zone_type];
+  if (!partnerType) return null;
+  return all.find((z) => z.zone_type === partnerType) ?? null;
+}
