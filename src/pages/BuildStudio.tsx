@@ -454,6 +454,9 @@ export default function BuildStudio() {
                     onDuplicate={handleDuplicate}
                     onDelete={handleDelete}
                     onMirror={handleMirror}
+                    snapZones={snapZones}
+                    onSnapToZone={handleSnapToZone}
+                    onMirrorToZone={handleMirrorToZone}
                   />
                 </aside>
               </div>
