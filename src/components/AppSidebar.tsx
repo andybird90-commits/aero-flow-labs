@@ -26,6 +26,7 @@ import {
   Hammer,
   Hexagon,
   Magnet,
+  Crosshair,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/lib/repo";
@@ -55,6 +56,7 @@ const adminNav = [
   { title: "Meshy Admin", url: "/meshy-admin", icon: Wand2 },
   { title: "Blender Jobs", url: "/blender-jobs", icon: Hammer },
   { title: "Snap Zones", url: "/snap-zones-admin", icon: Magnet },
+  { title: "Hardpoints", url: "/hardpoints-admin", icon: Crosshair },
 ];
 
 export function AppSidebar() {
