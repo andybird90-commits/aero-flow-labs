@@ -70,6 +70,7 @@ import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
 import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
 import { useHistory, useHistoryShortcuts } from "@/lib/build-studio/history";
+import { useCarMaterialMap } from "@/lib/build-studio/use-car-material-map";
 import {
   useRenderQuality,
   QUALITY_LABEL,
