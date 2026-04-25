@@ -646,16 +646,19 @@ export default function BuildStudio() {
                 <Separator orientation="vertical" className="h-7" />
 
                 <Select value={quality} onValueChange={(v) => setQuality(v as RenderQuality)}>
-                  <SelectTrigger className="h-9 w-[150px] text-xs" title={QUALITY_DESCRIPTION[quality]}>
-                    <Sparkles className="mr-1.5 h-3.5 w-3.5 text-primary" />
-                    <SelectValue />
+                  <SelectTrigger
+                    className="h-9 w-[140px] text-xs"
+                    title={QUALITY_DESCRIPTION[quality]}
+                  >
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                    <span className="truncate">{QUALITY_LABEL[quality]}</span>
                   </SelectTrigger>
                   <SelectContent>
                     {(["draft", "studio", "cinematic"] as RenderQuality[]).map((q) => (
-                      <SelectItem key={q} value={q}>
-                        <div className="flex flex-col">
-                          <span>{QUALITY_LABEL[q]}</span>
-                          <span className="text-[10px] text-muted-foreground">
+                      <SelectItem key={q} value={q} className="py-2">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-xs font-medium">{QUALITY_LABEL[q]}</span>
+                          <span className="text-[10px] leading-tight text-muted-foreground">
                             {QUALITY_DESCRIPTION[q]}
                           </span>
                         </div>
