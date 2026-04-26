@@ -633,7 +633,8 @@ export default function BuildStudio() {
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
-              {/* Toolbar */}
+              {/* Toolbar — hidden in Presentation Mode for a clean hero render. */}
+              {!presentationMode && (
               <div className="studio-bar flex shrink-0 items-center gap-2.5 px-4 overflow-x-auto" style={{ height: "var(--studio-bar-h)" }}>
                 <div className="flex flex-col leading-tight">
                   <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
