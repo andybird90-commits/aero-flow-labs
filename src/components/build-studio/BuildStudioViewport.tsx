@@ -835,7 +835,14 @@ export function BuildStudioViewport({
       <Bounds clip observe margin={1.2}>
         <FrameOnDoubleClick scene={sceneRootRef.current} />
         <group ref={sceneRootRef}>
-          {heroStlUrl ? (
+          {heroGlbUrl ? (
+            // Textured GLB hero — preferred when an admin has uploaded one.
+            // Authored materials carry through, paint shader is bypassed so
+            // baked colours/normals/clearcoat render exactly as authored.
+            <Suspense fallback={<CarPlaceholder template={template} />}>
+              <HeroGlbCar url={heroGlbUrl} template={template} paintFinish={finish} onTriangleCount={onTriangleCount} />
+            </Suspense>
+          ) : heroStlUrl ? (
             <Suspense fallback={<CarPlaceholder template={template} />}>
               <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} onTriangleCount={onTriangleCount} />
             </Suspense>
