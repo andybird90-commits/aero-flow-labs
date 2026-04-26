@@ -52,7 +52,7 @@ export function ShowroomFloor({ reflector, accumulative }: Props) {
           no visible floor seam against the HDRI horizon. */}
       {reflector && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-          <planeGeometry args={[80, 80]} />
+          <planeGeometry args={[20, 20]} />
           <MeshReflectorMaterial
             blur={[400, 100]}
             resolution={1024}
