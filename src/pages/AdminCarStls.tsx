@@ -432,9 +432,40 @@ function CarStlRow({
   const { data: panels = [] } = useCarPanels(row.id);
   const runSplit = useRunAutoSplit();
   const updateSlot = useUpdateCarPanelSlot();
+  const uploadGlb = useUploadCarGlb();
+  const deleteGlb = useDeleteCarGlb();
+  const glbInputRef = useRef<HTMLInputElement>(null);
   const [showPanels, setShowPanels] = useState(false);
   const [splitConfirmOpen, setSplitConfirmOpen] = useState(false);
   const [highlighted, setHighlighted] = useState<string | null>(null);
+  const hasGlb = !!(row as CarStl & { glb_path?: string | null }).glb_path;
+
+  const onPickGlb = async (file: File) => {
+    if (!/\.(glb|gltf)$/i.test(file.name)) {
+      toast({ title: "GLB or GLTF files only", variant: "destructive" });
+      return;
+    }
+    try {
+      await uploadGlb.mutateAsync({ row, file });
+      toast({
+        title: "Textured GLB uploaded",
+        description: "Build Studio will now show this car with its authored materials.",
+      });
+      if (glbInputRef.current) glbInputRef.current.value = "";
+    } catch (e: any) {
+      toast({ title: "GLB upload failed", description: String(e.message ?? e), variant: "destructive" });
+    }
+  };
+
+  const onRemoveGlb = async () => {
+    if (!confirm("Remove the textured GLB? Build Studio will fall back to the plain STL.")) return;
+    try {
+      await deleteGlb.mutateAsync(row);
+      toast({ title: "Textured GLB removed" });
+    } catch (e: any) {
+      toast({ title: "Remove failed", description: String(e.message ?? e), variant: "destructive" });
+    }
+  };
 
   const onAutoSplit = async () => {
     setSplitConfirmOpen(false);
