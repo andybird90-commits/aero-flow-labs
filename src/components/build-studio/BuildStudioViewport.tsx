@@ -15,7 +15,6 @@ import {
   Environment,
   GizmoHelper,
   GizmoViewcube,
-  PivotControls,
   Bounds,
 } from "@react-three/drei";
 import * as THREE from "three";
@@ -518,36 +517,24 @@ function CarPlaceholder({ template }: { template?: CarTemplate | null }) {
 
 /* ─── Single placed part wrapper (transform + mesh) ─── */
 /**
- * When `selected && !locked`, wraps the part in a drei <PivotControls> gizmo.
- * The gizmo is anchored to the object so it lives *on* the part — much nicer
- * for fine work than a centred TransformControls. We commit on `onDragEnd`.
- *
- * Snapping: drei's PivotControls does not have built-in snap props, so we
- * post-process the matrix in `onDrag` to round translation to the configured
- * grid (and rotation to multiples of `rotateSnapDeg`).
+ * Single placed part scene node. Editing is handled by a world-space
+ * TransformControls instance mounted at the viewport level so move axes never
+ * inherit a part's local rotation.
  */
 function PlacedPartGroup({
   part,
   libraryItem,
   selected,
   showLabel,
-  translateSnapM = 0,
-  rotateSnapDeg = 0,
-  transformMode = "translate",
   onSelect,
   onFrame,
-  onCommit,
 }: {
   part: PlacedPart;
   libraryItem: LibraryItem | null;
   selected: boolean;
   showLabel: boolean;
-  translateSnapM?: number;
-  rotateSnapDeg?: number;
-  transformMode?: TransformMode;
   onSelect: () => void;
   onFrame: (object: THREE.Object3D) => void;
-  onCommit: (patch: { position: Vec3; rotation: Vec3; scale: Vec3 }) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
@@ -580,65 +567,7 @@ function PlacedPartGroup({
     </group>
   );
 
-  if (!selected || part.locked) return inner;
-
-  return (
-    <PivotControls
-      anchor={[0, 0, 0]}
-      depthTest={false}
-      scale={75}
-      fixed
-      lineWidth={2}
-      activeAxes={[true, true, true]}
-      disableAxes={transformMode !== "translate"}
-      disableSliders={transformMode !== "translate"}
-      disableRotations={transformMode !== "rotate"}
-      disableScaling={transformMode !== "scale"}
-      // PivotControls' onDrag gives us the *world* matrix of the controlled
-      // object directly — NOT a delta. Decompose it straight onto the group.
-      // (Multiplying by the part's stored transform was double-applying the
-      // pose, which made parts shoot away from a phantom pivot point.)
-      onDrag={(world) => {
-        const g = groupRef.current;
-        if (!g) return;
-        const m = new THREE.Matrix4().fromArray(world.elements);
-        const wt = new THREE.Vector3();
-        const wq = new THREE.Quaternion();
-        const ws = new THREE.Vector3();
-        m.decompose(wt, wq, ws);
-
-        // Snap translation to grid.
-        if (translateSnapM > 0) {
-          wt.x = Math.round(wt.x / translateSnapM) * translateSnapM;
-          wt.y = Math.round(wt.y / translateSnapM) * translateSnapM;
-          wt.z = Math.round(wt.z / translateSnapM) * translateSnapM;
-        }
-        // Snap rotation (around each axis) to nearest step.
-        const e = new THREE.Euler().setFromQuaternion(wq, "XYZ");
-        if (rotateSnapDeg > 0) {
-          const step = (rotateSnapDeg * Math.PI) / 180;
-          e.x = Math.round(e.x / step) * step;
-          e.y = Math.round(e.y / step) * step;
-          e.z = Math.round(e.z / step) * step;
-        }
-        // Apply visually so the next frame draws snapped.
-        g.position.copy(wt);
-        g.rotation.copy(e);
-        g.scale.copy(ws);
-      }}
-      onDragEnd={() => {
-        const g = groupRef.current;
-        if (!g) return;
-        onCommit({
-          position: { x: g.position.x, y: g.position.y, z: g.position.z },
-          rotation: { x: g.rotation.x, y: g.rotation.y, z: g.rotation.z },
-          scale: { x: g.scale.x, y: g.scale.y, z: g.scale.z },
-        });
-      }}
-    >
-      {inner}
-    </PivotControls>
-  );
+  return inner;
 }
 
 
@@ -802,19 +731,35 @@ export function BuildStudioViewport({
             libraryItemsById={libraryItemsById}
             selectedId={selectedId}
             showLabels={showLabels && tool === "select"}
-            translateSnapM={translateSnapM}
-            rotateSnapDeg={rotateSnapDeg}
-            transformMode={transformMode}
             onSelect={onSelect}
             onMeshFound={setMeshNode}
             onFrame={(obj) => {
-              // Defer one frame so PivotControls doesn't capture the dbl-click.
               window.dispatchEvent(new CustomEvent("apex:frame-object", { detail: { object: obj } }));
             }}
-            onCommit={(id, patch) => onCommit(id, patch)}
           />
         </group>
       </Bounds>
+
+      {tool === "select" && !shellEditMode && selected && meshNode && !selected.locked && (
+        <PartTransformGizmo
+          object={meshNode}
+          mode={transformMode}
+          size={0.75}
+          space={transformMode === "translate" ? "world" : "local"}
+          translateSnapM={translateSnapM}
+          rotateSnapDeg={rotateSnapDeg}
+          orbitRef={orbitRef}
+          interactionRef={transformInteractionRef}
+          onRelease={() => {
+            const g = meshNode;
+            onCommit(selected.id, {
+              position: { x: g.position.x, y: g.position.y, z: g.position.z },
+              rotation: { x: g.rotation.x, y: g.rotation.y, z: g.rotation.z },
+              scale: { x: g.scale.x, y: g.scale.y, z: g.scale.z },
+            });
+          }}
+        />
+      )}
 
       {/* Shell-fit gizmo stays a TransformControls (axis-locked feel works
           better for big body alignments than a free pivot). */}
@@ -891,6 +836,9 @@ function PartTransformGizmo({
   object,
   mode,
   size = 0.7,
+  space = "local",
+  translateSnapM = 0,
+  rotateSnapDeg = 0,
   orbitRef,
   interactionRef,
   onRelease,
@@ -898,6 +846,9 @@ function PartTransformGizmo({
   object: THREE.Object3D;
   mode: TransformMode;
   size?: number;
+  space?: "local" | "world";
+  translateSnapM?: number;
+  rotateSnapDeg?: number;
   orbitRef: React.MutableRefObject<any>;
   interactionRef: React.MutableRefObject<boolean>;
   onRelease: () => void;
@@ -912,6 +863,9 @@ function PartTransformGizmo({
     controlsRef.current = controls;
     controls.setMode(mode);
     controls.setSize(size);
+    controls.setSpace(space);
+    controls.setTranslationSnap(translateSnapM > 0 ? translateSnapM : null);
+    controls.setRotationSnap(rotateSnapDeg > 0 ? (rotateSnapDeg * Math.PI) / 180 : null);
     controls.attach(object);
 
     const handleDragging = (e: { value: boolean }) => {
@@ -955,6 +909,13 @@ function PartTransformGizmo({
   }, [mode, invalidate]);
 
   useEffect(() => {
+    controlsRef.current?.setSpace(space);
+    controlsRef.current?.setTranslationSnap(translateSnapM > 0 ? translateSnapM : null);
+    controlsRef.current?.setRotationSnap(rotateSnapDeg > 0 ? (rotateSnapDeg * Math.PI) / 180 : null);
+    invalidate();
+  }, [space, translateSnapM, rotateSnapDeg, invalidate]);
+
+  useEffect(() => {
     controlsRef.current?.setSize(size);
     invalidate();
   }, [size, invalidate]);
@@ -968,25 +929,17 @@ function SceneParts({
   libraryItemsById,
   selectedId,
   showLabels,
-  translateSnapM,
-  rotateSnapDeg,
-  transformMode,
   onSelect,
   onMeshFound,
   onFrame,
-  onCommit,
 }: {
   parts: PlacedPart[];
   libraryItemsById: Map<string, LibraryItem>;
   selectedId: string | null;
   showLabels: boolean;
-  translateSnapM: number;
-  rotateSnapDeg: number;
-  transformMode: TransformMode;
   onSelect: (id: string | null) => void;
   onMeshFound: (node: THREE.Object3D | null) => void;
   onFrame: (object: THREE.Object3D) => void;
-  onCommit: (id: string, patch: { position: Vec3; rotation: Vec3; scale: Vec3 }) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
@@ -1008,12 +961,8 @@ function SceneParts({
           libraryItem={p.library_item_id ? libraryItemsById.get(p.library_item_id) ?? null : null}
           selected={p.id === selectedId}
           showLabel={showLabels}
-          translateSnapM={translateSnapM}
-          rotateSnapDeg={rotateSnapDeg}
-          transformMode={transformMode}
           onSelect={() => onSelect(p.id)}
           onFrame={onFrame}
-          onCommit={(patch) => onCommit(p.id, patch)}
         />
       ))}
     </group>
