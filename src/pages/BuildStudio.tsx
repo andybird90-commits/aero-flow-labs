@@ -925,6 +925,7 @@ export default function BuildStudio() {
                   </Button>
                 </div>
               </div>
+              )}
 
               {/* 3-column body */}
               <div className="grid flex-1 min-h-0 grid-cols-[var(--studio-rail-w)_1fr_var(--studio-rail-w)]">
