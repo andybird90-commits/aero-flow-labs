@@ -637,6 +637,8 @@ export function BuildStudioViewport({
   showLabels = true,
   measureLines = [],
   onMeasureLinesChange,
+  livePoseRef,
+  onTriangleCount,
   onCommit,
 }: ViewportProps) {
   const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
@@ -709,7 +711,7 @@ export function BuildStudioViewport({
         <group ref={sceneRootRef}>
           {heroStlUrl ? (
             <Suspense fallback={<CarPlaceholder template={template} />}>
-              <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} />
+              <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} onTriangleCount={onTriangleCount} />
             </Suspense>
           ) : (
             <CarPlaceholder template={template} />
