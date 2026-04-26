@@ -143,6 +143,9 @@ export default function BuildStudio() {
   const { quality, setQuality } = useRenderQuality();
   const [presentationMode, setPresentationMode] = useState(false);
   const [carPickerOpen, setCarPickerOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
+  const [mobileRightOpen, setMobileRightOpen] = useState(false);
 
   // Tier 2 interaction tools
   const [tool, setTool] = useState<ViewportTool>("select");
