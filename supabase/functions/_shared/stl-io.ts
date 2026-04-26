@@ -23,13 +23,15 @@ export function parseStl(bytes: Uint8Array): Mesh {
 
 /**
  * Edge functions run with a ~150 MB heap. A binary STL with N triangles
- * needs N * 9 * 4 bytes (positions) + N * 3 * 4 bytes (indices) ≈ 48 N.
- * To stay well under the limit (and leave room for downstream buffers like
- * adjacency / centroid arrays) we cap the parsed triangle count and uniformly
+ * needs N * 9 * 4 bytes (positions) ≈ 36 B/tri just for vertex data, and
+ * downstream callers (e.g. classify-car-materials) allocate several more
+ * Float32/Int32 arrays per triangle for centroids, normals, adjacency,
+ * component ids and a vertex-weld Map. In practice we need to stay under
+ * ~120 B/tri end-to-end, so cap parsed triangles at 250k and uniformly
  * downsample anything larger. The classifier only needs an indicative tag
  * map per triangle, so a uniform sample preserves accuracy.
  */
-const MAX_PARSED_TRIANGLES = 750_000;
+const MAX_PARSED_TRIANGLES = 250_000;
 
 function parseBinaryStl(bytes: Uint8Array): Mesh {
   if (bytes.length < 84) return emptyMesh();
