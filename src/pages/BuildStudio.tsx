@@ -927,16 +927,25 @@ export default function BuildStudio() {
               </div>
               )}
 
-              {/* 3-column body */}
-              <div className="grid flex-1 min-h-0 grid-cols-[var(--studio-rail-w)_1fr_var(--studio-rail-w)]">
-                <aside className="studio-rail min-h-0 overflow-hidden border-r">
-                  <PartLibraryRail
-                    items={library}
-                    isLoading={libLoading}
-                    onAdd={handleAdd}
-                    onAddBlank={() => handleAdd(null)}
-                  />
-                </aside>
+              {/* 3-column body — rails collapse in Presentation Mode. */}
+              <div
+                className="grid flex-1 min-h-0"
+                style={{
+                  gridTemplateColumns: presentationMode
+                    ? "1fr"
+                    : "var(--studio-rail-w) 1fr var(--studio-rail-w)",
+                }}
+              >
+                {!presentationMode && (
+                  <aside className="studio-rail min-h-0 overflow-hidden border-r">
+                    <PartLibraryRail
+                      items={library}
+                      isLoading={libLoading}
+                      onAdd={handleAdd}
+                      onAddBlank={() => handleAdd(null)}
+                    />
+                  </aside>
+                )}
 
                 <div className="relative min-h-0">
                   <BuildStudioViewport
@@ -951,20 +960,20 @@ export default function BuildStudio() {
                     parts={parts}
                     libraryItemsById={libraryItemsById}
                     snapZones={snapZones}
-                    showSnapZones={showSnapZones}
+                    showSnapZones={presentationMode ? false : showSnapZones}
                     selectedId={selectedId}
                     onSelect={setSelectedId}
                     transformMode={mode}
-                    showGrid={showGrid}
+                    showGrid={presentationMode ? false : showGrid}
                     preset={preset}
-                    quality={quality}
+                    quality={presentationMode ? "cinematic" : quality}
                     paintFinish={paintFinish}
                     materialTags={materialTags}
                     tool={tool}
                     clipAxis={clipAxis}
                     translateSnapM={translateSnapM}
                     rotateSnapDeg={rotateSnapDeg}
-                    showLabels={showLabels}
+                    showLabels={presentationMode ? false : showLabels}
                     measureLines={measureLines}
                     onMeasureLinesChange={setMeasureLines}
                     livePoseRef={livePoseRef}
@@ -972,54 +981,78 @@ export default function BuildStudio() {
                     onCommit={handleCommit}
                   />
                   {/* Soft vignette so the canvas reads as a "studio plate" */}
-                  <div className="studio-vignette absolute inset-0 z-10" />
+                  <div className="studio-vignette absolute inset-0 z-10 pointer-events-none" />
                   {/* Screen-space drawing layer (only catches events when active) */}
                   <ScreenAnnotationOverlay livePoseRef={livePoseRef} />
+
+                  {/* Floating exit pill — only in Presentation Mode. */}
+                  {presentationMode && (
+                    <div className="absolute right-4 top-4 z-30 flex items-center gap-2">
+                      <div className="rounded-full bg-background/40 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-foreground/70 backdrop-blur-md">
+                        Presentation
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setPresentationMode(false)}
+                        className="h-8 rounded-full border-white/20 bg-background/40 px-3 text-xs backdrop-blur-md hover:bg-background/60"
+                        title="Exit presentation (Esc)"
+                      >
+                        <EyeOff className="mr-1.5 h-3.5 w-3.5" /> Exit
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
-                <aside className="studio-rail flex min-h-0 flex-col overflow-hidden border-l">
-                  <div className="border-b border-border/60 p-3">
-                    <AnnotationLayersPanel
-                      projectId={projectId}
-                      userId={user?.id ?? null}
-                    />
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    <PropertiesPanel
-                      part={selected}
-                      onPatch={handlePatch}
-                      onDuplicate={handleDuplicate}
-                      onDelete={handleDelete}
-                      onMirror={handleMirror}
-                      snapZones={snapZones}
-                      onSnapToZone={handleSnapToZone}
-                      onMirrorToZone={handleMirrorToZone}
-                      selectedLibraryItem={selectedLibraryItem}
-                      baseMeshUrl={heroStlUrl ?? null}
-                      userId={user?.id ?? null}
-                      onLiveFitBaked={handleLiveFitBaked}
-                    />
-                  </div>
-                </aside>
+                {!presentationMode && (
+                  <aside className="studio-rail flex min-h-0 flex-col overflow-hidden border-l">
+                    <div className="border-b border-border/60 p-3">
+                      <AnnotationLayersPanel
+                        projectId={projectId}
+                        userId={user?.id ?? null}
+                      />
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-hidden">
+                      <PropertiesPanel
+                        part={selected}
+                        onPatch={handlePatch}
+                        onDuplicate={handleDuplicate}
+                        onDelete={handleDelete}
+                        onMirror={handleMirror}
+                        snapZones={snapZones}
+                        onSnapToZone={handleSnapToZone}
+                        onMirrorToZone={handleMirrorToZone}
+                        selectedLibraryItem={selectedLibraryItem}
+                        baseMeshUrl={heroStlUrl ?? null}
+                        userId={user?.id ?? null}
+                        onLiveFitBaked={handleLiveFitBaked}
+                      />
+                    </div>
+                  </aside>
+                )}
               </div>
 
-              {/* Status bar */}
-              <BuildStudioStatusBar
-                selected={selected}
-                partsCount={parts.length}
-                triangleCount={triangleCount}
-                snapEnabled={snapEnabled}
-              />
-
-              {/* Bottom strip */}
-              <div className="h-16 shrink-0 border-t border-border bg-card/30">
-                <PlacedPartsStrip
-                  parts={parts}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                  onDelete={handleDeleteById}
+              {/* Status bar — hidden in Presentation Mode. */}
+              {!presentationMode && (
+                <BuildStudioStatusBar
+                  selected={selected}
+                  partsCount={parts.length}
+                  triangleCount={triangleCount}
+                  snapEnabled={snapEnabled}
                 />
-              </div>
+              )}
+
+              {/* Bottom strip — hidden in Presentation Mode. */}
+              {!presentationMode && (
+                <div className="h-16 shrink-0 border-t border-border bg-card/30">
+                  <PlacedPartsStrip
+                    parts={parts}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    onDelete={handleDeleteById}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
