@@ -109,6 +109,9 @@ export default function BuildStudio() {
   const { data: parts = [] } = usePlacedParts(projectId);
   const { data: heroStl } = useHeroStlForProject(projectId);
   const { data: heroStlUrl } = useSignedCarStlUrl(heroStl);
+  // Optional textured-GLB hero — when admins upload one, the viewport renders
+  // it with its authored PBR materials instead of the default paint shader.
+  const { data: heroGlbUrl } = useSignedCarGlbUrl(heroStl);
   const { tags: materialTags } = useCarMaterialMap(heroStl?.id);
 
   const addPart = useAddPlacedPart();
