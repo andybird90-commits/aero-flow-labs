@@ -184,6 +184,7 @@ async function runBake(admin: any, bodyKitId: string, userId: string): Promise<v
           baked_transform: kit.baked_transform ?? {},
           tolerance_mm: TOLERANCE_MM,
           min_panel_tris: MIN_PANEL_TRIS,
+          donor_manifold_clean: donorManifoldClean,
         },
       }),
     },
