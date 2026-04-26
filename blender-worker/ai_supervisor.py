@@ -13,7 +13,7 @@ is malformed, callers fall back to safe defaults (accept + bbox heuristic),
 so the bake pipeline never hard-fails because of the AI layer.
 
 Env:
-  ANTHROPIC_API_KEY — bearer token for https://api.anthropic.com (preferred)
+    ANTHROPIC_API_KEY — bearer token for https://api.anthropic.com (preferred)
   LOVABLE_API_KEY   — legacy fallback to https://ai.gateway.lovable.dev
 """
 from __future__ import annotations
@@ -34,10 +34,11 @@ import urllib.error
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
-# Top-tier Claude for both validator and classifier — vision + reasoning matter
-# more here than per-call cost. Override per-call by passing `model=...`.
-DEFAULT_MODEL = "claude-opus-4-5"
-CLASSIFIER_MODEL = "claude-opus-4-5"
+# Verified from Anthropic model docs. Opus 4.7 is the preferred supervisor model;
+# Sonnet / Haiku are explicit fallbacks for model deprecation or account access.
+DEFAULT_MODEL = "claude-opus-4-7"
+CLASSIFIER_MODEL = "claude-opus-4-7"
+ANTHROPIC_FALLBACK_MODELS = ["claude-sonnet-4-6", "claude-haiku-4-5"]
 
 # Legacy gateway kept as a fallback only if ANTHROPIC_API_KEY is missing.
 GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions"
@@ -231,6 +232,39 @@ def _post_json(url: str, headers: dict, payload: dict, timeout: int) -> dict | N
         return None
 
 
+def _post_anthropic(payload: dict, api_key: str, timeout: int) -> tuple[dict | None, int | None]:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        ANTHROPIC_URL,
+        data=body,
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": ANTHROPIC_VERSION,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8")), None
+    except urllib.error.HTTPError as e:
+        try:
+            err_body = e.read().decode("utf-8", errors="replace")[:800]
+        except Exception:
+            err_body = ""
+        model = payload.get("model", "(unknown)")
+        if e.code in {404, 410}:
+            print(f"[ai_supervisor] Claude model unavailable/deprecated: {model} HTTP {e.code}: {err_body}", file=sys.stderr)
+        elif e.code in {401, 403}:
+            print(f"[ai_supervisor] Anthropic auth/access failed for {model} HTTP {e.code}. Check ANTHROPIC_API_KEY and model access: {err_body}", file=sys.stderr)
+        else:
+            print(f"[ai_supervisor] Anthropic HTTP {e.code} for {model}: {err_body}", file=sys.stderr)
+        return None, e.code
+    except Exception as e:
+        print(f"[ai_supervisor] Anthropic request error: {type(e).__name__}: {e}", file=sys.stderr)
+        return None, None
+
+
 def _img_block_anthropic(p: Path) -> dict:
     b64 = base64.b64encode(p.read_bytes()).decode("ascii")
     return {
@@ -264,33 +298,34 @@ def _call_ai(
             content.append({"type": "text", "text": f"View: {view_name}"})
             content.append(_img_block_anthropic(p))
 
-        payload = {
-            "model": model,
-            "max_tokens": 1024,
-            "system": system_msg,
-            "tools": [{
-                "name": tool_name,
-                "description": tool_description,
-                "input_schema": tool_schema,
-            }],
-            "tool_choice": {"type": "tool", "name": tool_name},
-            "messages": [{"role": "user", "content": content}],
-        }
-        headers = {
-            "x-api-key": anthropic_key,
-            "anthropic-version": ANTHROPIC_VERSION,
-            "Content-Type": "application/json",
-        }
-        resp = _post_json(ANTHROPIC_URL, headers, payload, timeout)
-        if not resp:
-            return None
-        try:
-            for block in resp.get("content", []):
-                if block.get("type") == "tool_use" and block.get("name") == tool_name:
-                    return block.get("input") or {}
-        except Exception as e:
-            print(f"[ai_supervisor] could not parse Claude tool_use: {e}",
-                  file=sys.stderr)
+        for candidate_model in [model, *ANTHROPIC_FALLBACK_MODELS]:
+            payload = {
+                "model": candidate_model,
+                "max_tokens": 1024,
+                "system": system_msg,
+                "tools": [{
+                    "name": tool_name,
+                    "description": tool_description,
+                    "input_schema": tool_schema,
+                }],
+                "tool_choice": {"type": "tool", "name": tool_name},
+                "messages": [{"role": "user", "content": content}],
+            }
+            resp, status = _post_anthropic(payload, anthropic_key, timeout)
+            if not resp:
+                if status in {404, 410}:
+                    continue
+                return None
+            try:
+                for block in resp.get("content", []):
+                    if block.get("type") == "tool_use" and block.get("name") == tool_name:
+                        if candidate_model != model:
+                            print(f"[ai_supervisor] used Claude fallback model {candidate_model}", file=sys.stderr)
+                        return block.get("input") or {}
+            except Exception as e:
+                print(f"[ai_supervisor] could not parse Claude tool_use: {e}",
+                      file=sys.stderr)
+                return None
         return None
 
     # ── Fallback: Lovable AI Gateway (OpenAI-compatible, Gemini) ─────────
