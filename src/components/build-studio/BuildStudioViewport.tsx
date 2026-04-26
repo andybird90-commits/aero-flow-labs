@@ -332,7 +332,119 @@ function HeroStlCar({
   return <primitive object={object} />;
 }
 
-/* ─── Body skin overlay (Shell Fit Mode) ─── */
+/* ─── Textured GLB hero car (preferred when uploaded) ─── */
+/**
+ * Renders a fully-textured GLB car model and **preserves all authored PBR
+ * materials** — paint, metalness, normal maps, clearcoat, etc. We only swap
+ * out obviously-unlit fallback materials (MeshBasicMaterial) so that a GLB
+ * exported without a real PBR setup still receives env-mapped lighting.
+ *
+ * Auto-fits the model to the same world frame as `HeroStlCar` so snap zones,
+ * placed parts, and the showroom floor all line up regardless of whether the
+ * project is using the STL or GLB hero variant.
+ */
+function HeroGlbCar({
+  url,
+  template,
+  paintFinish,
+  onTriangleCount,
+}: {
+  url: string;
+  template?: CarTemplate | null;
+  paintFinish: PaintFinish;
+  onTriangleCount?: (n: number) => void;
+}) {
+  const [object, setObject] = useState<THREE.Object3D | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const targetLength = ((template?.wheelbase_mm ?? 2575) / 1000) + 1.45;
+
+    const loader = new GLTFLoader();
+    loader.load(
+      url,
+      (gltf) => {
+        if (cancelled) return;
+
+        const wrapper = new THREE.Group();
+        wrapper.add(gltf.scene);
+
+        let triCount = 0;
+        wrapper.traverse((c) => {
+          const m = c as THREE.Mesh;
+          if (!m.isMesh) return;
+          m.castShadow = true;
+          m.receiveShadow = true;
+
+          const geo = m.geometry;
+          if (geo) {
+            const idx = geo.index;
+            triCount += idx ? idx.count / 3 : geo.attributes.position.count / 3;
+          }
+
+          // Bump env-map intensity on authored PBR materials so they reflect
+          // the studio HDRI as strongly as our paint shader does. Replace
+          // basic/unlit materials with a sensible PBR fallback.
+          const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+          const upgrade = (one: THREE.Material): THREE.Material => {
+            if ((one as THREE.MeshBasicMaterial).isMeshBasicMaterial) {
+              const replaced = new THREE.MeshPhysicalMaterial({
+                color: (one as THREE.MeshBasicMaterial).color ?? "#1a1f29",
+                metalness: 0.4,
+                roughness: 0.4,
+                clearcoat: 0.6,
+                clearcoatRoughness: 0.2,
+                envMapIntensity: paintFinish.env_intensity,
+              });
+              return replaced;
+            }
+            const std = one as THREE.MeshStandardMaterial;
+            if (std.isMeshStandardMaterial) {
+              std.envMapIntensity = paintFinish.env_intensity;
+            }
+            return one;
+          };
+          if (Array.isArray(mat)) {
+            m.material = mat.map(upgrade);
+          } else if (mat) {
+            m.material = upgrade(mat);
+          }
+        });
+
+        onTriangleCount?.(Math.round(triCount));
+
+        // Normalise into the same world frame as HeroStlCar.
+        const box = new THREE.Box3().setFromObject(wrapper);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const longest = Math.max(size.x, size.y, size.z);
+        if (isFinite(longest) && longest > 0) {
+          wrapper.scale.setScalar(targetLength / longest);
+        }
+        const box2 = new THREE.Box3().setFromObject(wrapper);
+        const center = new THREE.Vector3();
+        box2.getCenter(center);
+        wrapper.position.sub(center);
+        const box3 = new THREE.Box3().setFromObject(wrapper);
+        wrapper.position.y -= box3.min.y;
+
+        setObject(wrapper);
+      },
+      undefined,
+      () => {
+        if (!cancelled) setObject(null);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, template?.wheelbase_mm]);
+
+  if (!object) return null;
+  return <primitive object={object} />;
+}
 const BodySkinOverlay = function BodySkinOverlay({
   url,
   kind,
