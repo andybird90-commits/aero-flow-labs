@@ -293,19 +293,24 @@ export function useCarStlForTemplate(carTemplateId: string | undefined | null) {
 }
 
 /** Resolve the hero STL for a project via its car.template_id, avoiding stale nested project data. */
-export function useHeroStlForProject(projectId: string | undefined | null) {
+export function useHeroStlForProject(
+  projectId: string | undefined | null,
+  carTemplateId?: string | null,
+) {
   return useQuery({
-    queryKey: ["hero_stl_for_project", projectId],
+    queryKey: ["hero_stl_for_project", projectId, carTemplateId ?? null],
     enabled: !!projectId,
     queryFn: async () => {
-      const { data: project, error: projectError } = await supabase
-        .from("projects")
-        .select("car:cars(template_id)")
-        .eq("id", projectId!)
-        .maybeSingle();
-      if (projectError) throw projectError;
-
-      const templateId = (project as { car?: { template_id?: string | null } | null } | null)?.car?.template_id;
+      let templateId = carTemplateId;
+      if (templateId === undefined) {
+        const { data: project, error: projectError } = await supabase
+          .from("projects")
+          .select("car:cars(template_id)")
+          .eq("id", projectId!)
+          .maybeSingle();
+        if (projectError) throw projectError;
+        templateId = (project as { car?: { template_id?: string | null } | null } | null)?.car?.template_id;
+      }
 
       // Preferred path: project → car → template → car_stl
       if (templateId) {
