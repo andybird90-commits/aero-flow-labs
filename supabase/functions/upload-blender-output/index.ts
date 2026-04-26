@@ -96,8 +96,9 @@ Deno.serve(async (req) => {
         method: "POST",
         headers: uploadHeaders,
         body: req.body,
-        // @ts-expect-error — Deno fetch supports duplex for streaming bodies
-        duplex: "half",
+        // Deno fetch needs `duplex: "half"` to send a streaming body;
+        // the type lib doesn't include it yet, hence the cast.
+        ...({ duplex: "half" } as Record<string, unknown>),
       },
     );
   } catch (err) {
