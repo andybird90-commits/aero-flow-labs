@@ -85,6 +85,7 @@ import { PartLibraryRail } from "@/components/build-studio/PartLibraryRail";
 import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
 import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
+import { BackdropPicker } from "@/components/build-studio/BackdropPicker";
 import { useHistory, useHistoryShortcuts } from "@/lib/build-studio/history";
 import { useCarMaterialMap } from "@/lib/build-studio/use-car-material-map";
 import {
@@ -905,6 +906,11 @@ export default function BuildStudio() {
 
 
                 <div className="ml-auto flex items-center gap-2">
+                  <BackdropPicker
+                    projectId={projectId}
+                    finish={paintFinish}
+                    onChange={(patch) => setPaintFinish((p) => ({ ...p, ...patch }))}
+                  />
                   <Button
                     size="sm"
                     variant={presentationMode ? "default" : "outline"}

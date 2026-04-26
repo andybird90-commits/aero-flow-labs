@@ -1610,3 +1610,102 @@ export function useMarketplaceListings(filters?: { kind?: LibraryItemKind | "all
   });
 }
 
+/* ─── HDRI BACKDROPS ────────────────────────────────────────
+ * Custom panoramic .hdr / .exr files uploaded by users to use as the
+ * Build Studio scene environment. Stored in the public `hdri-backdrops`
+ * bucket, organised per project: `{projectId}/{filename}`.
+ *
+ * The currently-selected backdrop is referenced by URL on
+ * `projects.paint_finish.custom_hdri_url`.
+ */
+export interface HdriBackdrop {
+  /** Storage path inside the bucket (`{projectId}/{filename}`). */
+  path: string;
+  /** Filename only — used as the display label. */
+  name: string;
+  /** Public URL ready to feed into three.js RGBELoader. */
+  url: string;
+  createdAt: string | null;
+  sizeBytes: number | null;
+}
+
+/** List all custom HDRIs uploaded for a given project. */
+export function useProjectHdriList(projectId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["hdri_backdrops", projectId],
+    enabled: !!projectId,
+    queryFn: async (): Promise<HdriBackdrop[]> => {
+      const { data, error } = await supabase.storage
+        .from("hdri-backdrops")
+        .list(projectId!, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+      if (error) throw error;
+      const items = (data ?? []).filter((f) => f.name && !f.name.startsWith("."));
+      return items.map((f) => {
+        const path = `${projectId}/${f.name}`;
+        const { data: pub } = supabase.storage.from("hdri-backdrops").getPublicUrl(path);
+        return {
+          path,
+          name: f.name,
+          url: pub.publicUrl,
+          createdAt: f.created_at ?? null,
+          sizeBytes: (f.metadata as { size?: number } | null)?.size ?? null,
+        };
+      });
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+/** Upload a new .hdr / .exr panorama for a project. Returns the public URL
+ *  the viewport can immediately load. */
+export function useUploadHdri() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { projectId: string; file: File }): Promise<HdriBackdrop> => {
+      const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const ext = (safeName.split(".").pop() ?? "").toLowerCase();
+      if (ext !== "hdr" && ext !== "exr") {
+        throw new Error("Only .hdr or .exr panoramas are supported.");
+      }
+      // Hard cap so a 200 MB monster doesn't stall the studio.
+      const MAX_BYTES = 60 * 1024 * 1024;
+      if (input.file.size > MAX_BYTES) {
+        throw new Error("HDRI is larger than 60 MB. Please use a 2K or 4K version.");
+      }
+      const path = `${input.projectId}/${Date.now()}-${safeName}`;
+      const contentType = ext === "hdr" ? "image/vnd.radiance" : "image/x-exr";
+
+      const { error: upErr } = await supabase.storage
+        .from("hdri-backdrops")
+        .upload(path, input.file, { contentType, upsert: false, cacheControl: "31536000" });
+      if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+
+      const { data: pub } = supabase.storage.from("hdri-backdrops").getPublicUrl(path);
+      return {
+        path,
+        name: safeName,
+        url: pub.publicUrl,
+        createdAt: new Date().toISOString(),
+        sizeBytes: input.file.size,
+      };
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["hdri_backdrops", vars.projectId] });
+    },
+  });
+}
+
+/** Permanently delete an uploaded HDRI from a project. */
+export function useDeleteHdri() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { projectId: string; path: string }) => {
+      const { error } = await supabase.storage.from("hdri-backdrops").remove([input.path]);
+      if (error) throw error;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["hdri_backdrops", vars.projectId] });
+    },
+  });
+}
+
