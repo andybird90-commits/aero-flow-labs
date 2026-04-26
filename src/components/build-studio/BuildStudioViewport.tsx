@@ -942,7 +942,7 @@ export function BuildStudioViewport({
         </group>
       </Bounds>
 
-      {tool === "select" && !shellEditMode && selected && meshNode && !selected.locked && (
+      {showPartGizmo && (
         <PartTransformGizmo
           object={meshNode}
           mode={transformMode}
