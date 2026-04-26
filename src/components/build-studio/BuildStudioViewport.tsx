@@ -52,6 +52,27 @@ import {
 } from "@/components/build-studio/annotate/SurfaceStrokes";
 import type { CameraPose } from "@/lib/build-studio/annotate/store";
 
+/**
+ * Approximate horizon tint for each HDRI preset, used as the fog colour so
+ * the floor fades into the backdrop instead of meeting it on a hard line.
+ * Tuned by eye against drei's bundled environment presets.
+ */
+function horizonFogColor(preset: EnvPreset | string): string {
+  switch (preset) {
+    case "warehouse": return "#3a3530";
+    case "city": return "#4a4d52";
+    case "apartment": return "#5a5550";
+    case "sunset": return "#6b4a3a";
+    case "dawn": return "#5a6478";
+    case "night": return "#0d1018";
+    case "park": return "#5a6850";
+    case "forest": return "#3a4a3a";
+    case "lobby": return "#4a4540";
+    case "studio":
+    default: return "#2a2a2c";
+  }
+}
+
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
 /** Active interactive tool. `select` = normal pivot/transform editing. */
