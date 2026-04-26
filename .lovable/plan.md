@@ -1,79 +1,75 @@
-# Add an AI brain to the cloud Blender worker
 
-You're right — `BLENDER_WORKER_URL` already points at your cloud Blender box, edge functions (`dispatch-blender-job`, `bake-bodykit-from-shell`, `geometry-job-status`, `upload-blender-output`) all talk to it, and `LOVABLE_API_KEY` is already in your secrets. Nothing about hosting needs to change. We just upgrade the worker code on that server from a "blind script" into an **observe → reason → act loop** driven by Lovable AI.
+## What's actually true today (good news)
 
-## What's broken today
+You **are already drawing on the real bodywork.** I traced it end-to-end:
 
-`blender_jobs.py::op_bake_bodykit` does:
-1. Boolean subtract donor − shell.
-2. Split by loose parts.
-3. Label each island with a bbox heuristic (`_classify_aero_slot`).
-4. Upload, done.
+- `HeroStlCar` loads your project's hero STL, scales it to wheelbase, and mounts it inside `sceneRootRef`.
+- `SurfaceStrokeRecorder` raycasts pointer events against `sceneRootRef.current`, so every Surface stroke lands on actual triangles of the Boxster body.
+- `SurfaceStrokesRenderer` builds a `TubeGeometry` along those world-space hit points and renders it with `polygonOffset` so it sits *on* the panel without z-fighting.
 
-If step 1 produces a yellow blob, no one notices. If step 3 over-splits, no one notices. If step 4 mislabels the splitter as a diffuser, no one notices. There's no eyes on the result.
+So functionally we're already there. What's missing is the **render quality**. In the mockup, the car is a glossy painted body in a dark studio with HDRI reflections, a polished reflective floor, soft shadows, bloom on the highlights, and crucially **no visible grid, no toolbars overlaying the car, no orange wireframe overlay**. Today our viewport defaults show:
 
-## What we're adding
+- A flat-ish STL, often unpainted (no `materialTags` yet) so it falls back to the body material only — looks single-tone.
+- The orange grid is on by default and competes visually with the car.
+- The quality preset works, but **"Studio" is the default and that's fine** — the issue is what surrounds the car, not the postprocessing pipeline.
+- No "Presentation Mode" — you can't get a clean hero shot without manually toggling grid + closing rails.
 
-A small `ai_supervisor.py` next to `blender_jobs.py` on the cloud worker. After each meaningful step the worker:
+## What I'll change
 
-1. **Renders 4 thumbnails** (front / side / top / iso) of the current scene at 512px using Blender's Eevee — fast, no GPU needed.
-2. **Collects metrics**: triangle count, manifold check (`bmesh.ops.holes`), bbox dims, panel count.
-3. **Sends thumbs + metrics + step name** to `https://ai.gateway.lovable.dev/v1/chat/completions` using `LOVABLE_API_KEY` and `google/gemini-2.5-pro` (vision).
-4. **Asks for a structured decision** via tool calling: `{ verdict: "accept" | "retry" | "fail", reason: string, suggested_params?: {...} }`.
-5. **Acts on the verdict** — retry the step (max 2x) with adjusted tolerance/solver, accept and continue, or write a clean failure with the AI's reasoning into `result.json`.
+### 1. Make the default render look premium out of the box (`BuildStudioViewport.tsx`)
 
-For the labelling step specifically, the AI gets a **per-panel render + bbox + extents** and returns a slot name from a fixed enum (`front_splitter, front_canard_l/r, side_skirt_l/r, rear_diffuser, rear_wing, hood_vent, fender_flare_l/r, ...`) plus a confidence and one-line rationale.
+- **Switch the default `Environment` preset** from whatever the paint finish defaults to into `"studio"` for unpainted cars, so the body picks up real HDRI reflections immediately. Today an unpainted STL on a non-reflective preset reads as flat plastic.
+- **Bump the body material's default look** when no `paintFinish` has been chosen yet: pearl-white with `clearcoat: 1.0`, `clearcoatRoughness: 0.05`, `metalness: 0.4`, `roughness: 0.35`, `envMapIntensity: 1.4`. This is what makes the mockup "pop" — it's not postprocessing, it's a clearcoat paint shader on a good HDRI.
+- **Tune the rim light** (the orange `directionalLight` at `[-6, 4, -3]`) down from `0.45` to `0.25` and shift it cooler — right now it tints the whole back of the car orange.
+- **Add a soft fill light** from camera direction at `0.3` intensity so the front never goes muddy.
 
-## Files that change
+### 2. Hide the grid by default + clean background
 
-### `blender-worker/ai_supervisor.py` *(new)*
-- `render_quad_views(scene, out_dir) -> list[Path]` — 4 Eevee renders, cheap.
-- `collect_metrics(obj) -> dict` — tri count, manifold, bbox, watertight check.
-- `ask_validator(step_name, thumbs, metrics) -> Verdict` — single Gemini call with vision.
-- `ask_classifier(panel_obj, panel_thumb) -> {slot, label, confidence, reason}` — same gateway, slot enum enforced via tool schema.
-- All HTTP via `requests` (already a worker dep), reads `LOVABLE_API_KEY` from env.
+- Default `showGrid` to **off** in `BuildStudio.tsx` page state. Users who want it can toggle it on from the toolbar — but the first impression should be car-on-floor, not car-on-blueprint.
+- Keep the `<color attach="background" args={["#0a0a0c"]} />` as is — it matches the mockup's near-black studio.
 
-### `blender-worker/blender_jobs.py` *(modified)*
-- Wrap `op_bake_bodykit` in an **agent loop**: boolean → validate → split → validate → per-panel classify. Up to 2 retries on the boolean step with bumped `tol_mm` / swapped solver if AI says "retry".
-- Replace `_classify_aero_slot` bbox heuristic with `ai_supervisor.ask_classifier` (keep bbox as fallback only if AI call fails).
-- Write AI reasoning into `result.json` so it flows back through `upload-blender-output`.
+### 3. New "Presentation Mode" toggle (the big one)
 
-### `blender-worker/start.ps1` *(modified)*
-- Add `LOVABLE_API_KEY` to the env block and `LOVABLE_FUNCTIONS_URL` (already there). One line each. Document in `docs/blender-worker.md`.
-- **Action you'll take on the cloud server**: pull the new code and add `LOVABLE_API_KEY=...` to the env / systemd unit / wherever `start.ps1` equivalent runs. I'll spell out exactly which env vars in the docs.
+Add a single button to `BuildStudioToolbar` (icon: `Maximize2` or `Eye`) that, when active:
 
-### `supabase/functions/bake-bodykit-from-shell/index.ts` *(modified)*
-- When ingesting `result.json`, pull the new `ai_label`, `ai_confidence`, `ai_reasoning`, `ai_attempts` fields and write them into `body_kit_parts` / `body_kits`.
+- Hides the toolbar (auto-fades), the status bar, both rails, and the gizmo viewcube.
+- Forces `quality = "cinematic"` and `showGrid = false`.
+- Forces `Environment` to `"studio"`, lifts `accumulativeShadows`, bumps `Bloom` intensity slightly.
+- Exits on `Esc` or by clicking a small floating "Exit Presentation" pill in the top-right.
 
-### Database migration *(new)*
-- `body_kit_parts`: add `ai_label text`, `ai_confidence numeric`, `ai_reasoning text`.
-- `body_kits`: add `ai_attempts integer default 0`, `ai_notes text`.
-- No backfill — only new bakes get the columns populated.
+This is the screenshot mode. One click → mockup-quality hero render, your annotations still drawn on the panels.
 
-### `src/components/build-studio/BodyKitViewerDialog.tsx` *(modified)*
-- Show AI confidence badge + reasoning tooltip per panel.
-- Show overall `ai_notes` at the kit level if present (so you see "shell collapsed during boolean, retried with tol=8mm, accepted" rather than a silent success).
+### 4. Make the annotation strokes look like the mockup
 
-## What this fixes
+The mockup's strokes are **slightly glowing white/cyan ribbons**, not flat tubes. Tiny tweaks to `SurfaceStrokesRenderer` in `SurfaceStrokes.tsx`:
 
-- **The mislabelled splitter/diffuser** → AI sees the actual geometry, not just bbox z-position.
-- **The yellow-blob bake** → validator catches it before save and either retries with different params or fails loudly with a reason.
-- **"Worker is just following a script"** → it now reasons about its own output between steps.
+- Switch from `meshBasicMaterial` to `meshStandardMaterial` with `emissive: stroke.color`, `emissiveIntensity: 1.6`, `metalness: 0`, `roughness: 0.4`. Bloom (already in the pipeline at Studio quality) will then bleed the edges into a soft halo.
+- Default annotation color in the store: change from `#fb923c` (orange) to `#e2e8f0` (off-white) so first-time strokes match the mockup. The color picker still works.
+- Slightly thicker default width (4 → 5 px) so they read at a glance.
 
-## What's explicitly out of scope
+### 5. Floor
 
-- No code-writing agent (AI doesn't author new Blender Python on the fly — too risky to sandbox, can revisit later).
-- No retraining / fine-tuning. Pure prompt + vision.
-- No changes to `dispatch-blender-job`, `dispatch-geometry-job`, `geometry-job-status`, `blender-job-status`, or `upload-blender-output` — the protocol between Lovable Cloud and your worker stays identical.
-- No new external services. Uses Lovable AI gateway you already have.
+Already wired via `ShowroomFloor` — `Studio` and `Cinematic` presets enable the reflector. Just confirm the default project quality is `"studio"`. No code change needed beyond default verification.
 
-## Cost / latency note
+### 6. Defer optional polish (NOT in this pass — call out for next)
 
-Each bake currently makes 0 AI calls. After this PR: ~1 validator call after boolean + 1 after split + 1 classifier call per panel (typically 6–10). At Gemini 2.5 Pro that's ~10–20s extra wall time and ~12 vision calls. If that's too heavy I'll switch the per-panel classifier to `gemini-3-flash-preview` and keep Pro only for the validator — drops cost ~5x with minimal accuracy loss.
+- **Per-panel material classification** for unpainted cars (so the windows are glass, the wheels are metal, etc., even before someone opens Paint Studio). This requires running the existing `classify-car-materials` edge function on import. Worth a separate pass.
+- **Screen-space-reflections (SSR)** post-pass — heavier, only worth it on Cinematic. Skip for now; the reflective floor + HDRI does 90% of the work.
 
-## Rollout
+## Files I'll touch
 
-1. Land the migration + edge function changes (safe even if worker hasn't been updated — old worker just won't populate the new columns).
-2. You pull the worker code on the cloud box and add `LOVABLE_API_KEY` to its env.
-3. Run one bake. Inspect AI reasoning in the dialog.
-4. If labels look right, delete the old bad bakes and re-bake.
+- `src/components/build-studio/BuildStudioViewport.tsx` — lighting tweaks, default env, presentation-mode props.
+- `src/components/build-studio/annotate/SurfaceStrokes.tsx` — emissive tube material, default color/width.
+- `src/lib/build-studio/annotate/store.ts` — default color `#e2e8f0`, default width `5`.
+- `src/lib/build-studio/paint-finish.ts` — bump `DEFAULT_PAINT_FINISH` clearcoat / envMapIntensity.
+- `src/pages/BuildStudio.tsx` — `showGrid` defaults to `false`, add `presentationMode` state, wire toolbar button.
+- `src/components/build-studio/BuildStudioToolbar.tsx` — add Presentation Mode button + Esc handler.
+- `src/components/build-studio/BuildStudioStatusBar.tsx` — hide when presentation active (driven by parent prop).
+
+## What you'll see after
+
+- Open Build Studio on the Boxster: glossy clearcoated car under HDRI reflections on a polished dark floor, no grid, no orange tint. Toolbar + rails still there for editing.
+- Hit the new **Presentation** button (top-right of toolbar): UI fades, cinematic post kicks in, you're left with the car and your strokes — the screenshot you sent.
+- Surface strokes glow softly (bloom) instead of looking like matte plastic noodles.
+
+No backend, no migrations, no breaking changes — purely visual + a new toggle.
