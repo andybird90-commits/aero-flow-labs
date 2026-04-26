@@ -113,6 +113,10 @@ interface ViewportProps {
   measureLines?: MeasureLine[];
   /** Setter for measurement lines. */
   onMeasureLinesChange?: (lines: MeasureLine[]) => void;
+  /** Live camera pose ref — populated by <CameraPoseProbe> for screen markup. */
+  livePoseRef?: React.MutableRefObject<CameraPose | null>;
+  /** Called once after the hero STL loads with its triangle count. */
+  onTriangleCount?: (n: number) => void;
   onCommit: (
     id: string,
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "snap_zone_id">>,
