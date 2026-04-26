@@ -232,6 +232,39 @@ def _post_json(url: str, headers: dict, payload: dict, timeout: int) -> dict | N
         return None
 
 
+def _post_anthropic(payload: dict, api_key: str, timeout: int) -> tuple[dict | None, int | None]:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        ANTHROPIC_URL,
+        data=body,
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": ANTHROPIC_VERSION,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8")), None
+    except urllib.error.HTTPError as e:
+        try:
+            err_body = e.read().decode("utf-8", errors="replace")[:800]
+        except Exception:
+            err_body = ""
+        model = payload.get("model", "(unknown)")
+        if e.code in {404, 410}:
+            print(f"[ai_supervisor] Claude model unavailable/deprecated: {model} HTTP {e.code}: {err_body}", file=sys.stderr)
+        elif e.code in {401, 403}:
+            print(f"[ai_supervisor] Anthropic auth/access failed for {model} HTTP {e.code}. Check ANTHROPIC_API_KEY and model access: {err_body}", file=sys.stderr)
+        else:
+            print(f"[ai_supervisor] Anthropic HTTP {e.code} for {model}: {err_body}", file=sys.stderr)
+        return None, e.code
+    except Exception as e:
+        print(f"[ai_supervisor] Anthropic request error: {type(e).__name__}: {e}", file=sys.stderr)
+        return None, None
+
+
 def _img_block_anthropic(p: Path) -> dict:
     b64 = base64.b64encode(p.read_bytes()).decode("ascii")
     return {
