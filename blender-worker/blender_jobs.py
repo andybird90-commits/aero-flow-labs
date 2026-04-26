@@ -22,6 +22,17 @@ import bpy  # type: ignore
 import bmesh  # type: ignore
 from mathutils import Vector  # type: ignore
 
+# AI supervisor lives next to this script. Import is best-effort: if it
+# fails (missing requests etc.) the bake still runs with the bbox heuristic.
+sys.path.insert(0, str(Path(__file__).parent.resolve()))
+try:
+    import ai_supervisor  # type: ignore
+    _AI_OK = True
+except Exception as _ai_err:  # pragma: no cover
+    print(f"[blender_jobs] ai_supervisor unavailable: {_ai_err}", file=sys.stderr)
+    ai_supervisor = None  # type: ignore
+    _AI_OK = False
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # entrypoint
