@@ -11,6 +11,11 @@ secrets:
 - `BLENDER_WORKER_URL` — the worker's base URL
 - `BLENDER_WORKER_TOKEN` — bearer token used in the `Authorization` header
 
+The worker box itself also needs **`LOVABLE_API_KEY`** in its environment so
+`ai_supervisor.py` can call the Lovable AI Gateway for vision-based bake
+validation and per-panel classification. The worker degrades gracefully (bbox
+heuristic + auto-accept) if it's missing.
+
 ---
 
 ## Endpoints
