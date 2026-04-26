@@ -35,6 +35,8 @@ import {
   Sparkles,
   Trash2,
   Box,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
