@@ -901,6 +901,19 @@ export default function BuildStudio() {
 
 
                 <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={presentationMode ? "default" : "outline"}
+                    onClick={() => setPresentationMode((v) => !v)}
+                    className="h-9 px-3 text-xs"
+                    title={presentationMode ? "Exit presentation (Esc)" : "Presentation mode — clean hero render"}
+                  >
+                    {presentationMode ? (
+                      <><EyeOff className="mr-1.5 h-3.5 w-3.5" /> Exit</>
+                    ) : (
+                      <><Eye className="mr-1.5 h-3.5 w-3.5" /> Present</>
+                    )}
+                  </Button>
                   <Button asChild size="sm" variant="outline" className="h-9 px-3 text-xs" title="Open in Showroom (AR/VR & presentation)">
                     <Link to={`/showroom?project=${projectId}`}>
                       <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Showroom
