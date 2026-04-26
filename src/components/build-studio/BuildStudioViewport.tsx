@@ -997,7 +997,7 @@ export function BuildStudioViewport({
         <PartTransformGizmo
           object={meshNode}
           mode={transformMode}
-          size={0.75}
+          size={isTouchDevice() ? 1.4 : 0.75}
           space={transformMode === "translate" ? "world" : "local"}
           translateSnapM={translateSnapM}
           rotateSnapDeg={rotateSnapDeg}
