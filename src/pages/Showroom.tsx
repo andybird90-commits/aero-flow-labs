@@ -498,9 +498,22 @@ export default function Showroom() {
 
 
       {/* Left rail — bookmarks + camera presets */}
-      {!presentationMode && (
-        <aside className="absolute left-4 top-1/2 z-40 w-64 -translate-y-1/2">
+      {!presentationMode && (!isMobile || showLeftPanel) && (
+        <aside className={`absolute left-4 z-40 w-64 ${isMobile ? "top-20" : "top-1/2 -translate-y-1/2"}`}>
           <div className="rounded-xl border border-border bg-surface-1/95 p-3 shadow-xl">
+            {isMobile && (
+              <div className="mb-2 flex justify-end">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={() => setShowLeftPanel(false)}
+                  aria-label="Close camera panel"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Camera presets
