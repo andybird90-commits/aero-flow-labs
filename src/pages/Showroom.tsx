@@ -35,6 +35,8 @@ import {
   Sparkles,
   Trash2,
   Box,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -50,6 +52,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProject } from "@/hooks/useCurrentProject";
@@ -168,6 +171,9 @@ export default function Showroom() {
   const [recording, setRecording] = useState(false);
   const [recordProgress, setRecordProgress] = useState(0);
   const [exportingUsdz, setExportingUsdz] = useState(false);
+  const isMobile = useIsMobile();
+  const [showLeftPanel, setShowLeftPanel] = useState(false);
+  const [showRightPanel, setShowRightPanel] = useState(false);
 
   const { bookmarks, add, remove } = useCameraBookmarks(projectId);
   const { data: shareState } = useProjectShareState(projectId);
@@ -492,9 +498,22 @@ export default function Showroom() {
 
 
       {/* Left rail — bookmarks + camera presets */}
-      {!presentationMode && (
-        <aside className="absolute left-4 top-1/2 z-40 w-64 -translate-y-1/2">
+      {!presentationMode && (!isMobile || showLeftPanel) && (
+        <aside className={`absolute left-4 z-40 w-64 ${isMobile ? "top-20" : "top-1/2 -translate-y-1/2"}`}>
           <div className="rounded-xl border border-border bg-surface-1/95 p-3 shadow-xl">
+            {isMobile && (
+              <div className="mb-2 flex justify-end">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={() => setShowLeftPanel(false)}
+                  aria-label="Close camera panel"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Camera presets
@@ -565,9 +584,22 @@ export default function Showroom() {
       )}
 
       {/* Right rail — environment + capture */}
-      {!presentationMode && (
-        <aside className="absolute right-4 top-1/2 z-40 w-64 -translate-y-1/2">
+      {!presentationMode && (!isMobile || showRightPanel) && (
+        <aside className={`absolute right-4 z-40 w-64 ${isMobile ? "top-20" : "top-1/2 -translate-y-1/2"}`}>
           <div className="rounded-xl border border-border bg-surface-1/95 p-3 shadow-xl">
+            {isMobile && (
+              <div className="mb-2 flex justify-end">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={() => setShowRightPanel(false)}
+                  aria-label="Close environment panel"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Environment
             </h3>
@@ -656,6 +688,42 @@ export default function Showroom() {
             )}
           </div>
         </aside>
+      )}
+
+      {/* Mobile floating toggle pills — pop the side panels in/out */}
+      {!presentationMode && isMobile && (
+        <div className="pointer-events-auto absolute inset-x-0 top-20 z-30 flex justify-between px-3">
+          {!showLeftPanel ? (
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-10 w-10 rounded-full border-border bg-surface-1/95 shadow-xl backdrop-blur"
+              onClick={() => {
+                setShowLeftPanel(true);
+                setShowRightPanel(false);
+              }}
+              aria-label="Open camera panel"
+              title="Camera presets & bookmarks"
+            >
+              <Camera className="h-4 w-4" />
+            </Button>
+          ) : <span />}
+          {!showRightPanel ? (
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-10 w-10 rounded-full border-border bg-surface-1/95 shadow-xl backdrop-blur"
+              onClick={() => {
+                setShowRightPanel(true);
+                setShowLeftPanel(false);
+              }}
+              aria-label="Open environment panel"
+              title="Environment & capture"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </Button>
+          ) : <span />}
+        </div>
       )}
 
       {/* Presentation-mode minimal HUD */}
