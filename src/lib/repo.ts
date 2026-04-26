@@ -696,6 +696,10 @@ export function useUpdateCar() {
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["project"] });
       qc.invalidateQueries({ queryKey: ["hero_stl"] });
+      qc.invalidateQueries({ queryKey: ["hero_stl_for_project"] });
+      qc.invalidateQueries({ queryKey: ["car_hardpoints"] });
+      qc.invalidateQueries({ queryKey: ["snap_zones"] });
+      qc.invalidateQueries({ queryKey: ["car_material_map"] });
     },
   });
 }
