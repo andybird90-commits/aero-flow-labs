@@ -10,7 +10,7 @@
  * Persists every transform / flag change to placed_parts. Loads the user's
  * current project (or the project from ?project=).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -91,6 +91,12 @@ import {
   QUALITY_DESCRIPTION,
   type RenderQuality,
 } from "@/lib/build-studio/render-quality";
+import { AnnotationToolbar } from "@/components/build-studio/annotate/AnnotationToolbar";
+import { ScreenAnnotationOverlay } from "@/components/build-studio/annotate/ScreenAnnotationOverlay";
+import { AnnotationLayersPanel } from "@/components/build-studio/annotate/AnnotationLayersPanel";
+import { BuildStudioStatusBar } from "@/components/build-studio/BuildStudioStatusBar";
+import { useHydrateAnnotations } from "@/lib/build-studio/annotate/hooks";
+import type { CameraPose } from "@/lib/build-studio/annotate/store";
 
 export default function BuildStudio() {
   const { user } = useAuth();
