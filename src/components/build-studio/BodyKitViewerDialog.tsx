@@ -52,13 +52,14 @@ export function BodyKitViewerDialog({ kit, open, onOpenChange }: Props) {
           {/* 3D viewer */}
           <div className="aspect-video w-full overflow-hidden rounded-md border border-border bg-muted/20">
             {kit?.combined_stl_path ? (
-              <Canvas shadows camera={{ position: [3, 2, 4], fov: 35 }}>
+              <Canvas shadows camera={{ position: [4, 3, 5], fov: 40 }}>
                 <color attach="background" args={["#0b0e14"]} />
-                <Stage environment="warehouse" intensity={0.6} adjustCamera={false}>
-                  <Bounds fit clip observe margin={1.2}>
-                    <KitMesh url={kit.combined_stl_path} />
-                  </Bounds>
-                </Stage>
+                <ambientLight intensity={0.6} />
+                <directionalLight position={[5, 8, 5]} intensity={1.2} castShadow />
+                <directionalLight position={[-5, 4, -3]} intensity={0.4} />
+                <Bounds fit clip observe margin={1.4}>
+                  <KitMesh url={kit.combined_stl_path} />
+                </Bounds>
                 <OrbitControls makeDefault enableDamping />
               </Canvas>
             ) : (
