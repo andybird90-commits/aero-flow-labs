@@ -54,6 +54,7 @@ export function BakeBodyKitButton({
   disabled,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [viewKit, setViewKit] = useState<BodyKit | null>(null);
   const { data: kits = [], isLoading } = useBodyKits(projectId);
   const bake = useBakeBodyKit();
   const del = useDeleteBodyKit();
