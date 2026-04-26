@@ -790,6 +790,8 @@ export function BuildStudioViewport({
   const sceneRootRef = useRef<THREE.Group | null>(null);
 
   const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellNode;
+  const showPartGizmo = tool === "select" && !shellEditMode && !!selected && !!meshNode && !selected.locked;
+  const gizmoActive = showPartGizmo || showShellGizmo;
 
   // Forward the loaded shell to the parent so it can run auto-fit / arch detection.
   useEffect(() => {
