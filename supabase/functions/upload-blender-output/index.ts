@@ -69,27 +69,43 @@ Deno.serve(async (req) => {
 
   const contentType =
     req.headers.get("Content-Type") ?? "application/octet-stream";
-  const bytes = new Uint8Array(await req.arrayBuffer());
-  if (bytes.byteLength === 0) {
+  if (!req.body) {
     return json({ error: "Empty body" }, 400);
   }
 
   const ts = Date.now();
   const objectPath = `blender-worker/${taskId}/${ts}-${filename}`;
 
-  const uploadResp = await fetch(
-    `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${objectPath}`,
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
-        "apikey": SERVICE_ROLE_KEY,
-        "Content-Type": contentType,
-        "x-upsert": "true",
+  // Stream the request body straight through to Storage so we never buffer
+  // the whole STL/GLB in memory — large panel exports were tripping
+  // SUPABASE_EDGE_RUNTIME_ERROR (memory / size cap) on `await arrayBuffer()`.
+  const contentLength = req.headers.get("Content-Length") ?? undefined;
+  const uploadHeaders: Record<string, string> = {
+    "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+    "apikey": SERVICE_ROLE_KEY,
+    "Content-Type": contentType,
+    "x-upsert": "true",
+  };
+  if (contentLength) uploadHeaders["Content-Length"] = contentLength;
+
+  let uploadResp: Response;
+  try {
+    uploadResp = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${objectPath}`,
+      {
+        method: "POST",
+        headers: uploadHeaders,
+        body: req.body,
+        // @ts-expect-error — Deno fetch supports duplex for streaming bodies
+        duplex: "half",
       },
-      body: bytes,
-    },
-  );
+    );
+  } catch (err) {
+    return json(
+      { error: `Storage upload threw: ${(err as Error).message}` },
+      502,
+    );
+  }
   if (!uploadResp.ok) {
     const t = await uploadResp.text();
     return json(
@@ -126,6 +142,6 @@ Deno.serve(async (req) => {
   return json({
     url: `${SUPABASE_URL}/storage/v1${signedPath}`,
     object_path: objectPath,
-    bytes: bytes.byteLength,
+    bytes: contentLength ? Number(contentLength) : null,
   });
 });
