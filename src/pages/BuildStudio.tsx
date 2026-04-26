@@ -987,16 +987,16 @@ export default function BuildStudio() {
               </div>
               )}
 
-              {/* 3-column body — rails collapse in Presentation Mode. */}
+              {/* 3-column body — rails collapse in Presentation Mode and on mobile (then served as Sheets). */}
               <div
                 className="grid flex-1 min-h-0"
                 style={{
-                  gridTemplateColumns: presentationMode
+                  gridTemplateColumns: presentationMode || isMobile
                     ? "1fr"
                     : "var(--studio-rail-w) 1fr var(--studio-rail-w)",
                 }}
               >
-                {!presentationMode && (
+                {!presentationMode && !isMobile && (
                   <aside className="studio-rail min-h-0 overflow-hidden border-r">
                     <PartLibraryRail
                       items={library}
@@ -1065,8 +1065,13 @@ export default function BuildStudio() {
                   )}
                 </div>
 
-                {!presentationMode && (
+                {!presentationMode && !isMobile && (
                   <aside className="studio-rail flex min-h-0 flex-col overflow-hidden border-l">
+                    <div className="flex h-9 shrink-0 items-center border-b border-border/60 px-3">
+                      <span className="text-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
+                        Properties &amp; Annotations
+                      </span>
+                    </div>
                     <div className="border-b border-border/60 p-3">
                       <AnnotationLayersPanel
                         projectId={projectId}
@@ -1092,6 +1097,67 @@ export default function BuildStudio() {
                   </aside>
                 )}
               </div>
+
+              {/* Mobile rails — served as side sheets so the viewport gets full width. */}
+              {isMobile && !presentationMode && (
+                <>
+                  <Sheet open={mobileLeftOpen} onOpenChange={setMobileLeftOpen}>
+                    <SheetContent side="left" className="w-[88vw] max-w-sm p-0 studio-rail">
+                      <SheetHeader className="border-b border-border/60 px-3 py-2">
+                        <SheetTitle className="text-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70 text-left">
+                          Part Library
+                        </SheetTitle>
+                      </SheetHeader>
+                      <div className="h-[calc(100%-2.5rem)] overflow-hidden">
+                        <PartLibraryRail
+                          items={library}
+                          isLoading={libLoading}
+                          onAdd={(item) => {
+                            handleAdd(item);
+                            setMobileLeftOpen(false);
+                          }}
+                          onAddBlank={() => {
+                            handleAdd(null);
+                            setMobileLeftOpen(false);
+                          }}
+                        />
+                      </div>
+                    </SheetContent>
+                  </Sheet>
+
+                  <Sheet open={mobileRightOpen} onOpenChange={setMobileRightOpen}>
+                    <SheetContent side="right" className="w-[88vw] max-w-sm p-0 studio-rail flex flex-col">
+                      <SheetHeader className="border-b border-border/60 px-3 py-2">
+                        <SheetTitle className="text-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70 text-left">
+                          Properties &amp; Annotations
+                        </SheetTitle>
+                      </SheetHeader>
+                      <div className="border-b border-border/60 p-3">
+                        <AnnotationLayersPanel
+                          projectId={projectId}
+                          userId={user?.id ?? null}
+                        />
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-auto">
+                        <PropertiesPanel
+                          part={selected}
+                          onPatch={handlePatch}
+                          onDuplicate={handleDuplicate}
+                          onDelete={handleDelete}
+                          onMirror={handleMirror}
+                          snapZones={snapZones}
+                          onSnapToZone={handleSnapToZone}
+                          onMirrorToZone={handleMirrorToZone}
+                          selectedLibraryItem={selectedLibraryItem}
+                          baseMeshUrl={heroStlUrl ?? null}
+                          userId={user?.id ?? null}
+                          onLiveFitBaked={handleLiveFitBaked}
+                        />
+                      </div>
+                    </SheetContent>
+                  </Sheet>
+                </>
+              )}
 
               {/* Status bar — hidden in Presentation Mode. */}
               {!presentationMode && (
