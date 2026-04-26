@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Package, Loader2, CheckCircle2, AlertCircle, Trash2, Sparkles } from "lucide-react";
+import { Package, Loader2, CheckCircle2, AlertCircle, Trash2, Sparkles, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -21,9 +21,11 @@ import {
   useDeleteBodyKit,
   bodyKitStatusLabel,
   isBodyKitInFlight,
+  type BodyKit,
   type BodyKitStatus,
 } from "@/lib/build-studio/body-kits";
 import type { ShellTransform } from "@/components/build-studio/BuildStudioViewport";
+import { BodyKitViewerDialog } from "@/components/build-studio/BodyKitViewerDialog";
 
 interface Props {
   projectId: string | null;
@@ -52,6 +54,7 @@ export function BakeBodyKitButton({
   disabled,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [viewKit, setViewKit] = useState<BodyKit | null>(null);
   const { data: kits = [], isLoading } = useBodyKits(projectId);
   const bake = useBakeBodyKit();
   const del = useDeleteBodyKit();
@@ -95,6 +98,7 @@ export function BakeBodyKitButton({
   };
 
   return (
+    <>
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
@@ -183,15 +187,28 @@ export function BakeBodyKitButton({
                       <div className="mt-1 text-[10px] text-destructive">{k.error}</div>
                     )}
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDelete(k.id)}
-                    title="Delete bodykit"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                  <div className="flex shrink-0 flex-col gap-1">
+                    {k.status === "ready" && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 text-muted-foreground hover:text-primary"
+                        onClick={() => setViewKit(k)}
+                        title="View bodykit"
+                      >
+                        <Eye className="h-3 w-3" />
+                      </Button>
+                    )}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDelete(k.id)}
+                      title="Delete bodykit"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
               </li>
             ))}
@@ -199,6 +216,12 @@ export function BakeBodyKitButton({
         )}
       </PopoverContent>
     </Popover>
+    <BodyKitViewerDialog
+      kit={viewKit}
+      open={!!viewKit}
+      onOpenChange={(o) => !o && setViewKit(null)}
+    />
+    </>
   );
 }
 
