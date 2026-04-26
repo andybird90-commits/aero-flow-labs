@@ -216,3 +216,120 @@
     letter-spacing: 0.02em;
   }
 }
+
+/* ─── Build Studio scoped theme ─────────────────────────────────────────────
+   Premium "AERO DESIGN" look: deep onyx canvas, brushed bars, orange accent
+   for the active CTA / sketch tools. Scoped to .studio so it never leaks. */
+@layer components {
+  .studio {
+    --studio-accent: 22 96% 56%;            /* signature orange  */
+    --studio-accent-dim: 22 80% 40%;
+    --studio-accent-glow: 22 100% 70%;
+
+    --studio-bg-0: 220 30% 2%;              /* deepest canvas    */
+    --studio-bg-1: 220 22% 4%;              /* bars              */
+    --studio-bg-2: 220 18% 7%;              /* rails             */
+    --studio-bg-3: 220 16% 11%;             /* hover surfaces    */
+
+    --studio-bar-h: 56px;
+    --studio-status-h: 28px;
+    --studio-rail-w: 280px;
+
+    --studio-stroke: 220 18% 16%;
+    --studio-stroke-strong: 220 18% 22%;
+
+    --studio-shadow:
+      0 1px 0 0 hsl(0 0% 100% / 0.04) inset,
+      0 16px 40px -16px hsl(220 70% 0% / 0.85);
+    --studio-glow: 0 0 0 1px hsl(var(--studio-accent) / 0.45),
+                   0 12px 36px -12px hsl(var(--studio-accent) / 0.55);
+  }
+
+  /* Page background — warm-tinged onyx with a faint vignette glow */
+  .studio-canvas {
+    background:
+      radial-gradient(60% 50% at 50% -10%, hsl(var(--studio-accent) / 0.12), transparent 65%),
+      radial-gradient(80% 70% at 50% 130%, hsl(var(--studio-bg-2)), transparent 70%),
+      hsl(var(--studio-bg-0));
+  }
+
+  /* Brushed metal toolbar — subtle gradient + crisp 1px hairline */
+  .studio-bar {
+    background:
+      linear-gradient(180deg,
+        hsl(var(--studio-bg-1)) 0%,
+        hsl(var(--studio-bg-1) / 0.96) 100%);
+    border-bottom: 1px solid hsl(var(--studio-stroke));
+    box-shadow: var(--studio-shadow);
+    backdrop-filter: blur(10px);
+  }
+
+  .studio-rail {
+    background:
+      linear-gradient(180deg,
+        hsl(var(--studio-bg-2) / 0.9) 0%,
+        hsl(var(--studio-bg-1) / 0.85) 100%);
+    border-color: hsl(var(--studio-stroke));
+  }
+
+  .studio-status {
+    background: hsl(var(--studio-bg-1));
+    border-top: 1px solid hsl(var(--studio-stroke));
+    color: hsl(var(--muted-foreground));
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* Pill button used in the toolbar — flat by default, glow on active */
+  .studio-pill {
+    height: 32px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 6px;
+    border: 1px solid hsl(var(--studio-stroke));
+    background: hsl(var(--studio-bg-2));
+    color: hsl(var(--foreground) / 0.75);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    transition: var(--transition-base);
+  }
+  .studio-pill:hover {
+    background: hsl(var(--studio-bg-3));
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--studio-stroke-strong));
+  }
+  .studio-pill[data-active="true"],
+  .studio-pill[aria-pressed="true"] {
+    background: hsl(var(--studio-accent) / 0.15);
+    color: hsl(var(--studio-accent-glow));
+    border-color: hsl(var(--studio-accent) / 0.45);
+    box-shadow: 0 0 0 1px hsl(var(--studio-accent) / 0.25),
+                0 6px 18px -6px hsl(var(--studio-accent) / 0.45);
+  }
+
+  /* Primary studio CTA — warm orange */
+  .studio-cta {
+    background: linear-gradient(135deg,
+      hsl(var(--studio-accent)) 0%,
+      hsl(var(--studio-accent-dim)) 100%);
+    color: hsl(220 30% 2%);
+    font-weight: 600;
+    border: 1px solid hsl(var(--studio-accent) / 0.7);
+    box-shadow: var(--studio-glow);
+  }
+  .studio-cta:hover {
+    filter: brightness(1.08);
+  }
+
+  /* Faint scanline overlay used on the viewport vignette */
+  .studio-vignette {
+    background:
+      radial-gradient(120% 80% at 50% 50%, transparent 55%, hsl(220 60% 0% / 0.55) 100%);
+    pointer-events: none;
+  }
+}
