@@ -13,7 +13,7 @@ is malformed, callers fall back to safe defaults (accept + bbox heuristic),
 so the bake pipeline never hard-fails because of the AI layer.
 
 Env:
-  ANTHROPIC_API_KEY — bearer token for https://api.anthropic.com (preferred)
+    ANTHROPIC_API_KEY — bearer token for https://api.anthropic.com (preferred)
   LOVABLE_API_KEY   — legacy fallback to https://ai.gateway.lovable.dev
 """
 from __future__ import annotations
@@ -34,10 +34,11 @@ import urllib.error
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
-# Top-tier Claude for both validator and classifier — vision + reasoning matter
-# more here than per-call cost. Override per-call by passing `model=...`.
-DEFAULT_MODEL = "claude-opus-4-5"
-CLASSIFIER_MODEL = "claude-opus-4-5"
+# Verified from Anthropic model docs. Opus 4.7 is the preferred supervisor model;
+# Sonnet / Haiku are explicit fallbacks for model deprecation or account access.
+DEFAULT_MODEL = "claude-opus-4-7"
+CLASSIFIER_MODEL = "claude-opus-4-7"
+ANTHROPIC_FALLBACK_MODELS = ["claude-sonnet-4-6", "claude-haiku-4-5"]
 
 # Legacy gateway kept as a fallback only if ANTHROPIC_API_KEY is missing.
 GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions"
