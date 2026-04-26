@@ -840,7 +840,7 @@ export function BuildStudioViewport({
   return (
     <Canvas
       shadows
-      camera={{ position: [carLength * 1.1, carLength * 0.45, carLength * 1.1], fov: 32, near: 0.1, far: 100 }}
+      camera={{ position: [carLength * 1.2, carLength * 0.32, carLength * 1.2], fov: 32, near: 0.1, far: 200 }}
       onPointerMissed={() => {
         if (transformInteractionRef.current) return;
         if (tool === "select") onSelect(null);
