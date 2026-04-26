@@ -40,6 +40,15 @@ export interface PaintFinish {
   clearcoat_roughness: number;
   env_intensity: number;
   env_preset: EnvPreset;
+  /** Optional URL to a custom .hdr / .exr panorama uploaded by the user.
+   *  When set, this OVERRIDES `env_preset` and is used as both the lighting
+   *  environment AND the visible scene background. Stored as a public URL
+   *  from the `hdri-backdrops` storage bucket. */
+  custom_hdri_url?: string | null;
+  /** When true, the chosen environment is rendered as the scene background
+   *  (you actually see the workshop walls). When false, only the lighting
+   *  is taken from the HDRI and the background stays a clean dark plate. */
+  show_backdrop?: boolean;
   /** Optional per-region overrides (Tier 2 multi-material). */
   wheels?: MaterialFinish;
   tyres?: MaterialFinish;
