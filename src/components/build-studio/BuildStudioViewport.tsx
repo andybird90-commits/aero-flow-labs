@@ -809,6 +809,11 @@ export function BuildStudioViewport({
       {/* Section / clipping plane. */}
       <ClippingPlane enabled={tool === "clip"} axis={clipAxis} carLength={carLength} />
 
+      {/* Annotation pieces — pose probe, surface raycaster, surface tube renderer. */}
+      {livePoseRef && <CameraPoseProbe outRef={livePoseRef} />}
+      <SurfaceStrokeRecorder pickRoot={sceneRootRef.current} orbitRef={orbitRef} />
+      <SurfaceStrokesRenderer />
+
       <CameraRig preset={preset} template={template} />
 
       <OrbitControls
