@@ -484,6 +484,7 @@ def op_bake_bodykit(inputs: dict, out_dir: Path) -> dict:
             "slot_name": slot_name,
             "confidence": conf,
             "triangle_count": tri_count,
+            "area_m2": area_m2,
             "bbox": {"min": list(bb[0]), "max": list(bb[1])},
             "centroid": [(bb[0][i] + bb[1][i]) / 2 for i in range(3)],
             "ai_label": ai_label,
