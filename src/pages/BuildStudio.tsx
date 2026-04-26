@@ -905,8 +905,8 @@ export default function BuildStudio() {
               </div>
 
               {/* 3-column body */}
-              <div className="grid flex-1 min-h-0 grid-cols-[260px_1fr_280px]">
-                <aside className="min-h-0 overflow-hidden border-r border-border bg-card/20">
+              <div className="grid flex-1 min-h-0 grid-cols-[var(--studio-rail-w)_1fr_var(--studio-rail-w)]">
+                <aside className="studio-rail min-h-0 overflow-hidden border-r">
                   <PartLibraryRail
                     items={library}
                     isLoading={libLoading}
@@ -944,27 +944,49 @@ export default function BuildStudio() {
                     showLabels={showLabels}
                     measureLines={measureLines}
                     onMeasureLinesChange={setMeasureLines}
+                    livePoseRef={livePoseRef}
+                    onTriangleCount={setTriangleCount}
                     onCommit={handleCommit}
                   />
+                  {/* Soft vignette so the canvas reads as a "studio plate" */}
+                  <div className="studio-vignette absolute inset-0 z-10" />
+                  {/* Screen-space drawing layer (only catches events when active) */}
+                  <ScreenAnnotationOverlay livePoseRef={livePoseRef} />
                 </div>
 
-                <aside className="min-h-0 overflow-hidden border-l border-border bg-card/20">
-                  <PropertiesPanel
-                    part={selected}
-                    onPatch={handlePatch}
-                    onDuplicate={handleDuplicate}
-                    onDelete={handleDelete}
-                    onMirror={handleMirror}
-                    snapZones={snapZones}
-                    onSnapToZone={handleSnapToZone}
-                    onMirrorToZone={handleMirrorToZone}
-                    selectedLibraryItem={selectedLibraryItem}
-                    baseMeshUrl={heroStlUrl ?? null}
-                    userId={user?.id ?? null}
-                    onLiveFitBaked={handleLiveFitBaked}
-                  />
+                <aside className="studio-rail flex min-h-0 flex-col overflow-hidden border-l">
+                  <div className="border-b border-border/60 p-3">
+                    <AnnotationLayersPanel
+                      projectId={projectId}
+                      userId={user?.id ?? null}
+                    />
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <PropertiesPanel
+                      part={selected}
+                      onPatch={handlePatch}
+                      onDuplicate={handleDuplicate}
+                      onDelete={handleDelete}
+                      onMirror={handleMirror}
+                      snapZones={snapZones}
+                      onSnapToZone={handleSnapToZone}
+                      onMirrorToZone={handleMirrorToZone}
+                      selectedLibraryItem={selectedLibraryItem}
+                      baseMeshUrl={heroStlUrl ?? null}
+                      userId={user?.id ?? null}
+                      onLiveFitBaked={handleLiveFitBaked}
+                    />
+                  </div>
                 </aside>
               </div>
+
+              {/* Status bar */}
+              <BuildStudioStatusBar
+                selected={selected}
+                partsCount={parts.length}
+                triangleCount={triangleCount}
+                snapEnabled={snapEnabled}
+              />
 
               {/* Bottom strip */}
               <div className="h-16 shrink-0 border-t border-border bg-card/30">
