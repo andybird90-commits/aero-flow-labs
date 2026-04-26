@@ -52,6 +52,7 @@ def main() -> None:
 
     handlers = {
         "bake_bodykit": op_bake_bodykit,
+        "repair_donor_stl": op_repair_donor_stl,
     }
     if job_type not in handlers:
         raise SystemExit(f"job_type {job_type!r} not implemented in blender_jobs.py")
