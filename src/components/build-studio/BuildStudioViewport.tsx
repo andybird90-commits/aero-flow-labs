@@ -1066,6 +1066,8 @@ function PartTransformGizmo({
   releaseRef.current = onRelease;
 
   useEffect(() => {
+    if (!object || !object.parent) return;
+
     const controls = new TransformControlsImpl(camera, gl.domElement);
     controlsRef.current = controls;
     controls.setMode(mode);
