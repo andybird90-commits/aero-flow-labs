@@ -298,33 +298,34 @@ def _call_ai(
             content.append({"type": "text", "text": f"View: {view_name}"})
             content.append(_img_block_anthropic(p))
 
-        payload = {
-            "model": model,
-            "max_tokens": 1024,
-            "system": system_msg,
-            "tools": [{
-                "name": tool_name,
-                "description": tool_description,
-                "input_schema": tool_schema,
-            }],
-            "tool_choice": {"type": "tool", "name": tool_name},
-            "messages": [{"role": "user", "content": content}],
-        }
-        headers = {
-            "x-api-key": anthropic_key,
-            "anthropic-version": ANTHROPIC_VERSION,
-            "Content-Type": "application/json",
-        }
-        resp = _post_json(ANTHROPIC_URL, headers, payload, timeout)
-        if not resp:
-            return None
-        try:
-            for block in resp.get("content", []):
-                if block.get("type") == "tool_use" and block.get("name") == tool_name:
-                    return block.get("input") or {}
-        except Exception as e:
-            print(f"[ai_supervisor] could not parse Claude tool_use: {e}",
-                  file=sys.stderr)
+        for candidate_model in [model, *ANTHROPIC_FALLBACK_MODELS]:
+            payload = {
+                "model": candidate_model,
+                "max_tokens": 1024,
+                "system": system_msg,
+                "tools": [{
+                    "name": tool_name,
+                    "description": tool_description,
+                    "input_schema": tool_schema,
+                }],
+                "tool_choice": {"type": "tool", "name": tool_name},
+                "messages": [{"role": "user", "content": content}],
+            }
+            resp, status = _post_anthropic(payload, anthropic_key, timeout)
+            if not resp:
+                if status in {404, 410}:
+                    continue
+                return None
+            try:
+                for block in resp.get("content", []):
+                    if block.get("type") == "tool_use" and block.get("name") == tool_name:
+                        if candidate_model != model:
+                            print(f"[ai_supervisor] used Claude fallback model {candidate_model}", file=sys.stderr)
+                        return block.get("input") or {}
+            except Exception as e:
+                print(f"[ai_supervisor] could not parse Claude tool_use: {e}",
+                      file=sys.stderr)
+                return None
         return None
 
     # ── Fallback: Lovable AI Gateway (OpenAI-compatible, Gemini) ─────────
