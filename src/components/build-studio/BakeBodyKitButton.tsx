@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Package, Loader2, CheckCircle2, AlertCircle, Trash2, Sparkles } from "lucide-react";
+import { Package, Loader2, CheckCircle2, AlertCircle, Trash2, Sparkles, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -21,9 +21,11 @@ import {
   useDeleteBodyKit,
   bodyKitStatusLabel,
   isBodyKitInFlight,
+  type BodyKit,
   type BodyKitStatus,
 } from "@/lib/build-studio/body-kits";
 import type { ShellTransform } from "@/components/build-studio/BuildStudioViewport";
+import { BodyKitViewerDialog } from "@/components/build-studio/BodyKitViewerDialog";
 
 interface Props {
   projectId: string | null;
