@@ -7,7 +7,7 @@
  */
 import { useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Stage, Bounds } from "@react-three/drei";
+import { OrbitControls, Bounds } from "@react-three/drei";
 import { useLoader } from "@react-three/fiber";
 import { STLLoader } from "three-stdlib";
 import * as THREE from "three";
