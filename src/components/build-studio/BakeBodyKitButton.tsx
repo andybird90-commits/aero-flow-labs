@@ -216,6 +216,12 @@ export function BakeBodyKitButton({
         )}
       </PopoverContent>
     </Popover>
+    <BodyKitViewerDialog
+      kit={viewKit}
+      open={!!viewKit}
+      onOpenChange={(o) => !o && setViewKit(null)}
+    />
+    </>
   );
 }
 
