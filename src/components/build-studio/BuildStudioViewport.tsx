@@ -1062,6 +1062,14 @@ export function BuildStudioViewport({
         minDistance={1.5}
         maxDistance={20}
         target={[0, 0.6, 0]}
+        // On touch devices, require TWO fingers to orbit so single-finger
+        // drags are reserved for the transform gizmo. Two-finger pinch zooms,
+        // three-finger drag pans.
+        touches={
+          isTouchDevice()
+            ? { ONE: undefined as any, TWO: THREE.TOUCH.ROTATE }
+            : { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+        }
       />
 
       <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
