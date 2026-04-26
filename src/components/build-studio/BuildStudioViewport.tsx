@@ -57,6 +57,19 @@ import type { CameraPose } from "@/lib/build-studio/annotate/store";
  * the floor fades into the backdrop instead of meeting it on a hard line.
  * Tuned by eye against drei's bundled environment presets.
  */
+/**
+ * True when the primary input is touch (no fine pointer / hover). On these
+ * devices we (a) enlarge the transform gizmo so it's finger-friendly and
+ * (b) require two fingers to orbit the camera — single-finger drags are
+ * reserved for moving the selected part.
+ */
+function isTouchDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia?.("(hover: none) and (pointer: coarse)").matches ?? false
+  );
+}
+
 function horizonFogColor(preset: EnvPreset | string): string {
   switch (preset) {
     case "warehouse": return "#3a3530";
@@ -997,7 +1010,7 @@ export function BuildStudioViewport({
         <PartTransformGizmo
           object={meshNode}
           mode={transformMode}
-          size={0.75}
+          size={isTouchDevice() ? 1.4 : 0.75}
           space={transformMode === "translate" ? "world" : "local"}
           translateSnapM={translateSnapM}
           rotateSnapDeg={rotateSnapDeg}
@@ -1020,7 +1033,7 @@ export function BuildStudioViewport({
         <PartTransformGizmo
           object={shellNode}
           mode={transformMode}
-          size={0.9}
+          size={isTouchDevice() ? 1.6 : 0.9}
           orbitRef={orbitRef}
           interactionRef={transformInteractionRef}
           onRelease={() => {
@@ -1062,6 +1075,14 @@ export function BuildStudioViewport({
         minDistance={1.5}
         maxDistance={20}
         target={[0, 0.6, 0]}
+        // On touch devices, require TWO fingers to orbit so single-finger
+        // drags are reserved for the transform gizmo. Two-finger pinch zooms,
+        // three-finger drag pans.
+        touches={
+          isTouchDevice()
+            ? { ONE: undefined as any, TWO: THREE.TOUCH.ROTATE }
+            : { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+        }
       />
 
       <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
