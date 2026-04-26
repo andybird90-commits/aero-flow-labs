@@ -186,6 +186,39 @@ def _classify_aero_slot(part_bbox, donor_bbox) -> tuple[str, float]:
 # op: bake_bodykit
 # ────────────────────────────────────────────────────────────────────────────
 
+def _do_boolean_subtract(shell, donor, tol_mm: float, solver: str) -> None:
+    """Inflate donor by `tol_mm` and subtract it from shell. Mutates the scene."""
+    # Reset donor scale to a fresh copy: we apply solidify each call, so the
+    # caller is responsible for re-importing donor between attempts.
+    bpy.ops.object.select_all(action="DESELECT")
+    donor.select_set(True)
+    bpy.context.view_layer.objects.active = donor
+    sld = donor.modifiers.new("inflate", "SOLIDIFY")
+    sld.thickness = tol_mm * 2.0
+    sld.offset = 1.0
+    bpy.ops.object.modifier_apply(modifier=sld.name)
+
+    bpy.ops.object.select_all(action="DESELECT")
+    shell.select_set(True)
+    bpy.context.view_layer.objects.active = shell
+    bm = shell.modifiers.new("subtract", "BOOLEAN")
+    bm.operation = "DIFFERENCE"
+    bm.object = donor
+    bm.solver = solver
+    try:
+        bpy.ops.object.modifier_apply(modifier=bm.name)
+    except RuntimeError as e:
+        # primary solver failed → swap and retry once
+        alt = "EXACT" if solver == "FAST" else "FAST"
+        print(f"[bake_bodykit] {solver} boolean failed ({e}); retrying {alt}")
+        shell.modifiers.remove(bm)
+        bm2 = shell.modifiers.new("subtract", "BOOLEAN")
+        bm2.operation = "DIFFERENCE"
+        bm2.object = donor
+        bm2.solver = alt
+        bpy.ops.object.modifier_apply(modifier=bm2.name)
+
+
 def op_bake_bodykit(inputs: dict, out_dir: Path) -> dict:
     """
     Inputs:
@@ -195,101 +228,144 @@ def op_bake_bodykit(inputs: dict, out_dir: Path) -> dict:
       tolerance_mm:    float donor inflation distance (default 4)
       min_panel_tris:  int   drop islands smaller than this (default 80)
 
-    Output keys (named so worker uploads them via callback):
-      combined_stl
-      panel_<n>_stl        (one per panel)
-      panel_manifest_json  (slot/bbox/triangle metadata)
-    """
-    _reset_scene()
+    The op_bake_bodykit is now an AI-supervised loop:
+      1. boolean subtract → AI validates the combined kit
+         (retry up to 2x with different tol/solver if AI says retry)
+      2. split into islands
+      3. per-panel AI classification (with bbox heuristic as fallback)
 
+    Output keys:
+      combined_stl
+      panel_<n>_stl
+      panel_manifest_json
+    """
     donor_url = inputs["donor_stl_url"]
     shell_url = inputs["shell_stl_url"]
     transform = inputs.get("baked_transform") or {}
-    tol_mm = float(inputs.get("tolerance_mm", 4.0))
+    initial_tol_mm = float(inputs.get("tolerance_mm", 4.0))
     min_tris = int(inputs.get("min_panel_tris", 80))
 
     donor_path = _download(donor_url, out_dir / "donor.stl")
     shell_path = _download(shell_url, out_dir / "shell.stl")
 
-    donor = _import_stl(donor_path, "donor")
-    shell = _import_stl(shell_path, "shell")
-
-    # If the shell looks like it was exported in metres, scale to mm.
-    sb_min, sb_max = _bbox_world(shell)
-    shell_max_dim = max(sb_max[i] - sb_min[i] for i in range(3))
-    if shell_max_dim < 50:
-        shell.scale = (1000.0, 1000.0, 1000.0)
-        bpy.context.view_layer.update()
-        bpy.ops.object.select_all(action="DESELECT")
-        shell.select_set(True)
-        bpy.context.view_layer.objects.active = shell
-        bpy.ops.object.transform_apply(scale=True)
-
-    # Bake the alignment transform onto the shell mesh.
-    pos = transform.get("position") or {}
-    rot = transform.get("rotation") or {}
-    scl = transform.get("scale") or {}
-    _apply_xyz_euler(
-        shell,
-        (float(pos.get("x", 0)), float(pos.get("y", 0)), float(pos.get("z", 0))),
-        (float(rot.get("x", 0)), float(rot.get("y", 0)), float(rot.get("z", 0))),
-        (float(scl.get("x", 1)), float(scl.get("y", 1)), float(scl.get("z", 1))),
-    )
-
-    # Inflate the donor slightly so triangles within tol_mm of the donor get
-    # subtracted away. We use a Solidify modifier in inflate mode.
+    # Capture donor bbox once (from the un-inflated mesh) for slot context.
+    _reset_scene()
+    donor_ref = _import_stl(donor_path, "donor_ref")
+    donor_bbox = _bbox_world(donor_ref)
     bpy.ops.object.select_all(action="DESELECT")
-    donor.select_set(True)
-    bpy.context.view_layer.objects.active = donor
-    sld = donor.modifiers.new("inflate", "SOLIDIFY")
-    sld.thickness = tol_mm * 2.0
-    sld.offset = 1.0  # outward only
-    bpy.ops.object.modifier_apply(modifier=sld.name)
-
-    # Boolean DIFFERENCE: shell - donor.
-    bpy.ops.object.select_all(action="DESELECT")
-    shell.select_set(True)
-    bpy.context.view_layer.objects.active = shell
-    bm = shell.modifiers.new("subtract", "BOOLEAN")
-    bm.operation = "DIFFERENCE"
-    bm.object = donor
-    bm.solver = "FAST"  # FAST is way more reliable than EXACT on noisy meshes
-    try:
-        bpy.ops.object.modifier_apply(modifier=bm.name)
-    except RuntimeError as e:
-        # Boolean failed (non-manifold etc.) — try EXACT as a fallback.
-        print(f"[bake_bodykit] FAST boolean failed ({e}); retrying EXACT")
-        shell.modifiers.remove(bm)
-        bm2 = shell.modifiers.new("subtract", "BOOLEAN")
-        bm2.operation = "DIFFERENCE"
-        bm2.object = donor
-        bm2.solver = "EXACT"
-        bpy.ops.object.modifier_apply(modifier=bm2.name)
-
-    # Drop the donor — we don't need it any more.
-    bpy.ops.object.select_all(action="DESELECT")
-    donor.select_set(True)
+    donor_ref.select_set(True)
     bpy.ops.object.delete()
 
-    # Write the combined kit STL (everything left over after subtraction).
+    # ── attempt loop ──────────────────────────────────────────────────────
+    attempt_log: list[dict] = []
+    max_attempts = 3 if _AI_OK else 1
+    tol_mm = initial_tol_mm
+    solver = "FAST"
+    shell = None
+    accepted = False
+
+    for attempt in range(1, max_attempts + 1):
+        _reset_scene()
+        donor = _import_stl(donor_path, "donor")
+        shell = _import_stl(shell_path, "shell")
+
+        # If shell looks like metres (max dim < 50), scale to mm.
+        sb_min, sb_max = _bbox_world(shell)
+        shell_max_dim = max(sb_max[i] - sb_min[i] for i in range(3))
+        if shell_max_dim < 50:
+            shell.scale = (1000.0, 1000.0, 1000.0)
+            bpy.context.view_layer.update()
+            bpy.ops.object.select_all(action="DESELECT")
+            shell.select_set(True)
+            bpy.context.view_layer.objects.active = shell
+            bpy.ops.object.transform_apply(scale=True)
+
+        # Bake user alignment transform onto the shell mesh.
+        pos = transform.get("position") or {}
+        rot = transform.get("rotation") or {}
+        scl = transform.get("scale") or {}
+        _apply_xyz_euler(
+            shell,
+            (float(pos.get("x", 0)), float(pos.get("y", 0)), float(pos.get("z", 0))),
+            (float(rot.get("x", 0)), float(rot.get("y", 0)), float(rot.get("z", 0))),
+            (float(scl.get("x", 1)), float(scl.get("y", 1)), float(scl.get("z", 1))),
+        )
+
+        try:
+            _do_boolean_subtract(shell, donor, tol_mm, solver)
+        except Exception as e:
+            attempt_log.append({"attempt": attempt, "tol_mm": tol_mm, "solver": solver,
+                                "verdict": "fail", "reason": f"boolean threw: {e}"})
+            if attempt == max_attempts:
+                raise RuntimeError(f"Boolean subtraction failed on all attempts: {e}")
+            tol_mm = min(tol_mm * 2.0, 16.0)
+            solver = "EXACT"
+            continue
+
+        # Drop the inflated donor — only shell remains.
+        bpy.ops.object.select_all(action="DESELECT")
+        donor.select_set(True)
+        bpy.ops.object.delete()
+
+        combined_tris = len(shell.data.polygons)
+        if combined_tris == 0:
+            attempt_log.append({"attempt": attempt, "tol_mm": tol_mm, "solver": solver,
+                                "verdict": "fail", "reason": "boolean produced empty mesh"})
+            if attempt == max_attempts:
+                raise RuntimeError(
+                    "Boolean produced an empty mesh on all attempts — the shell may "
+                    "sit entirely inside the donor. Re-check alignment in Build Studio."
+                )
+            tol_mm = max(tol_mm / 2.0, 1.0)  # smaller tolerance might help
+            continue
+
+        # ── AI validation of the combined kit ────────────────────────────
+        if _AI_OK and ai_supervisor is not None:
+            verdict = ai_supervisor.ask_validator(
+                step_name="boolean_subtract",
+                objs=[shell],
+                out_dir=out_dir,
+                attempt=attempt,
+                context=f"tol_mm={tol_mm} solver={solver} tris={combined_tris}",
+            )
+        else:
+            verdict = {"verdict": "accept", "reason": "AI disabled.", "suggested_params": {}}
+
+        attempt_log.append({"attempt": attempt, "tol_mm": tol_mm, "solver": solver,
+                            "tris": combined_tris, **verdict})
+
+        if verdict["verdict"] == "accept":
+            accepted = True
+            break
+        if verdict["verdict"] == "fail" or attempt == max_attempts:
+            if attempt == max_attempts and verdict["verdict"] == "retry":
+                # ran out of retries, take what we have
+                accepted = True
+                break
+            raise RuntimeError(
+                f"Bake rejected by AI supervisor: {verdict.get('reason', '(no reason)')}"
+            )
+
+        # AI said retry → apply suggested params and loop
+        sp = verdict.get("suggested_params") or {}
+        if isinstance(sp.get("tolerance_mm"), (int, float)):
+            tol_mm = float(sp["tolerance_mm"])
+        else:
+            tol_mm = min(tol_mm * 1.5, 16.0)
+        if sp.get("solver") in {"FAST", "EXACT"}:
+            solver = sp["solver"]
+        elif solver == "FAST":
+            solver = "EXACT"
+
+    if shell is None or not accepted:
+        raise RuntimeError("Bake exited loop without an accepted result.")
+
+    # ── export combined kit ──────────────────────────────────────────────
     combined_path = out_dir / "combined.stl"
     _export_stl(shell, combined_path)
     combined_tris = len(shell.data.polygons)
-    if combined_tris == 0:
-        raise RuntimeError(
-            "Boolean produced an empty mesh — the shell may sit entirely inside "
-            "the donor. Re-check the alignment in Build Studio."
-        )
 
-    # Donor bbox for slot classification (recompute from the original donor file
-    # because we already deleted the inflated one — re-import quickly).
-    donor2 = _import_stl(donor_path, "donor_ref")
-    donor_bbox = _bbox_world(donor2)
-    bpy.ops.object.select_all(action="DESELECT")
-    donor2.select_set(True)
-    bpy.ops.object.delete()
-
-    # Split into loose parts (mesh islands).
+    # ── split into loose parts ───────────────────────────────────────────
     bpy.ops.object.select_all(action="DESELECT")
     shell.select_set(True)
     bpy.context.view_layer.objects.active = shell
@@ -303,15 +379,45 @@ def op_bake_bodykit(inputs: dict, out_dir: Path) -> dict:
 
     outputs: dict[str, str] = {"combined_stl": "combined.stl"}
     manifest: list[dict] = []
-
     slot_counter: dict[str, int] = {}
     panel_index = 0
+
     for obj in islands:
         tri_count = len(obj.data.polygons)
         if tri_count < min_tris:
             continue
         bb = _bbox_world(obj)
-        slot, conf = _classify_aero_slot(bb, donor_bbox)
+
+        # Bbox heuristic as baseline / fallback.
+        heur_slot, heur_conf = _classify_aero_slot(bb, donor_bbox)
+
+        # AI classifier (if available).
+        ai_result = None
+        if _AI_OK and ai_supervisor is not None:
+            try:
+                ai_result = ai_supervisor.ask_classifier(
+                    panel_obj=obj,
+                    donor_bbox=donor_bbox,
+                    panel_bbox=bb,
+                    out_dir=out_dir,
+                    idx=panel_index,
+                )
+            except Exception as e:
+                print(f"[bake_bodykit] classifier threw: {e}", file=sys.stderr)
+
+        if ai_result and ai_result.get("slot") and ai_result["slot"] != "unknown":
+            slot = ai_result["slot"]
+            conf = float(ai_result.get("confidence", heur_conf))
+            ai_label = slot
+            ai_conf = conf
+            ai_reason = ai_result.get("reason", "")
+        else:
+            slot = heur_slot
+            conf = heur_conf
+            ai_label = ai_result.get("slot") if ai_result else None
+            ai_conf = float(ai_result.get("confidence", 0)) if ai_result else None
+            ai_reason = ai_result.get("reason") if ai_result else None
+
         n = slot_counter.get(slot, 0) + 1
         slot_counter[slot] = n
         slot_name = slot if n == 1 else f"{slot}_{n}"
@@ -329,14 +435,30 @@ def op_bake_bodykit(inputs: dict, out_dir: Path) -> dict:
             "triangle_count": tri_count,
             "bbox": {"min": list(bb[0]), "max": list(bb[1])},
             "centroid": [(bb[0][i] + bb[1][i]) / 2 for i in range(3)],
+            "ai_label": ai_label,
+            "ai_confidence": ai_conf,
+            "ai_reasoning": ai_reason,
         })
         panel_index += 1
+
+    # Compose human-readable AI notes for the kit row.
+    ai_notes_lines = []
+    for entry in attempt_log:
+        ai_notes_lines.append(
+            f"attempt {entry['attempt']} tol={entry.get('tol_mm')} "
+            f"solver={entry.get('solver')} → {entry.get('verdict')}: "
+            f"{entry.get('reason', '')[:240]}"
+        )
+    ai_notes = "\n".join(ai_notes_lines)
 
     manifest_path = out_dir / "panel_manifest.json"
     manifest_path.write_text(json.dumps({
         "panels": manifest,
         "donor_bbox": {"min": list(donor_bbox[0]), "max": list(donor_bbox[1])},
         "combined_triangle_count": combined_tris,
+        "ai_attempts": len(attempt_log),
+        "ai_notes": ai_notes,
+        "ai_enabled": _AI_OK,
     }), encoding="utf-8")
     outputs["panel_manifest_json"] = "panel_manifest.json"
 
