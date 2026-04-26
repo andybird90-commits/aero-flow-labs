@@ -109,7 +109,8 @@ export default function BuildStudio() {
   const { data: templates = [] } = useCarTemplates();
   const { data: library, isLoading: libLoading } = useMyLibrary(user?.id);
   const { data: parts = [] } = usePlacedParts(projectId);
-  const { data: heroStl } = useHeroStlForProject(projectId);
+  const carTemplateId = (project?.car as any)?.template_id ?? null;
+  const { data: heroStl } = useHeroStlForProject(projectId, carTemplateId);
   const { data: heroStlUrl } = useSignedCarStlUrl(heroStl);
   // Optional textured-GLB hero — when admins upload one, the viewport renders
   // it with its authored PBR materials instead of the default paint shader.
@@ -189,7 +190,7 @@ export default function BuildStudio() {
   const { data: alignment } = useShellAlignment(projectId, shellSkinId);
   const upsertAlignment = useUpsertShellAlignment();
   const [shellRoot, setShellRoot] = useState<THREE.Object3D | null>(null);
-  const carTemplateIdForHp = (project?.car as any)?.template_id ?? null;
+  const carTemplateIdForHp = carTemplateId;
   const { data: carHardpoints = [] } = useCarHardpoints(carTemplateIdForHp);
   const lockedPairs = ((alignment?.locked_hardpoints as unknown) as LockedHardpointPair[] | undefined) ?? [];
   const stretchEnabled = !(alignment?.scale_to_wheelbase ?? true);
@@ -211,7 +212,6 @@ export default function BuildStudio() {
   const { data: libraryItemsById = new Map() } = useLibraryItemsByIds(libraryItemIds);
 
   // Snap zones for the project's car template (if assigned)
-  const carTemplateId = (project?.car as any)?.template_id ?? null;
   const { data: snapZones = [] } = useSnapZones(carTemplateId);
 
 
@@ -221,10 +221,9 @@ export default function BuildStudio() {
   );
 
   const template = useMemo(() => {
-    if (!project?.car_id) return null;
-    // car_templates aren't directly joined here; pick the first as a sane default
-    return templates[0] ?? null;
-  }, [project, templates]);
+    if (!carTemplateId) return null;
+    return templates.find((t) => t.id === carTemplateId) ?? null;
+  }, [carTemplateId, templates]);
 
   /* ─── handlers ─── */
   const handleAdd = (item: LibraryItem | null) => {
