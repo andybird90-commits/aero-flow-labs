@@ -35,6 +35,9 @@ export interface FitResult {
   positions: Float32Array;
   normals: Float32Array;
   indices?: Uint32Array | null;
+  /** True when the worker actually ran CSG trim. False when it fell back to
+   *  snap-only (huge body / OOM-protected). Always true for plain "snap". */
+  trimApplied?: boolean;
 }
 
 export function useLiveFitWorker() {
@@ -99,7 +102,12 @@ export function useLiveFitWorker() {
       return new Promise((resolve, reject) => {
         pendingRef.current.set(reqId, (msg) => {
           if (msg.type === "error") reject(new Error(msg.message));
-          else resolve({ positions: msg.positions, normals: msg.normals, indices: msg.indices ?? null });
+          else resolve({
+            positions: msg.positions,
+            normals: msg.normals,
+            indices: msg.indices ?? null,
+            trimApplied: msg.trimApplied,
+          });
         });
         w.postMessage(
           {
