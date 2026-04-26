@@ -595,10 +595,10 @@ export default function BuildStudio() {
   /* ─── render ─── */
   return (
     <SidebarProvider defaultOpen={false}>
-      <div className="flex h-screen w-full overflow-hidden bg-background">
+      <div className="studio flex h-screen w-full overflow-hidden studio-canvas">
         <AppSidebar />
         <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 shadow-sm">
+          <header className="studio-bar flex h-14 shrink-0 items-center gap-3 px-4">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             <div className="h-5 w-px bg-border" />
             <Topbar />
