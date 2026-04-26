@@ -29,7 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { decimateClientSide } from "@/lib/decimate-client";
 import {
-  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles, Palette, Scissors, ChevronDown, ChevronUp,
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles, Palette, Scissors, ChevronDown, ChevronUp, Image as ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
