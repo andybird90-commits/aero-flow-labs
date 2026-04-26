@@ -86,6 +86,7 @@ import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
 import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
 import { BackdropPicker } from "@/components/build-studio/BackdropPicker";
+import { CarTemplatePickerDialog } from "@/components/CarTemplatePickerDialog";
 import { useHistory, useHistoryShortcuts } from "@/lib/build-studio/history";
 import { useCarMaterialMap } from "@/lib/build-studio/use-car-material-map";
 import {
@@ -135,6 +136,7 @@ export default function BuildStudio() {
   const [preset, setPreset] = useState<CameraPreset>("free");
   const { quality, setQuality } = useRenderQuality();
   const [presentationMode, setPresentationMode] = useState(false);
+  const [carPickerOpen, setCarPickerOpen] = useState(false);
 
   // Tier 2 interaction tools
   const [tool, setTool] = useState<ViewportTool>("select");
