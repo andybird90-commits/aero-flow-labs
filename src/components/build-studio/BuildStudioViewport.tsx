@@ -965,7 +965,7 @@ export function BuildStudioViewport({
 
       {/* Shell-fit gizmo stays a TransformControls (axis-locked feel works
           better for big body alignments than a free pivot). */}
-      {showShellGizmo && shellNode && (
+      {showShellGizmo && (
         <PartTransformGizmo
           object={shellNode}
           mode={transformMode}
