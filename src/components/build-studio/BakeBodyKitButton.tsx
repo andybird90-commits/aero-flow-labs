@@ -186,15 +186,28 @@ export function BakeBodyKitButton({
                       <div className="mt-1 text-[10px] text-destructive">{k.error}</div>
                     )}
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDelete(k.id)}
-                    title="Delete bodykit"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                  <div className="flex shrink-0 flex-col gap-1">
+                    {k.status === "ready" && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 text-muted-foreground hover:text-primary"
+                        onClick={() => setViewKit(k)}
+                        title="View bodykit"
+                      >
+                        <Eye className="h-3 w-3" />
+                      </Button>
+                    )}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDelete(k.id)}
+                      title="Delete bodykit"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
               </li>
             ))}
