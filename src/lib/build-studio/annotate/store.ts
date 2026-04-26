@@ -90,8 +90,8 @@ let layerCounter = 0;
 export const useAnnotationStore = create<AnnotationState>((set) => ({
   mode: "off",
   tool: "pen",
-  color: "#fb923c",
-  width: 3,
+  color: "#e2e8f0",
+  width: 5,
   layers: [],
   activeLayerId: null,
 

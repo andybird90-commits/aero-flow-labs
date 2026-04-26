@@ -192,11 +192,16 @@ export function SurfaceStrokesRenderer() {
   return (
     <group>
       {renderables.map((r) => (
-        <mesh key={r.id} geometry={r.geom} renderOrder={5}>
-          <meshBasicMaterial
+        <mesh key={r.id} geometry={r.geom} renderOrder={5} castShadow={false}>
+          <meshStandardMaterial
             color={r.color}
+            emissive={r.color}
+            emissiveIntensity={1.8}
+            metalness={0}
+            roughness={0.35}
+            toneMapped={false}
             transparent
-            opacity={0.95}
+            opacity={0.98}
             depthTest
             depthWrite={false}
             polygonOffset

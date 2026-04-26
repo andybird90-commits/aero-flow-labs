@@ -47,11 +47,11 @@ export interface PaintFinish {
 }
 
 export const DEFAULT_BODY_FINISH = {
-  color: "#0a1622",
-  metalness: 0.85,
-  roughness: 0.32,
+  color: "#0e1a28",
+  metalness: 0.9,
+  roughness: 0.28,
   clearcoat: 1.0,
-  clearcoat_roughness: 0.18,
+  clearcoat_roughness: 0.08,
 };
 
 export const DEFAULT_WHEEL_FINISH: MaterialFinish = {
@@ -81,8 +81,8 @@ export const DEFAULT_GLASS_FINISH: MaterialFinish = {
 
 export const DEFAULT_PAINT_FINISH: PaintFinish = {
   ...DEFAULT_BODY_FINISH,
-  env_intensity: 1.4,
-  env_preset: "warehouse",
+  env_intensity: 1.7,
+  env_preset: "studio",
   wheels: { ...DEFAULT_WHEEL_FINISH },
   tyres: { ...DEFAULT_TYRE_FINISH },
   glass: { ...DEFAULT_GLASS_FINISH },

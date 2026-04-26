@@ -674,18 +674,27 @@ export function BuildStudioViewport({
       dpr={[1, 2]}
       gl={{ antialias: true, preserveDrawingBuffer: true, localClippingEnabled: true }}
     >
-      <color attach="background" args={["#0a0a0c"]} />
-      <ambientLight intensity={0.35} />
+      <color attach="background" args={["#08080a"]} />
+      <fog attach="fog" args={["#08080a", 18, 38]} />
+      <ambientLight intensity={0.28} />
+      {/* Key — warm-white from front-right, casts the main shadow. */}
       <directionalLight
         position={[5, 8, 5]}
-        intensity={1.1}
+        intensity={1.25}
+        color="#fff4e6"
         castShadow
         shadow-mapSize={[2048, 2048]}
       />
-      <directionalLight position={[-6, 4, -3]} intensity={0.45} color="#fb923c" />
+      {/* Cool rim from back-left to separate the body from the dark plate. */}
+      <directionalLight position={[-6, 5, -4]} intensity={0.55} color="#9ec5ff" />
+      {/* Soft fill from the camera side so the front never goes muddy. */}
+      <directionalLight position={[0, 3, 8]} intensity={0.35} color="#ffffff" />
 
       <Suspense fallback={null}>
-        <Environment preset={finish.env_preset} />
+        {/* Studio HDRI is the cleanest reflection set for car paint; falls back
+            to whatever the paint-finish preset says only if user has opened
+            Paint Studio and explicitly chosen a different sky. */}
+        <Environment preset={finish.env_preset === "warehouse" ? "studio" : finish.env_preset} />
       </Suspense>
 
       {showGrid && (
