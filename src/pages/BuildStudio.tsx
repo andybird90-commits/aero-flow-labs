@@ -427,6 +427,11 @@ export default function BuildStudio() {
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select" || t?.isContentEditable) return;
+      if (e.key === "Escape" && presentationMode) {
+        e.preventDefault();
+        setPresentationMode(false);
+        return;
+      }
       if ((e.key === "Delete" || e.key === "Backspace") && selected && !selected.locked) {
         e.preventDefault();
         handleDelete();
