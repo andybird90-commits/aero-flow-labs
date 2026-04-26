@@ -272,7 +272,7 @@ async function ingestWorkerOutputs(
       confidence: panel.confidence,
       stl_path: url,
       triangle_count: panel.triangle_count,
-      area_m2: 0,
+      area_m2: typeof panel.area_m2 === "number" ? panel.area_m2 : 0,
       anchor_position: centroid.length === 3
         ? { x: centroid[0], y: centroid[1], z: centroid[2] }
         : null,
