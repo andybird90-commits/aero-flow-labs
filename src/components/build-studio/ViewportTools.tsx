@@ -89,12 +89,11 @@ export function PartLabel({
     <Html
       position={position}
       center
-      distanceFactor={20}
       zIndexRange={[100, 0]}
       style={{ pointerEvents: "none" }}
     >
       <div
-        className={`whitespace-nowrap rounded border px-1.5 py-px text-[9px] font-medium leading-tight shadow-sm backdrop-blur ${colors[tone]}`}
+        className={`max-w-24 truncate whitespace-nowrap rounded border px-1.5 py-px text-[10px] font-medium leading-tight shadow-sm backdrop-blur ${colors[tone]}`}
       >
         {text}
       </div>
