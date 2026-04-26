@@ -298,6 +298,9 @@ def op_bake_bodykit(inputs: dict, out_dir: Path) -> dict:
     _reset_scene()
     donor_ref = _import_stl(donor_path, "donor_ref")
     donor_bbox = _bbox_world(donor_ref)
+    car_axes = _detect_car_axes(donor_bbox)
+    print(f"[bake_bodykit] detected axes: {car_axes} from donor bbox spans "
+          f"{[donor_bbox[1][i] - donor_bbox[0][i] for i in range(3)]}")
     bpy.ops.object.select_all(action="DESELECT")
     donor_ref.select_set(True)
     bpy.ops.object.delete()
