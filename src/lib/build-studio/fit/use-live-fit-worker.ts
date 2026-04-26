@@ -35,6 +35,9 @@ export interface FitResult {
   positions: Float32Array;
   normals: Float32Array;
   indices?: Uint32Array | null;
+  /** True when the worker actually ran CSG trim. False when it fell back to
+   *  snap-only (huge body / OOM-protected). Always true for plain "snap". */
+  trimApplied?: boolean;
 }
 
 export function useLiveFitWorker() {
