@@ -60,7 +60,7 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProject } from "@/hooks/useCurrentProject";
-import { useCarTemplates, useMyLibrary, useHeroStlForProject, useSignedCarStlUrl, useUpdateProject, type LibraryItem } from "@/lib/repo";
+import { useCarTemplates, useMyLibrary, useHeroStlForProject, useSignedCarStlUrl, useSignedCarGlbUrl, useUpdateProject, type LibraryItem } from "@/lib/repo";
 import {
   usePlacedParts,
   useAddPlacedPart,
