@@ -616,6 +616,7 @@ function CameraRig({ preset, template }: { preset: CameraPreset; template?: CarT
 export function BuildStudioViewport({
   template,
   heroStlUrl,
+  heroGlbUrl,
   bodySkinUrl,
   bodySkinKind,
   shellTransform,
