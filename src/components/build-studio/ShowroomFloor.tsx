@@ -10,20 +10,49 @@
  * Draft mode still shows *something* under the car.
  */
 import { AccumulativeShadows, ContactShadows, MeshReflectorMaterial, RandomizedLight } from "@react-three/drei";
+import { useMemo } from "react";
+import * as THREE from "three";
 
 interface Props {
   reflector: boolean;
   accumulative: boolean;
 }
 
+/**
+ * Build a radial alpha texture used to feather the floor's edge so it
+ * fades into the surrounding fog/HDRI instead of cutting on a hard line.
+ * Generated once and cached.
+ */
+function useRadialFadeTexture(): THREE.Texture {
+  return useMemo(() => {
+    const size = 512;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
+    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.18, size / 2, size / 2, size * 0.5);
+    grad.addColorStop(0, "rgba(255,255,255,1)");
+    grad.addColorStop(0.7, "rgba(255,255,255,0.9)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+}
+
 export function ShowroomFloor({ reflector, accumulative }: Props) {
+  const fadeTex = useRadialFadeTexture();
   return (
     <>
       {/* Reflective floor: large plane just under origin. Subtle blur so the
-          reflection reads as a polished studio surface, not a perfect mirror. */}
+          reflection reads as a polished studio surface, not a perfect mirror.
+          The radial alpha mask feathers the edges into the backdrop so there's
+          no visible floor seam against the HDRI horizon. */}
       {reflector && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-          <planeGeometry args={[60, 60]} />
+          <planeGeometry args={[80, 80]} />
           <MeshReflectorMaterial
             blur={[400, 100]}
             resolution={1024}
@@ -36,6 +65,8 @@ export function ShowroomFloor({ reflector, accumulative }: Props) {
             color="#0a0a0c"
             metalness={0.55}
             mirror={0.4}
+            transparent
+            alphaMap={fadeTex}
           />
         </mesh>
       )}
