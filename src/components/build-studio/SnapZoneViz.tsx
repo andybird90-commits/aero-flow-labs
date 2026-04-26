@@ -38,6 +38,7 @@ export function SnapZoneViz({ zone, active, selected, onClick, showLabel = true 
         <Html
           center
           distanceFactor={6}
+          zIndexRange={[10, 0]}
           style={{ pointerEvents: "none" }}
           position={[0, 0.18, 0]}
         >
