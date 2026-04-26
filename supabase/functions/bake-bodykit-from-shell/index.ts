@@ -154,13 +154,14 @@ async function runBake(admin: any, bodyKitId: string, userId: string): Promise<v
 
   const { data: carStl, error: carErr } = await admin
     .from("car_stls")
-    .select("repaired_stl_path, stl_path")
+    .select("repaired_stl_path, stl_path, manifold_clean")
     .eq("car_template_id", kit.donor_car_template_id)
     .maybeSingle();
   if (carErr) throw new Error(`Donor lookup failed: ${carErr.message}`);
   if (!carStl) throw new Error("Donor car has no STL configured.");
   const donorPath = (carStl.repaired_stl_path ?? carStl.stl_path) as string | null;
   if (!donorPath) throw new Error("Donor car STL path missing.");
+  const donorManifoldClean = Boolean(carStl.manifold_clean);
 
   // --- Sign URLs the worker can fetch (1h TTL — bake should finish well within) ---
   const donorUrl = await signOrPassthrough(admin, "car-stls", donorPath);
