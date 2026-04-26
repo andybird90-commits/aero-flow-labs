@@ -10,7 +10,7 @@
  * Persists every transform / flag change to placed_parts. Loads the user's
  * current project (or the project from ?project=).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -91,6 +91,12 @@ import {
   QUALITY_DESCRIPTION,
   type RenderQuality,
 } from "@/lib/build-studio/render-quality";
+import { AnnotationToolbar } from "@/components/build-studio/annotate/AnnotationToolbar";
+import { ScreenAnnotationOverlay } from "@/components/build-studio/annotate/ScreenAnnotationOverlay";
+import { AnnotationLayersPanel } from "@/components/build-studio/annotate/AnnotationLayersPanel";
+import { BuildStudioStatusBar } from "@/components/build-studio/BuildStudioStatusBar";
+import { useHydrateAnnotations } from "@/lib/build-studio/annotate/hooks";
+import type { CameraPose } from "@/lib/build-studio/annotate/store";
 
 export default function BuildStudio() {
   const { user } = useAuth();
@@ -131,6 +137,11 @@ export default function BuildStudio() {
   const [measureLines, setMeasureLines] = useState<MeasureLine[]>([]);
   const translateSnapM = snapEnabled ? 0.05 : 0;   // 5 cm
   const rotateSnapDeg = snapEnabled ? 15 : 0;
+
+  // Annotation: live camera pose ref (populated inside R3F), triangle count.
+  const livePoseRef = useRef<CameraPose | null>(null);
+  const [triangleCount, setTriangleCount] = useState<number | null>(null);
+  useHydrateAnnotations(projectId);
 
   // Paint Studio finish — local for live preview, debounced-saved to project.
   const updateProject = useUpdateProject();
@@ -584,10 +595,10 @@ export default function BuildStudio() {
   /* ─── render ─── */
   return (
     <SidebarProvider defaultOpen={false}>
-      <div className="flex h-screen w-full overflow-hidden bg-background">
+      <div className="studio flex h-screen w-full overflow-hidden studio-canvas">
         <AppSidebar />
         <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 shadow-sm">
+          <header className="studio-bar flex h-14 shrink-0 items-center gap-3 px-4">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             <div className="h-5 w-px bg-border" />
             <Topbar />
@@ -615,11 +626,19 @@ export default function BuildStudio() {
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
               {/* Toolbar */}
-              <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border bg-card/95 px-4 shadow-sm overflow-x-auto">
-                <div className="text-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                  Build
+              <div className="studio-bar flex shrink-0 items-center gap-2.5 px-4 overflow-x-auto" style={{ height: "var(--studio-bar-h)" }}>
+                <div className="flex flex-col leading-tight">
+                  <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
+                    Aero Design
+                  </div>
+                  <div className="text-sm font-semibold truncate max-w-[220px]" style={{ color: "hsl(var(--studio-accent-glow))" }}>
+                    {project?.name}
+                  </div>
                 </div>
-                <div className="text-sm font-medium truncate max-w-[220px]">{project?.name}</div>
+                <Separator orientation="vertical" className="h-7" />
+
+                {/* Annotation tools — markup / surface / select */}
+                <AnnotationToolbar />
                 <Separator orientation="vertical" className="h-7" />
 
                 <ToggleGroup
@@ -886,8 +905,8 @@ export default function BuildStudio() {
               </div>
 
               {/* 3-column body */}
-              <div className="grid flex-1 min-h-0 grid-cols-[260px_1fr_280px]">
-                <aside className="min-h-0 overflow-hidden border-r border-border bg-card/20">
+              <div className="grid flex-1 min-h-0 grid-cols-[var(--studio-rail-w)_1fr_var(--studio-rail-w)]">
+                <aside className="studio-rail min-h-0 overflow-hidden border-r">
                   <PartLibraryRail
                     items={library}
                     isLoading={libLoading}
@@ -925,27 +944,49 @@ export default function BuildStudio() {
                     showLabels={showLabels}
                     measureLines={measureLines}
                     onMeasureLinesChange={setMeasureLines}
+                    livePoseRef={livePoseRef}
+                    onTriangleCount={setTriangleCount}
                     onCommit={handleCommit}
                   />
+                  {/* Soft vignette so the canvas reads as a "studio plate" */}
+                  <div className="studio-vignette absolute inset-0 z-10" />
+                  {/* Screen-space drawing layer (only catches events when active) */}
+                  <ScreenAnnotationOverlay livePoseRef={livePoseRef} />
                 </div>
 
-                <aside className="min-h-0 overflow-hidden border-l border-border bg-card/20">
-                  <PropertiesPanel
-                    part={selected}
-                    onPatch={handlePatch}
-                    onDuplicate={handleDuplicate}
-                    onDelete={handleDelete}
-                    onMirror={handleMirror}
-                    snapZones={snapZones}
-                    onSnapToZone={handleSnapToZone}
-                    onMirrorToZone={handleMirrorToZone}
-                    selectedLibraryItem={selectedLibraryItem}
-                    baseMeshUrl={heroStlUrl ?? null}
-                    userId={user?.id ?? null}
-                    onLiveFitBaked={handleLiveFitBaked}
-                  />
+                <aside className="studio-rail flex min-h-0 flex-col overflow-hidden border-l">
+                  <div className="border-b border-border/60 p-3">
+                    <AnnotationLayersPanel
+                      projectId={projectId}
+                      userId={user?.id ?? null}
+                    />
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <PropertiesPanel
+                      part={selected}
+                      onPatch={handlePatch}
+                      onDuplicate={handleDuplicate}
+                      onDelete={handleDelete}
+                      onMirror={handleMirror}
+                      snapZones={snapZones}
+                      onSnapToZone={handleSnapToZone}
+                      onMirrorToZone={handleMirrorToZone}
+                      selectedLibraryItem={selectedLibraryItem}
+                      baseMeshUrl={heroStlUrl ?? null}
+                      userId={user?.id ?? null}
+                      onLiveFitBaked={handleLiveFitBaked}
+                    />
+                  </div>
                 </aside>
               </div>
+
+              {/* Status bar */}
+              <BuildStudioStatusBar
+                selected={selected}
+                partsCount={parts.length}
+                triangleCount={triangleCount}
+                snapEnabled={snapEnabled}
+              />
 
               {/* Bottom strip */}
               <div className="h-16 shrink-0 border-t border-border bg-card/30">

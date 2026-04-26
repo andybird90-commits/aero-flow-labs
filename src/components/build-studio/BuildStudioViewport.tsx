@@ -45,6 +45,12 @@ import {
   type MeasureLine,
   type ClipAxis,
 } from "@/components/build-studio/ViewportTools";
+import {
+  CameraPoseProbe,
+  SurfaceStrokeRecorder,
+  SurfaceStrokesRenderer,
+} from "@/components/build-studio/annotate/SurfaceStrokes";
+import type { CameraPose } from "@/lib/build-studio/annotate/store";
 
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
@@ -107,6 +113,10 @@ interface ViewportProps {
   measureLines?: MeasureLine[];
   /** Setter for measurement lines. */
   onMeasureLinesChange?: (lines: MeasureLine[]) => void;
+  /** Live camera pose ref — populated by <CameraPoseProbe> for screen markup. */
+  livePoseRef?: React.MutableRefObject<CameraPose | null>;
+  /** Called once after the hero STL loads with its triangle count. */
+  onTriangleCount?: (n: number) => void;
   onCommit: (
     id: string,
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "snap_zone_id">>,
@@ -127,11 +137,13 @@ function HeroStlCar({
   template,
   paintFinish,
   materialTags,
+  onTriangleCount,
 }: {
   url: string;
   template?: CarTemplate | null;
   paintFinish: PaintFinish;
   materialTags?: Uint8Array | null;
+  onTriangleCount?: (n: number) => void;
 }) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
   const matRefs = useRef<{
@@ -153,6 +165,7 @@ function HeroStlCar({
         geo.computeVertexNormals();
 
         const triCount = geo.attributes.position.count / 3;
+        onTriangleCount?.(triCount);
         const tagsValid = materialTags && materialTags.length === triCount;
 
         // Build materials in fixed order: 0=body, 1=glass, 2=wheel, 3=tyre.
@@ -624,6 +637,8 @@ export function BuildStudioViewport({
   showLabels = true,
   measureLines = [],
   onMeasureLinesChange,
+  livePoseRef,
+  onTriangleCount,
   onCommit,
 }: ViewportProps) {
   const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
@@ -696,7 +711,7 @@ export function BuildStudioViewport({
         <group ref={sceneRootRef}>
           {heroStlUrl ? (
             <Suspense fallback={<CarPlaceholder template={template} />}>
-              <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} />
+              <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} onTriangleCount={onTriangleCount} />
             </Suspense>
           ) : (
             <CarPlaceholder template={template} />
@@ -793,6 +808,11 @@ export function BuildStudioViewport({
 
       {/* Section / clipping plane. */}
       <ClippingPlane enabled={tool === "clip"} axis={clipAxis} carLength={carLength} />
+
+      {/* Annotation pieces — pose probe, surface raycaster, surface tube renderer. */}
+      {livePoseRef && <CameraPoseProbe outRef={livePoseRef} />}
+      <SurfaceStrokeRecorder pickRoot={sceneRootRef.current} orbitRef={orbitRef} />
+      <SurfaceStrokesRenderer />
 
       <CameraRig preset={preset} template={template} />
 

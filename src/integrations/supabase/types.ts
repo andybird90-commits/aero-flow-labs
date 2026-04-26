@@ -2033,6 +2033,56 @@ export type Database = {
           },
         ]
       }
+      studio_annotations: {
+        Row: {
+          camera_pose: Json | null
+          color: string
+          created_at: string
+          id: string
+          kind: string
+          label: string | null
+          project_id: string
+          strokes: Json
+          updated_at: string
+          user_id: string
+          visible: boolean
+        }
+        Insert: {
+          camera_pose?: Json | null
+          color?: string
+          created_at?: string
+          id?: string
+          kind: string
+          label?: string | null
+          project_id: string
+          strokes?: Json
+          updated_at?: string
+          user_id: string
+          visible?: boolean
+        }
+        Update: {
+          camera_pose?: Json | null
+          color?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          label?: string | null
+          project_id?: string
+          strokes?: Json
+          updated_at?: string
+          user_id?: string
+          visible?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "studio_annotations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       style_presets: {
         Row: {
           build_type: string | null
