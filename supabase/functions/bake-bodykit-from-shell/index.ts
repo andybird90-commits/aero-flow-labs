@@ -223,8 +223,9 @@ async function runBake(admin: any, bodyKitId: string, userId: string): Promise<v
 /**
  * Ingest the outputs returned by the worker. Each value is a signed URL into
  * the `geometries` bucket (uploaded by the worker via `upload-blender-output`).
- * We fetch each STL and re-host it under `body-skins/bodykits/<kit_id>/...`,
- * then insert `body_kit_parts` rows from the manifest.
+ * Keep STL outputs at their worker-uploaded signed URLs. Downloading/rehosting
+ * multiple meshes inside the edge runtime can exceed the memory limit; the
+ * worker already stored those bytes safely via `upload-blender-output`.
  */
 async function ingestWorkerOutputs(
   admin: any,
@@ -237,15 +238,7 @@ async function ingestWorkerOutputs(
   if (!combinedUrl) throw new Error("Worker did not return combined_stl");
   if (!manifestUrl) throw new Error("Worker did not return panel_manifest_json");
 
-  // Combined STL → body-skins/bodykits/<id>/combined.stl
-  const combinedBytes = await downloadBytes(combinedUrl);
-  const combinedPath = `bodykits/${bodyKitId}/combined.stl`;
-  const { error: cUpErr } = await admin.storage
-    .from("body-skins")
-    .upload(combinedPath, combinedBytes, { contentType: "model/stl", upsert: true });
-  if (cUpErr) throw new Error(`Combined STL upload failed: ${cUpErr.message}`);
-
-  // Manifest JSON → parse for panel metadata
+  // Manifest JSON is small enough to fetch in the edge runtime.
   const manifestBytes = await downloadBytes(manifestUrl);
   const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as {
     panels: PanelManifestEntry[];
@@ -263,22 +256,6 @@ async function ingestWorkerOutputs(
       console.warn(`Manifest panel ${panel.key} has no matching output URL — skipping`);
       continue;
     }
-    let panelBytes: Uint8Array;
-    try {
-      panelBytes = await downloadBytes(url);
-    } catch (e) {
-      console.warn(`Panel download failed for ${panel.key}:`, e);
-      continue;
-    }
-    const stlPath = `bodykits/${bodyKitId}/panels/${panel.slot_name}.stl`;
-    const { error: upErr } = await admin.storage
-      .from("body-skins")
-      .upload(stlPath, panelBytes, { contentType: "model/stl", upsert: true });
-    if (upErr) {
-      console.warn(`Panel upload failed for ${panel.slot_name}:`, upErr.message);
-      continue;
-    }
-
     const centroid = panel.centroid ?? [];
     insertRows.push({
       body_kit_id: bodyKitId,
@@ -286,7 +263,7 @@ async function ingestWorkerOutputs(
       slot: panel.slot_name,
       label: panel.slot,
       confidence: panel.confidence,
-      stl_path: stlPath,
+      stl_path: url,
       triangle_count: panel.triangle_count,
       area_m2: 0,
       anchor_position: centroid.length === 3
@@ -310,7 +287,7 @@ async function ingestWorkerOutputs(
       status: "ready",
       panel_count: panelCount,
       triangle_count: manifest.combined_triangle_count ?? null,
-      combined_stl_path: combinedPath,
+      combined_stl_path: combinedUrl,
       error: null,
     })
     .eq("id", bodyKitId);
