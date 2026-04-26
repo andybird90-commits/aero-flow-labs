@@ -138,6 +138,11 @@ export default function BuildStudio() {
   const translateSnapM = snapEnabled ? 0.05 : 0;   // 5 cm
   const rotateSnapDeg = snapEnabled ? 15 : 0;
 
+  // Annotation: live camera pose ref (populated inside R3F), triangle count.
+  const livePoseRef = useRef<CameraPose | null>(null);
+  const [triangleCount, setTriangleCount] = useState<number | null>(null);
+  useHydrateAnnotations(projectId);
+
   // Paint Studio finish — local for live preview, debounced-saved to project.
   const updateProject = useUpdateProject();
   const [paintFinish, setPaintFinish] = useState<PaintFinish>(DEFAULT_PAINT_FINISH);
