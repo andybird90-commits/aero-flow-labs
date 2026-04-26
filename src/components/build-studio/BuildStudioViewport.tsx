@@ -795,6 +795,13 @@ export function BuildStudioViewport({
           (i.e. user disabled "Show backdrop" or hasn't loaded yet). */}
       {!finish.show_backdrop && <color attach="background" args={["#08080a"]} />}
       {!finish.show_backdrop && <fog attach="fog" args={["#08080a", 18, 38]} />}
+      {/* Atmospheric haze when the HDRI backdrop is visible: softens the
+          hard line where the dark floor meets the bright workshop horizon
+          so the scene reads as one continuous space. Tuned to start past
+          the car and fully cover by the floor's far edge. */}
+      {finish.show_backdrop !== false && (
+        <fog attach="fog" args={[horizonFogColor(finish.env_preset), 14, 32]} />
+      )}
       <ambientLight intensity={0.28} />
       {/* Key — warm-white from front-right, casts the main shadow. */}
       <directionalLight
