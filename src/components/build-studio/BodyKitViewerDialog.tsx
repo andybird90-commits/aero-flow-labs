@@ -180,6 +180,7 @@ export function BodyKitViewerDialog({ kit, open, onOpenChange }: Props) {
         </div>
       </DialogContent>
     </Dialog>
+    </TooltipProvider>
   );
 }
 
