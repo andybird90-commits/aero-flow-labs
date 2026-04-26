@@ -790,6 +790,8 @@ export function BuildStudioViewport({
   const sceneRootRef = useRef<THREE.Group | null>(null);
 
   const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellNode;
+  const showPartGizmo = tool === "select" && !shellEditMode && !!selected && !!meshNode && !selected.locked;
+  const gizmoActive = showPartGizmo || showShellGizmo;
 
   // Forward the loaded shell to the parent so it can run auto-fit / arch detection.
   useEffect(() => {
@@ -880,7 +882,7 @@ export function BuildStudioViewport({
             ? true
             : !["sunset", "dawn", "park", "forest"].includes(finish.env_preset))
         }
-        accumulative={settings.accumulativeShadows}
+        accumulative={settings.accumulativeShadows && !gizmoActive}
       />
 
       {/* Bounds wraps everything that should be framed by double-click. */}
@@ -940,7 +942,7 @@ export function BuildStudioViewport({
         </group>
       </Bounds>
 
-      {tool === "select" && !shellEditMode && selected && meshNode && !selected.locked && (
+      {showPartGizmo && (
         <PartTransformGizmo
           object={meshNode}
           mode={transformMode}
@@ -963,7 +965,7 @@ export function BuildStudioViewport({
 
       {/* Shell-fit gizmo stays a TransformControls (axis-locked feel works
           better for big body alignments than a free pivot). */}
-      {showShellGizmo && shellNode && (
+      {showShellGizmo && (
         <PartTransformGizmo
           object={shellNode}
           mode={transformMode}
@@ -1064,6 +1066,8 @@ function PartTransformGizmo({
   releaseRef.current = onRelease;
 
   useEffect(() => {
+    if (!object || !object.parent) return;
+
     const controls = new TransformControlsImpl(camera, gl.domElement);
     controlsRef.current = controls;
     controls.setMode(mode);
