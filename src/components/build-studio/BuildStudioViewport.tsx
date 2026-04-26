@@ -73,6 +73,40 @@ function horizonFogColor(preset: EnvPreset | string): string {
   }
 }
 
+/**
+ * Ground projection settings per HDRI preset. Projects the equirectangular
+ * panorama onto a virtual ground sphere so the HDRI's floor anchors at y=0
+ * (right under the wheels) instead of floating at the horizon. This is what
+ * makes the car look like it's *standing in* the warehouse rather than
+ * sitting on an invisible table in front of a flat photo.
+ *
+ *  - height : virtual camera altitude inside the equirect (metres). Lower
+ *             = sharper, higher = softer perspective.
+ *  - radius : ground sphere radius (metres). Roughly how far away the
+ *             "horizon line" sits from the car.
+ *  - scale  : how big the projection sphere appears overall.
+ *
+ * `null` = don't project (use the raw equirect as a skybox). Used for pure
+ * studio cycs where there's no real floor to anchor.
+ */
+function groundProjectionFor(preset: EnvPreset | string, carLength: number): { height: number; radius: number; scale: number } | null {
+  const r = Math.max(15, carLength * 6);
+  switch (preset) {
+    case "warehouse": return { height: 8, radius: r, scale: 100 };
+    case "city": return { height: 10, radius: r, scale: 120 };
+    case "apartment": return { height: 6, radius: r * 0.9, scale: 80 };
+    case "lobby": return { height: 7, radius: r, scale: 100 };
+    case "sunset": return { height: 12, radius: r * 1.4, scale: 200 };
+    case "dawn": return { height: 12, radius: r * 1.4, scale: 200 };
+    case "night": return { height: 10, radius: r * 1.2, scale: 150 };
+    case "park": return { height: 12, radius: r * 1.4, scale: 200 };
+    case "forest": return { height: 10, radius: r * 1.2, scale: 150 };
+    case "studio": return null; // pure cyc — no projection
+    default: return { height: 8, radius: r, scale: 100 };
+  }
+}
+
+
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
 /** Active interactive tool. `select` = normal pivot/transform editing. */
