@@ -906,6 +906,11 @@ export default function BuildStudio() {
 
 
                 <div className="ml-auto flex items-center gap-2">
+                  <BackdropPicker
+                    projectId={projectId}
+                    finish={paintFinish}
+                    onChange={(patch) => setPaintFinish((p) => ({ ...p, ...patch }))}
+                  />
                   <Button
                     size="sm"
                     variant={presentationMode ? "default" : "outline"}
