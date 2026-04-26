@@ -57,6 +57,19 @@ import type { CameraPose } from "@/lib/build-studio/annotate/store";
  * the floor fades into the backdrop instead of meeting it on a hard line.
  * Tuned by eye against drei's bundled environment presets.
  */
+/**
+ * True when the primary input is touch (no fine pointer / hover). On these
+ * devices we (a) enlarge the transform gizmo so it's finger-friendly and
+ * (b) require two fingers to orbit the camera — single-finger drags are
+ * reserved for moving the selected part.
+ */
+function isTouchDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia?.("(hover: none) and (pointer: coarse)").matches ?? false
+  );
+}
+
 function horizonFogColor(preset: EnvPreset | string): string {
   switch (preset) {
     case "warehouse": return "#3a3530";
