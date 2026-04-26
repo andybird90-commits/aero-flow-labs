@@ -2,18 +2,19 @@
 ai_supervisor.py — vision-driven validator + classifier for the Blender worker.
 
 Runs INSIDE Blender (`bpy` available). Renders quad views of objects with
-Eevee, base64-encodes them, and asks the Lovable AI Gateway to either:
+Eevee, base64-encodes them, and asks Anthropic Claude (Opus 4.5) to either:
 
   • validate a step in the bake pipeline (accept / retry / fail)
   • classify a single panel into a fixed aero-slot enum
 
 The AI never writes Blender code — it only returns structured JSON via
-OpenAI-compatible tool calls. If the gateway is unreachable or the response
+Claude tool-use calls. If the API is unreachable or the response
 is malformed, callers fall back to safe defaults (accept + bbox heuristic),
 so the bake pipeline never hard-fails because of the AI layer.
 
 Env:
-  LOVABLE_API_KEY   — bearer token for https://ai.gateway.lovable.dev
+  ANTHROPIC_API_KEY — bearer token for https://api.anthropic.com (preferred)
+  LOVABLE_API_KEY   — legacy fallback to https://ai.gateway.lovable.dev
 """
 from __future__ import annotations
 
@@ -31,9 +32,16 @@ from mathutils import Vector  # type: ignore
 import urllib.request
 import urllib.error
 
+ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+ANTHROPIC_VERSION = "2023-06-01"
+# Top-tier Claude for both validator and classifier — vision + reasoning matter
+# more here than per-call cost. Override per-call by passing `model=...`.
+DEFAULT_MODEL = "claude-opus-4-5"
+CLASSIFIER_MODEL = "claude-opus-4-5"
+
+# Legacy gateway kept as a fallback only if ANTHROPIC_API_KEY is missing.
 GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions"
-DEFAULT_MODEL = "google/gemini-2.5-pro"
-CLASSIFIER_MODEL = "google/gemini-2.5-flash"  # cheaper for per-panel labelling
+GATEWAY_FALLBACK_MODEL = "google/gemini-2.5-pro"
 
 SLOT_ENUM = [
     "front_splitter", "front_lip", "front_canard_l", "front_canard_r",
@@ -193,7 +201,10 @@ def collect_metrics(objs: list) -> dict:
 # ────────────────────────────────────────────────────────────────────────────
 
 def _gateway_available() -> bool:
-    return bool(os.environ.get("LOVABLE_API_KEY", "").strip())
+    return bool(
+        os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        or os.environ.get("LOVABLE_API_KEY", "").strip()
+    )
 
 
 def _img_to_data_url(p: Path) -> str:
@@ -201,21 +212,9 @@ def _img_to_data_url(p: Path) -> str:
     return f"data:image/png;base64,{base64.b64encode(b).decode('ascii')}"
 
 
-def _post_gateway(payload: dict, timeout: int = 90) -> dict | None:
-    api_key = os.environ.get("LOVABLE_API_KEY", "").strip()
-    if not api_key:
-        print("[ai_supervisor] LOVABLE_API_KEY not set — skipping AI call", file=sys.stderr)
-        return None
+def _post_json(url: str, headers: dict, payload: dict, timeout: int) -> dict | None:
     body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        GATEWAY_URL,
-        data=body,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
@@ -224,14 +223,113 @@ def _post_gateway(payload: dict, timeout: int = 90) -> dict | None:
             err_body = e.read().decode("utf-8", errors="replace")[:400]
         except Exception:
             err_body = ""
-        print(f"[ai_supervisor] gateway HTTP {e.code}: {err_body}", file=sys.stderr)
+        print(f"[ai_supervisor] HTTP {e.code} from {url}: {err_body}", file=sys.stderr)
         return None
     except Exception as e:
-        print(f"[ai_supervisor] gateway error: {type(e).__name__}: {e}", file=sys.stderr)
+        print(f"[ai_supervisor] request error to {url}: {type(e).__name__}: {e}",
+              file=sys.stderr)
         return None
 
 
-def _extract_tool_args(resp: dict, tool_name: str) -> dict | None:
+def _img_block_anthropic(p: Path) -> dict:
+    b64 = base64.b64encode(p.read_bytes()).decode("ascii")
+    return {
+        "type": "image",
+        "source": {"type": "base64", "media_type": "image/png", "data": b64},
+    }
+
+
+def _call_ai(
+    *,
+    system_msg: str,
+    user_text: str,
+    thumbs: list[Path],
+    tool_name: str,
+    tool_description: str,
+    tool_schema: dict,
+    model: str,
+    timeout: int = 90,
+) -> dict | None:
+    """Send a vision + tool-use call to Anthropic, falling back to the
+    Lovable gateway (Gemini) if no Anthropic key is configured.
+
+    Returns the tool-call arguments dict, or None on any failure.
+    """
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+
+    # ── Preferred: Anthropic Claude ───────────────────────────────────────
+    if anthropic_key:
+        content: list[dict] = [{"type": "text", "text": user_text}]
+        for view_name, p in zip(["front", "side", "top", "iso"], thumbs):
+            content.append({"type": "text", "text": f"View: {view_name}"})
+            content.append(_img_block_anthropic(p))
+
+        payload = {
+            "model": model,
+            "max_tokens": 1024,
+            "system": system_msg,
+            "tools": [{
+                "name": tool_name,
+                "description": tool_description,
+                "input_schema": tool_schema,
+            }],
+            "tool_choice": {"type": "tool", "name": tool_name},
+            "messages": [{"role": "user", "content": content}],
+        }
+        headers = {
+            "x-api-key": anthropic_key,
+            "anthropic-version": ANTHROPIC_VERSION,
+            "Content-Type": "application/json",
+        }
+        resp = _post_json(ANTHROPIC_URL, headers, payload, timeout)
+        if not resp:
+            return None
+        try:
+            for block in resp.get("content", []):
+                if block.get("type") == "tool_use" and block.get("name") == tool_name:
+                    return block.get("input") or {}
+        except Exception as e:
+            print(f"[ai_supervisor] could not parse Claude tool_use: {e}",
+                  file=sys.stderr)
+        return None
+
+    # ── Fallback: Lovable AI Gateway (OpenAI-compatible, Gemini) ─────────
+    lovable_key = os.environ.get("LOVABLE_API_KEY", "").strip()
+    if not lovable_key:
+        print("[ai_supervisor] no ANTHROPIC_API_KEY or LOVABLE_API_KEY — skipping",
+              file=sys.stderr)
+        return None
+
+    content = [{"type": "text", "text": user_text}]
+    for view_name, p in zip(["front", "side", "top", "iso"], thumbs):
+        content.append({"type": "text", "text": f"View: {view_name}"})
+        content.append({"type": "image_url",
+                        "image_url": {"url": _img_to_data_url(p)}})
+
+    payload = {
+        "model": GATEWAY_FALLBACK_MODEL,
+        "messages": [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": content},
+        ],
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": tool_name,
+                "description": tool_description,
+                "parameters": tool_schema,
+            },
+        }],
+        "tool_choice": {"type": "function",
+                        "function": {"name": tool_name}},
+    }
+    headers = {
+        "Authorization": f"Bearer {lovable_key}",
+        "Content-Type": "application/json",
+    }
+    resp = _post_json(GATEWAY_URL, headers, payload, timeout)
+    if not resp:
+        return None
     try:
         msg = resp["choices"][0]["message"]
         for tc in (msg.get("tool_calls") or []):
@@ -239,7 +337,8 @@ def _extract_tool_args(resp: dict, tool_name: str) -> dict | None:
             if fn.get("name") == tool_name:
                 return json.loads(fn.get("arguments") or "{}")
     except Exception as e:
-        print(f"[ai_supervisor] could not parse tool_call: {e}", file=sys.stderr)
+        print(f"[ai_supervisor] could not parse gateway tool_call: {e}",
+              file=sys.stderr)
     return None
 
 
@@ -279,46 +378,33 @@ def ask_validator(step_name: str, objs: list, out_dir: Path, attempt: int,
         f"Metrics: {json.dumps(metrics)}"
     )
 
-    content = [{"type": "text", "text": user_text}]
-    for view_name, p in zip(["front", "side", "top", "iso"], thumbs):
-        content.append({"type": "text", "text": f"View: {view_name}"})
-        content.append({"type": "image_url", "image_url": {"url": _img_to_data_url(p)}})
-
-    payload = {
-        "model": DEFAULT_MODEL,
-        "messages": [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": content},
-        ],
-        "tools": [{
-            "type": "function",
-            "function": {
-                "name": "report_verdict",
-                "description": "Report whether the bake step's geometry is acceptable.",
-                "parameters": {
+    args = _call_ai(
+        system_msg=system_msg,
+        user_text=user_text,
+        thumbs=thumbs,
+        tool_name="report_verdict",
+        tool_description="Report whether the bake step's geometry is acceptable.",
+        tool_schema={
+            "type": "object",
+            "properties": {
+                "verdict": {"type": "string", "enum": ["accept", "retry", "fail"]},
+                "reason": {"type": "string",
+                           "description": "One sentence explaining the call."},
+                "suggested_params": {
                     "type": "object",
+                    "description": "Optional hints for retry, e.g. {tolerance_mm: 8, solver: 'EXACT'}.",
                     "properties": {
-                        "verdict": {"type": "string", "enum": ["accept", "retry", "fail"]},
-                        "reason": {"type": "string", "description": "One sentence explaining the call."},
-                        "suggested_params": {
-                            "type": "object",
-                            "description": "Optional hints for retry, e.g. {tolerance_mm: 8, solver: 'EXACT'}.",
-                            "properties": {
-                                "tolerance_mm": {"type": "number"},
-                                "solver": {"type": "string", "enum": ["FAST", "EXACT"]},
-                            },
-                        },
+                        "tolerance_mm": {"type": "number"},
+                        "solver": {"type": "string",
+                                   "enum": ["FAST", "EXACT"]},
                     },
-                    "required": ["verdict", "reason"],
                 },
             },
-        }],
-        "tool_choice": {"type": "function", "function": {"name": "report_verdict"}},
-    }
-    resp = _post_gateway(payload)
-    if not resp:
-        return fallback
-    args = _extract_tool_args(resp, "report_verdict")
+            "required": ["verdict", "reason"],
+        },
+        model=DEFAULT_MODEL,
+        timeout=90,
+    )
     if not args or "verdict" not in args:
         return fallback
     args.setdefault("reason", "")
@@ -367,39 +453,24 @@ def ask_classifier(panel_obj, donor_bbox, panel_bbox, out_dir: Path, idx: int) -
         "Pick exactly one slot from the enum and explain in <=20 words."
     )
 
-    content = [{"type": "text", "text": user_text}]
-    for view_name, p in zip(["front", "side", "top", "iso"], thumbs):
-        content.append({"type": "text", "text": f"View: {view_name}"})
-        content.append({"type": "image_url", "image_url": {"url": _img_to_data_url(p)}})
-
-    payload = {
-        "model": CLASSIFIER_MODEL,
-        "messages": [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": content},
-        ],
-        "tools": [{
-            "type": "function",
-            "function": {
-                "name": "report_slot",
-                "description": "Report the aero slot for this panel.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "slot": {"type": "string", "enum": SLOT_ENUM},
-                        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                        "reason": {"type": "string"},
-                    },
-                    "required": ["slot", "confidence", "reason"],
-                },
+    args = _call_ai(
+        system_msg=system_msg,
+        user_text=user_text,
+        thumbs=thumbs,
+        tool_name="report_slot",
+        tool_description="Report the aero slot for this panel.",
+        tool_schema={
+            "type": "object",
+            "properties": {
+                "slot": {"type": "string", "enum": SLOT_ENUM},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "reason": {"type": "string"},
             },
-        }],
-        "tool_choice": {"type": "function", "function": {"name": "report_slot"}},
-    }
-    resp = _post_gateway(payload, timeout=60)
-    if not resp:
-        return fallback
-    args = _extract_tool_args(resp, "report_slot")
+            "required": ["slot", "confidence", "reason"],
+        },
+        model=CLASSIFIER_MODEL,
+        timeout=60,
+    )
     if not args or "slot" not in args:
         return fallback
     args.setdefault("confidence", 0.5)
