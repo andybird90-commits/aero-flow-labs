@@ -882,7 +882,7 @@ export function BuildStudioViewport({
             ? true
             : !["sunset", "dawn", "park", "forest"].includes(finish.env_preset))
         }
-        accumulative={settings.accumulativeShadows}
+        accumulative={settings.accumulativeShadows && !gizmoActive}
       />
 
       {/* Bounds wraps everything that should be framed by double-click. */}
