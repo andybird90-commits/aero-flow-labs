@@ -504,7 +504,7 @@ function CarStlRow({
 
   return (
     <div className="glass rounded-xl p-4 flex flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <div className="text-sm font-semibold tracking-tight truncate">
