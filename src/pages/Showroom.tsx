@@ -690,6 +690,42 @@ export default function Showroom() {
         </aside>
       )}
 
+      {/* Mobile floating toggle pills — pop the side panels in/out */}
+      {!presentationMode && isMobile && (
+        <div className="pointer-events-auto absolute inset-x-0 top-20 z-30 flex justify-between px-3">
+          {!showLeftPanel ? (
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-10 w-10 rounded-full border-border bg-surface-1/95 shadow-xl backdrop-blur"
+              onClick={() => {
+                setShowLeftPanel(true);
+                setShowRightPanel(false);
+              }}
+              aria-label="Open camera panel"
+              title="Camera presets & bookmarks"
+            >
+              <Camera className="h-4 w-4" />
+            </Button>
+          ) : <span />}
+          {!showRightPanel ? (
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-10 w-10 rounded-full border-border bg-surface-1/95 shadow-xl backdrop-blur"
+              onClick={() => {
+                setShowRightPanel(true);
+                setShowLeftPanel(false);
+              }}
+              aria-label="Open environment panel"
+              title="Environment & capture"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </Button>
+          ) : <span />}
+        </div>
+      )}
+
       {/* Presentation-mode minimal HUD */}
       {presentationMode && (
         <div className="pointer-events-auto absolute bottom-[14vh] left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface-1/95 px-3 py-1.5 shadow-xl">
