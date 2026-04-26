@@ -110,16 +110,21 @@ self.onmessage = (e: MessageEvent) => {
       const aabb = partAabb(part);
       const clipped = clipGeometryToAabb(base.geometry, aabb, {
         paddingM: 0.18,
-        maxTris: 18_000,
+        maxTris: TRIM_BASE_REGION_HARD_CAP,
       });
+      const partTriCount = geometryTriCount(part);
+      const estimatedPairCost = partTriCount * clipped.triCount;
 
       let trimmed: THREE.BufferGeometry | null = null;
-      // Skip trim entirely if the clipped region is empty or still too big,
-      // or if there's no overlap at all (snap result is fine on its own).
+      // Skip trim if either mesh is too dense or the estimated CSG pair cost
+      // is high. This prevents "Invalid typed array length" crashes while
+      // still returning the snapped geometry as a usable Live Fit preview.
       const safeForCsg =
         !clipped.truncated &&
         clipped.triCount > 0 &&
-        clipped.triCount <= TRIM_GLOBAL_HARD_CAP;
+        clipped.triCount <= TRIM_BASE_REGION_HARD_CAP &&
+        partTriCount <= TRIM_PART_HARD_CAP &&
+        estimatedPairCost <= TRIM_PAIR_COST_HARD_CAP;
 
       if (safeForCsg) {
         try {
