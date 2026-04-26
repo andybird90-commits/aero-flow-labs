@@ -353,6 +353,106 @@ export function useSignedCarStlUrl(row: CarStl | null | undefined) {
   });
 }
 
+/**
+ * Sign the optional textured-GLB hero asset. When present the Build Studio
+ * prefers this over the plain STL because it carries authored PBR materials,
+ * giving a true "render-quality" look in the viewport.
+ */
+export function useSignedCarGlbUrl(row: CarStl | null | undefined) {
+  const glbPath = (row as (CarStl & { glb_path?: string | null }) | null | undefined)?.glb_path ?? null;
+  return useQuery({
+    queryKey: ["signed_car_glb_url", row?.id, glbPath],
+    enabled: !!row && !!glbPath,
+    queryFn: async () => {
+      const { data, error } = await supabase.storage
+        .from("car-stls")
+        .createSignedUrl(glbPath!, 60 * 30);
+      if (error) throw error;
+      return data.signedUrl;
+    },
+    staleTime: 1000 * 60 * 20,
+  });
+}
+
+/**
+ * Upload a textured GLB for an existing hero car (admin only). Stored
+ * alongside the STL in the `car-stls` bucket; the row's `glb_path` column is
+ * updated so the Build Studio can prefer it.
+ */
+export function useUploadCarGlb() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { row: CarStl; file: File }) => {
+      const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const ext = (safeName.split(".").pop() ?? "").toLowerCase();
+      if (ext !== "glb" && ext !== "gltf") {
+        throw new Error("Only .glb or .gltf files are supported.");
+      }
+      const path = `${input.row.car_template_id}/glb-${Date.now()}-${safeName}`;
+      const contentType = ext === "gltf" ? "model/gltf+json" : "model/gltf-binary";
+
+      // Big GLBs go through a signed upload URL just like the STL path.
+      const LARGE_THRESHOLD = 6 * 1024 * 1024;
+      if (input.file.size > LARGE_THRESHOLD) {
+        const { data: signed, error: signErr } = await supabase.storage
+          .from("car-stls")
+          .createSignedUploadUrl(path);
+        if (signErr || !signed) throw new Error(signErr?.message ?? "Could not create upload URL");
+        const { error: putErr } = await supabase.storage
+          .from("car-stls")
+          .uploadToSignedUrl(signed.path, signed.token, input.file, { contentType });
+        if (putErr) throw new Error(`Upload failed: ${putErr.message}`);
+      } else {
+        const { error: upErr } = await supabase.storage
+          .from("car-stls")
+          .upload(path, input.file, { contentType, upsert: false });
+        if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+      }
+
+      // Best-effort: clean up any previous GLB so we don't accumulate orphans.
+      const prev = (input.row as CarStl & { glb_path?: string | null }).glb_path;
+      if (prev && prev !== path) {
+        await supabase.storage.from("car-stls").remove([prev]);
+      }
+
+      const { data, error } = await supabase
+        .from("car_stls")
+        .update({ glb_path: path } as never)
+        .eq("id", input.row.id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as CarStl;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["car_stls"] });
+      qc.invalidateQueries({ queryKey: ["hero_stl_for_project"] });
+      qc.invalidateQueries({ queryKey: ["car_stl_for_template"] });
+    },
+  });
+}
+
+/** Remove a previously-uploaded textured GLB from a hero car. */
+export function useDeleteCarGlb() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (row: CarStl) => {
+      const prev = (row as CarStl & { glb_path?: string | null }).glb_path;
+      if (prev) await supabase.storage.from("car-stls").remove([prev]);
+      const { error } = await supabase
+        .from("car_stls")
+        .update({ glb_path: null } as never)
+        .eq("id", row.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["car_stls"] });
+      qc.invalidateQueries({ queryKey: ["hero_stl_for_project"] });
+      qc.invalidateQueries({ queryKey: ["car_stl_for_template"] });
+    },
+  });
+}
+
 /* ─── PROFILE ──────────────────────────────────────────────── */
 export function useProfile(userId: string | undefined) {
   return useQuery({
