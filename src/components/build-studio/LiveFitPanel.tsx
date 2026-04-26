@@ -223,8 +223,11 @@ export function LiveFitPanel({
       const result = await run("snap", baseId, partAsFitGeometry(partGeo), {
         offsetM: offsetMm / 1000,
       });
-      // Only show snap result when trim is off — otherwise wait for trim.
-      if (!trim) setPreviewGeo(resultToLocalGeometry(result));
+      // Always show the snapped surface immediately. If trim is enabled, the
+      // slower CSG pass can replace this later; if trim is skipped/fails, Live
+      // Fit still visibly works instead of leaving an empty preview.
+      setPreviewGeo(resultToLocalGeometry(result));
+      if (!trim) setError(null);
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
