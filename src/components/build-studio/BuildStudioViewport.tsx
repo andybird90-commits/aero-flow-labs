@@ -67,6 +67,10 @@ interface ViewportProps {
   template?: CarTemplate | null;
   /** Signed URL for the project's hero STL (preferred over the box placeholder). */
   heroStlUrl?: string | null;
+  /** Optional signed URL for a textured GLB version of the hero car. When
+   *  present it is preferred over the STL because authored PBR materials
+   *  carry through, giving a true studio/render look in the viewport. */
+  heroGlbUrl?: string | null;
   /** Optional body skin overlay (Shell Fit Mode). */
   bodySkinUrl?: string | null;
   bodySkinKind?: "stl" | "glb" | null;
