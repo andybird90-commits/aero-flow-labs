@@ -626,11 +626,19 @@ export default function BuildStudio() {
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
               {/* Toolbar */}
-              <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border bg-card/95 px-4 shadow-sm overflow-x-auto">
-                <div className="text-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                  Build
+              <div className="studio-bar flex shrink-0 items-center gap-2.5 px-4 overflow-x-auto" style={{ height: "var(--studio-bar-h)" }}>
+                <div className="flex flex-col leading-tight">
+                  <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
+                    Aero Design
+                  </div>
+                  <div className="text-sm font-semibold truncate max-w-[220px]" style={{ color: "hsl(var(--studio-accent-glow))" }}>
+                    {project?.name}
+                  </div>
                 </div>
-                <div className="text-sm font-medium truncate max-w-[220px]">{project?.name}</div>
+                <Separator orientation="vertical" className="h-7" />
+
+                {/* Annotation tools — markup / surface / select */}
+                <AnnotationToolbar />
                 <Separator orientation="vertical" className="h-7" />
 
                 <ToggleGroup
