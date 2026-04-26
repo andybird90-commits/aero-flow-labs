@@ -177,6 +177,36 @@ export const ENV_PRESET_OPTIONS: Array<{ value: EnvPreset; label: string }> = [
   { value: "lobby", label: "Lobby" },
 ];
 
+/** Backdrop options shown in the toolbar Backdrop picker. Each preset is one
+ *  of drei's built-in HDRIs — zero cost, no upload required. `outdoor: true`
+ *  means we'll skip the reflective showroom floor (a car shouldn't look like
+ *  it's parked on a mirror in a field). */
+export interface BackdropPresetOption {
+  value: EnvPreset;
+  label: string;
+  description: string;
+  outdoor: boolean;
+}
+
+export const BACKDROP_PRESETS: BackdropPresetOption[] = [
+  { value: "warehouse", label: "Workshop", description: "Concrete, steel beams, warm tungsten — race-shop vibe.", outdoor: false },
+  { value: "studio", label: "Studio", description: "Clean white photography cyc.", outdoor: false },
+  { value: "city", label: "Detailing bay", description: "Modern interior with window light.", outdoor: false },
+  { value: "apartment", label: "Loft", description: "Soft interior, warm window glow.", outdoor: false },
+  { value: "lobby", label: "Showroom", description: "Polished dealership floor.", outdoor: false },
+  { value: "sunset", label: "Sunset", description: "Golden hour, outdoor.", outdoor: true },
+  { value: "dawn", label: "Dawn", description: "Cool morning light, outdoor.", outdoor: true },
+  { value: "night", label: "Night", description: "Moody, low ambient.", outdoor: false },
+  { value: "park", label: "Park", description: "Soft outdoor greenery.", outdoor: true },
+  { value: "forest", label: "Forest", description: "Dappled outdoor light.", outdoor: true },
+];
+
+/** True if the chosen backdrop is an outdoor HDRI (used to disable the
+ *  reflective floor automatically). */
+export function isOutdoorBackdrop(preset: EnvPreset): boolean {
+  return BACKDROP_PRESETS.find((p) => p.value === preset)?.outdoor ?? false;
+}
+
 /** Get body finish slice for convenience. */
 export function getBodyMaterial(finish: PaintFinish): MaterialFinish {
   return {
