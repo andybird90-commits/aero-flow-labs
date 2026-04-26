@@ -791,8 +791,10 @@ export function BuildStudioViewport({
       dpr={[1, 2]}
       gl={{ antialias: true, preserveDrawingBuffer: true, localClippingEnabled: true }}
     >
-      <color attach="background" args={["#08080a"]} />
-      <fog attach="fog" args={["#08080a", 18, 38]} />
+      {/* Fallback solid plate — only visible when no HDRI background is shown
+          (i.e. user disabled "Show backdrop" or hasn't loaded yet). */}
+      {!finish.show_backdrop && <color attach="background" args={["#08080a"]} />}
+      {!finish.show_backdrop && <fog attach="fog" args={["#08080a", 18, 38]} />}
       <ambientLight intensity={0.28} />
       {/* Key — warm-white from front-right, casts the main shadow. */}
       <directionalLight
@@ -808,10 +810,20 @@ export function BuildStudioViewport({
       <directionalLight position={[0, 3, 8]} intensity={0.35} color="#ffffff" />
 
       <Suspense fallback={null}>
-        {/* Studio HDRI is the cleanest reflection set for car paint; falls back
-            to whatever the paint-finish preset says only if user has opened
-            Paint Studio and explicitly chosen a different sky. */}
-        <Environment preset={finish.env_preset === "warehouse" ? "studio" : finish.env_preset} />
+        {/* Environment: custom HDRI takes priority over preset. `background`
+            controls whether the user actually sees the workshop walls or
+            just gets the lighting/reflection contribution. */}
+        {finish.custom_hdri_url ? (
+          <Environment
+            files={finish.custom_hdri_url}
+            background={finish.show_backdrop ?? true}
+          />
+        ) : (
+          <Environment
+            preset={finish.env_preset}
+            background={finish.show_backdrop ?? true}
+          />
+        )}
       </Suspense>
 
       {showGrid && (
@@ -829,7 +841,18 @@ export function BuildStudioViewport({
         />
       )}
 
-      <ShowroomFloor reflector={settings.reflectorFloor} accumulative={settings.accumulativeShadows} />
+      {/* Reflective showroom floor: skip for outdoor HDRIs (sunset/dawn/park
+          /forest) — a polished mirror floor under a sunset sky looks wrong.
+          Custom HDRIs always get the floor unless the user disables backdrop. */}
+      <ShowroomFloor
+        reflector={
+          settings.reflectorFloor &&
+          (finish.custom_hdri_url
+            ? true
+            : !["sunset", "dawn", "park", "forest"].includes(finish.env_preset))
+        }
+        accumulative={settings.accumulativeShadows}
+      />
 
       {/* Bounds wraps everything that should be framed by double-click. */}
       <Bounds clip observe margin={1.2}>
