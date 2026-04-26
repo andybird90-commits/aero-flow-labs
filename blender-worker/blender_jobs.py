@@ -436,9 +436,11 @@ def op_bake_bodykit(inputs: dict, out_dir: Path) -> dict:
         if tri_count < min_tris:
             continue
         bb = _bbox_world(obj)
+        area_mm2 = _mesh_area_mm2(obj)
+        area_m2 = area_mm2 / 1_000_000.0  # mm² → m²
 
         # Bbox heuristic as baseline / fallback.
-        heur_slot, heur_conf = _classify_aero_slot(bb, donor_bbox)
+        heur_slot, heur_conf = _classify_aero_slot(bb, donor_bbox, car_axes)
 
         # AI classifier (if available).
         ai_result = None
