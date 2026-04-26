@@ -73,6 +73,40 @@ function horizonFogColor(preset: EnvPreset | string): string {
   }
 }
 
+/**
+ * Ground projection settings per HDRI preset. Projects the equirectangular
+ * panorama onto a virtual ground sphere so the HDRI's floor anchors at y=0
+ * (right under the wheels) instead of floating at the horizon. This is what
+ * makes the car look like it's *standing in* the warehouse rather than
+ * sitting on an invisible table in front of a flat photo.
+ *
+ *  - height : virtual camera altitude inside the equirect (metres). Lower
+ *             = sharper, higher = softer perspective.
+ *  - radius : ground sphere radius (metres). Roughly how far away the
+ *             "horizon line" sits from the car.
+ *  - scale  : how big the projection sphere appears overall.
+ *
+ * `null` = don't project (use the raw equirect as a skybox). Used for pure
+ * studio cycs where there's no real floor to anchor.
+ */
+function groundProjectionFor(preset: EnvPreset | string, carLength: number): { height: number; radius: number; scale: number } | null {
+  const r = Math.max(15, carLength * 6);
+  switch (preset) {
+    case "warehouse": return { height: 8, radius: r, scale: 100 };
+    case "city": return { height: 10, radius: r, scale: 120 };
+    case "apartment": return { height: 6, radius: r * 0.9, scale: 80 };
+    case "lobby": return { height: 7, radius: r, scale: 100 };
+    case "sunset": return { height: 12, radius: r * 1.4, scale: 200 };
+    case "dawn": return { height: 12, radius: r * 1.4, scale: 200 };
+    case "night": return { height: 10, radius: r * 1.2, scale: 150 };
+    case "park": return { height: 12, radius: r * 1.4, scale: 200 };
+    case "forest": return { height: 10, radius: r * 1.2, scale: 150 };
+    case "studio": return null; // pure cyc — no projection
+    default: return { height: 8, radius: r, scale: 100 };
+  }
+}
+
+
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
 /** Active interactive tool. `select` = normal pivot/transform editing. */
@@ -806,7 +840,7 @@ export function BuildStudioViewport({
   return (
     <Canvas
       shadows
-      camera={{ position: [carLength * 1.1, carLength * 0.45, carLength * 1.1], fov: 32, near: 0.1, far: 100 }}
+      camera={{ position: [carLength * 1.2, carLength * 0.32, carLength * 1.2], fov: 32, near: 0.1, far: 200 }}
       onPointerMissed={() => {
         if (transformInteractionRef.current) return;
         if (tool === "select") onSelect(null);
@@ -843,16 +877,31 @@ export function BuildStudioViewport({
       <Suspense fallback={null}>
         {/* Environment: custom HDRI takes priority over preset. `background`
             controls whether the user actually sees the workshop walls or
-            just gets the lighting/reflection contribution. */}
+            just gets the lighting/reflection contribution.
+            `ground` projects the panorama onto a virtual ground sphere so
+            the HDRI's floor anchors at y=0 (right under the car's wheels)
+            instead of floating up at the horizon — this is what makes it
+            look like the car is *in* the warehouse vs sitting on a table
+            in front of a wall photo. */}
         {finish.custom_hdri_url ? (
           <Environment
             files={finish.custom_hdri_url}
             background={finish.show_backdrop ?? true}
+            ground={
+              finish.show_backdrop !== false
+                ? { height: 8, radius: Math.max(15, carLength * 6), scale: 100 }
+                : undefined
+            }
           />
         ) : (
           <Environment
             preset={finish.env_preset}
             background={finish.show_backdrop ?? true}
+            ground={
+              finish.show_backdrop !== false
+                ? groundProjectionFor(finish.env_preset, carLength) ?? undefined
+                : undefined
+            }
           />
         )}
       </Suspense>
@@ -872,18 +921,20 @@ export function BuildStudioViewport({
         />
       )}
 
-      {/* Reflective showroom floor: skip for outdoor HDRIs (sunset/dawn/park
-          /forest) — a polished mirror floor under a sunset sky looks wrong.
-          Custom HDRIs always get the floor unless the user disables backdrop. */}
+      {/* Reflective showroom floor: disabled whenever the HDRI is ground-projected
+          (the panorama itself provides a real floor — a mirror on top would
+          double up the reflection and break the illusion). Only kept for
+          the pure "studio" cyc which has no real ground. */}
       <ShowroomFloor
         reflector={
           settings.reflectorFloor &&
-          (finish.custom_hdri_url
-            ? true
-            : !["sunset", "dawn", "park", "forest"].includes(finish.env_preset))
+          !finish.custom_hdri_url &&
+          finish.env_preset === "studio" &&
+          finish.show_backdrop !== false
         }
         accumulative={settings.accumulativeShadows && !gizmoActive}
       />
+
 
       {/* Bounds wraps everything that should be framed by double-click. */}
       <Bounds clip observe margin={1.2}>
