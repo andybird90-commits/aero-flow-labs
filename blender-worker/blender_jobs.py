@@ -52,6 +52,7 @@ def main() -> None:
 
     handlers = {
         "bake_bodykit": op_bake_bodykit,
+        "repair_donor_stl": op_repair_donor_stl,
     }
     if job_type not in handlers:
         raise SystemExit(f"job_type {job_type!r} not implemented in blender_jobs.py")
@@ -228,9 +229,135 @@ def _mesh_area_mm2(obj) -> float:
     return total
 
 
-# ────────────────────────────────────────────────────────────────────────────
+def _count_non_manifold_edges(obj) -> int:
+    """Count edges that aren't bordered by exactly two faces."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    n = sum(1 for e in bm.edges if not e.is_manifold)
+    bm.free()
+    return n
+
+
+def _clean_mesh_basic(obj, weld_dist_mm: float = 0.05) -> None:
+    """Always-safe pass: weld doubles, drop loose geo, recalc normals outside."""
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.remove_doubles(threshold=weld_dist_mm)
+    bpy.ops.mesh.delete_loose()
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def _make_manifold(obj, voxel_size_mm: float = 12.0) -> dict:
+    """Force a mesh to be watertight + manifold.
+
+    Order of operations (cheapest -> most destructive):
+      1. weld + recalc normals + drop loose
+      2. fill_holes for small gaps
+      3. if still non-manifold: voxel remesh (guaranteed closed shell, but
+         loses fine surface detail). 12mm voxel is fine for ~4m car shells.
+    """
+    stats = {
+        "voxel_remeshed": False,
+        "voxel_size_mm": None,
+        "non_manifold_edges_before": _count_non_manifold_edges(obj),
+        "non_manifold_edges_after": 0,
+        "triangle_count_before": len(obj.data.polygons),
+        "triangle_count_after": 0,
+    }
+
+    _clean_mesh_basic(obj)
+
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    try:
+        bpy.ops.mesh.fill_holes(sides=12)
+    except RuntimeError:
+        pass
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    nme = _count_non_manifold_edges(obj)
+    if nme > 0:
+        print(f"[repair] {nme} non-manifold edges remain -> voxel remesh @ {voxel_size_mm}mm")
+        bpy.ops.object.select_all(action="DESELECT")
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        rm = obj.modifiers.new("voxel_remesh", "REMESH")
+        rm.mode = "VOXEL"
+        rm.voxel_size = voxel_size_mm
+        rm.use_smooth_shade = False
+        try:
+            bpy.ops.object.modifier_apply(modifier=rm.name)
+            stats["voxel_remeshed"] = True
+            stats["voxel_size_mm"] = voxel_size_mm
+            _clean_mesh_basic(obj)
+        except RuntimeError as e:
+            print(f"[repair] voxel remesh failed: {e}", file=sys.stderr)
+
+    stats["non_manifold_edges_after"] = _count_non_manifold_edges(obj)
+    stats["triangle_count_after"] = len(obj.data.polygons)
+    return stats
+
+
+# ----------------------------------------------------------------------------
+# op: repair_donor_stl
+# ----------------------------------------------------------------------------
+
+def op_repair_donor_stl(inputs: dict, out_dir: Path) -> dict:
+    """Make a donor car STL watertight + manifold so booleans behave.
+
+    Inputs:
+      stl_url:        str   public/signed STL URL
+      voxel_size_mm:  float default 12.0 — voxel size for remesh fallback
+
+    Outputs:
+      repaired_stl:       "repaired.stl"
+      repair_stats_json:  "repair_stats.json"
+    """
+    stl_url = inputs["stl_url"]
+    voxel_size_mm = float(inputs.get("voxel_size_mm", 12.0))
+
+    src_path = _download(stl_url, out_dir / "donor_in.stl")
+
+    _reset_scene()
+    obj = _import_stl(src_path, "donor")
+
+    bb_before = _bbox_world(obj)
+    stats = _make_manifold(obj, voxel_size_mm=voxel_size_mm)
+    bb_after = _bbox_world(obj)
+
+    out_stl = out_dir / "repaired.stl"
+    _export_stl(obj, out_stl)
+
+    full_stats = {
+        **stats,
+        "manifold": stats["non_manifold_edges_after"] == 0,
+        "bbox_min": list(bb_after[0]),
+        "bbox_max": list(bb_after[1]),
+        "bbox_min_before": list(bb_before[0]),
+        "bbox_max_before": list(bb_before[1]),
+    }
+    (out_dir / "repair_stats.json").write_text(json.dumps(full_stats), encoding="utf-8")
+    print(f"[repair_donor_stl] done: {full_stats}")
+
+    return {
+        "outputs": {
+            "repaired_stl": "repaired.stl",
+            "repair_stats_json": "repair_stats.json",
+        },
+    }
+
+
+# ----------------------------------------------------------------------------
 # op: bake_bodykit
-# ────────────────────────────────────────────────────────────────────────────
+# ----------------------------------------------------------------------------
 
 def _do_boolean_subtract(shell, donor, tol_mm: float, solver: str) -> None:
     """Inflate donor by `tol_mm` and subtract it from shell. Mutates the scene."""

@@ -225,17 +225,44 @@ function CarStlsInner({ userId }: { userId: string }) {
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      const stats = (data as any)?.stats;
-      qc.invalidateQueries({ queryKey: ["car_stls"] });
-      qc.invalidateQueries({ queryKey: ["car_stl_for_template", row.car_template_id] });
-      qc.invalidateQueries({ queryKey: ["hero_stl_for_project"] });
+
       toast({
-        title: stats?.manifold ? "Repair complete · manifold" : "Repair complete · warning: non-manifold",
-        description: stats
-          ? `${stats.triangle_count_out.toLocaleString()} tris · ${stats.open_edges} open edges · ${stats.duplicate_edges} non-manifold edges`
-          : "See row details.",
-        variant: "default",
+        title: "Repair queued",
+        description: "Sent to Blender — this can take 1–3 minutes for the voxel remesh.",
       });
+
+      // Poll the row until manifold_clean flips or notes show a failure.
+      const startedAt = Date.now();
+      const TIMEOUT_MS = 6 * 60 * 1000;
+      while (Date.now() - startedAt < TIMEOUT_MS) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const { data: fresh } = await supabase
+          .from("car_stls")
+          .select("manifold_clean, repaired_stl_path, triangle_count, notes, updated_at")
+          .eq("id", row.id)
+          .maybeSingle();
+        if (!fresh) continue;
+
+        // Failure path — runRepair on the server writes "[repair failed] ..." to notes.
+        if (fresh.notes?.startsWith("[repair failed]")) {
+          throw new Error(fresh.notes.replace("[repair failed] ", ""));
+        }
+        // Success: the row was updated with a repaired path AFTER we kicked off.
+        if (
+          fresh.repaired_stl_path &&
+          new Date(fresh.updated_at).getTime() > startedAt - 5000
+        ) {
+          qc.invalidateQueries({ queryKey: ["car_stls"] });
+          qc.invalidateQueries({ queryKey: ["car_stl_for_template", row.car_template_id] });
+          qc.invalidateQueries({ queryKey: ["hero_stl_for_project"] });
+          toast({
+            title: fresh.manifold_clean ? "Repair complete · manifold ✓" : "Repair complete · still non-manifold",
+            description: `${fresh.triangle_count?.toLocaleString() ?? "?"} tris · ${fresh.notes ?? ""}`,
+          });
+          return;
+        }
+      }
+      throw new Error("Repair timed out waiting for the worker.");
     } catch (e: any) {
       toast({ title: "Repair failed", description: String(e.message ?? e), variant: "destructive" });
     } finally {
