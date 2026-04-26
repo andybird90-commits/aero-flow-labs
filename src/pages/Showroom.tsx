@@ -170,6 +170,9 @@ export default function Showroom() {
   const [recording, setRecording] = useState(false);
   const [recordProgress, setRecordProgress] = useState(0);
   const [exportingUsdz, setExportingUsdz] = useState(false);
+  const isMobile = useIsMobile();
+  const [showLeftPanel, setShowLeftPanel] = useState(false);
+  const [showRightPanel, setShowRightPanel] = useState(false);
 
   const { bookmarks, add, remove } = useCameraBookmarks(projectId);
   const { data: shareState } = useProjectShareState(projectId);
