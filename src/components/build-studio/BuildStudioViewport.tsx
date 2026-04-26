@@ -52,6 +52,27 @@ import {
 } from "@/components/build-studio/annotate/SurfaceStrokes";
 import type { CameraPose } from "@/lib/build-studio/annotate/store";
 
+/**
+ * Approximate horizon tint for each HDRI preset, used as the fog colour so
+ * the floor fades into the backdrop instead of meeting it on a hard line.
+ * Tuned by eye against drei's bundled environment presets.
+ */
+function horizonFogColor(preset: EnvPreset | string): string {
+  switch (preset) {
+    case "warehouse": return "#3a3530";
+    case "city": return "#4a4d52";
+    case "apartment": return "#5a5550";
+    case "sunset": return "#6b4a3a";
+    case "dawn": return "#5a6478";
+    case "night": return "#0d1018";
+    case "park": return "#5a6850";
+    case "forest": return "#3a4a3a";
+    case "lobby": return "#4a4540";
+    case "studio":
+    default: return "#2a2a2c";
+  }
+}
+
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
 /** Active interactive tool. `select` = normal pivot/transform editing. */
@@ -795,6 +816,13 @@ export function BuildStudioViewport({
           (i.e. user disabled "Show backdrop" or hasn't loaded yet). */}
       {!finish.show_backdrop && <color attach="background" args={["#08080a"]} />}
       {!finish.show_backdrop && <fog attach="fog" args={["#08080a", 18, 38]} />}
+      {/* Atmospheric haze when the HDRI backdrop is visible: softens the
+          hard line where the dark floor meets the bright workshop horizon
+          so the scene reads as one continuous space. Tuned to start past
+          the car and fully cover by the floor's far edge. */}
+      {finish.show_backdrop !== false && (
+        <fog attach="fog" args={[horizonFogColor(finish.env_preset), 14, 32]} />
+      )}
       <ambientLight intensity={0.28} />
       {/* Key — warm-white from front-right, casts the main shadow. */}
       <directionalLight
