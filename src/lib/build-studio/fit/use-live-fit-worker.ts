@@ -102,7 +102,12 @@ export function useLiveFitWorker() {
       return new Promise((resolve, reject) => {
         pendingRef.current.set(reqId, (msg) => {
           if (msg.type === "error") reject(new Error(msg.message));
-          else resolve({ positions: msg.positions, normals: msg.normals, indices: msg.indices ?? null });
+          else resolve({
+            positions: msg.positions,
+            normals: msg.normals,
+            indices: msg.indices ?? null,
+            trimApplied: msg.trimApplied,
+          });
         });
         w.postMessage(
           {
