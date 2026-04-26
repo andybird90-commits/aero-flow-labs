@@ -92,6 +92,8 @@ export const DEFAULT_PAINT_FINISH: PaintFinish = {
   ...DEFAULT_BODY_FINISH,
   env_intensity: 1.7,
   env_preset: "studio",
+  custom_hdri_url: null,
+  show_backdrop: true,
   wheels: { ...DEFAULT_WHEEL_FINISH },
   tyres: { ...DEFAULT_TYRE_FINISH },
   glass: { ...DEFAULT_GLASS_FINISH },
