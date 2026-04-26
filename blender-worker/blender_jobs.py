@@ -134,52 +134,98 @@ def _bbox_world(obj):
     return mn, mx
 
 
-def _classify_aero_slot(part_bbox, donor_bbox) -> tuple[str, float]:
+def _detect_car_axes(donor_bbox) -> dict:
+    """Auto-detect which axis is length / width / up from the donor bbox.
+
+    Cars are roughly 4-5m long, 1.7-2m wide, 1.3-1.6m tall. The longest axis
+    is length, the shortest is up. This works regardless of whether the STL
+    uses +Y forward / +Z up (Blender convention) or +Y up / -Z forward
+    (Three.js convention).
+
+    Returns:
+      { "length_axis": int, "width_axis": int, "up_axis": int,
+        "front_sign": int }  # +1 if positive end is front, -1 if negative.
+    Heuristic for front_sign: most car STLs in this project face -Z; we can't
+    know without fiducials, so default to -1 along the length axis. The
+    classifier mirrors L/R based on the absolute width-axis value, so a wrong
+    front/back guess only swaps front_↔ rear_ slots — still much better than
+    everything-is-canard.
+    """
+    dmin, dmax = donor_bbox
+    spans = [dmax[i] - dmin[i] for i in range(3)]
+    length_axis = max(range(3), key=lambda i: spans[i])
+    up_axis = min(range(3), key=lambda i: spans[i])
+    width_axis = 3 - length_axis - up_axis
+    return {
+        "length_axis": length_axis,
+        "width_axis": width_axis,
+        "up_axis": up_axis,
+        "front_sign": -1,  # assume -length is front (Three.js convention)
+    }
+
+
+def _classify_aero_slot(part_bbox, donor_bbox, axes: dict) -> tuple[str, float]:
     """Classify a panel by its position relative to the donor car bbox.
 
-    Axis convention (matches the STL data we receive — Z-up, right-handed):
-      X = left/right (+X right)
-      Y = fore/aft   (+Y forward / front of car, -Y rear)
-      Z = vertical   (+Z up)
+    Uses auto-detected axes so it works whether the donor STL is +Y up or
+    +Z up.
 
     Slots: front_splitter, rear_wing, rear_diffuser, side_skirt_l/r,
-    front_canard_l/r, hood_scoop, roof_scoop, unknown.
+    front_canard_l/r, hood_scoop, roof_scoop, front_lip, rear_bumper_addon,
+    unknown.
     """
     pmin, pmax = part_bbox
     dmin, dmax = donor_bbox
-    cx = (pmin[0] + pmax[0]) / 2
-    cy = (pmin[1] + pmax[1]) / 2
-    cz = (pmin[2] + pmax[2]) / 2
 
-    car_w_x  = max(dmax[0] - dmin[0], 1.0)
-    car_len_y = max(dmax[1] - dmin[1], 1.0)
-    car_h_z  = max(dmax[2] - dmin[2], 1.0)
-    # Normalised positions: 0=rear/bottom/left, 1=front/top/right
-    ny = (cy - dmin[1]) / car_len_y      # 0 = rear (-Y), 1 = front (+Y)
-    nz = (cz - dmin[2]) / car_h_z        # 0 = bottom, 1 = top
-    nx_abs = abs(cx - (dmin[0] + dmax[0]) / 2) / (car_w_x / 2)  # 0=centre, 1=edge
+    la = axes["length_axis"]
+    wa = axes["width_axis"]
+    ua = axes["up_axis"]
+    fs = axes["front_sign"]
 
-    # Rear region (back third of car)
-    if ny < 0.25:
-        if nz > 0.7:
+    cl = (pmin[la] + pmax[la]) / 2  # centroid along length
+    cw = (pmin[wa] + pmax[wa]) / 2  # centroid along width
+    cu = (pmin[ua] + pmax[ua]) / 2  # centroid along up
+
+    car_len = max(dmax[la] - dmin[la], 1.0)
+    car_wid = max(dmax[wa] - dmin[wa], 1.0)
+    car_hgt = max(dmax[ua] - dmin[ua], 1.0)
+
+    # Normalise: nl=0 at rear, 1 at front; nu=0 at bottom, 1 at top.
+    raw_l = (cl - dmin[la]) / car_len  # 0 at -length end, 1 at +length end
+    nl = raw_l if fs > 0 else (1.0 - raw_l)
+    nu = (cu - dmin[ua]) / car_hgt
+    width_centre = (dmin[wa] + dmax[wa]) / 2
+    nw_signed = (cw - width_centre) / (car_wid / 2)  # -1..+1
+    nw_abs = abs(nw_signed)
+
+    # Rear region (back third)
+    if nl < 0.25:
+        if nu > 0.7:
             return "rear_wing", 0.85
-        if nz < 0.35:
+        if nu < 0.35:
             return "rear_diffuser", 0.8
         return "rear_bumper_addon", 0.6
     # Front region (front third)
-    if ny > 0.75:
-        if nz < 0.35:
+    if nl > 0.75:
+        if nu < 0.35:
             return "front_splitter", 0.85
-        if nx_abs > 0.55:
-            return ("front_canard_r" if cx > 0 else "front_canard_l"), 0.7
+        if nw_abs > 0.55:
+            return ("front_canard_r" if nw_signed > 0 else "front_canard_l"), 0.7
         return "front_lip", 0.6
-    # Mid region (middle third)
-    if nx_abs > 0.55 and nz < 0.5:
-        return ("side_skirt_r" if cx > 0 else "side_skirt_l"), 0.8
-    if nz > 0.75 and nx_abs < 0.4:
-        # Top centre
-        return ("hood_scoop" if ny > 0.55 else "roof_scoop"), 0.55
+    # Mid region
+    if nw_abs > 0.55 and nu < 0.5:
+        return ("side_skirt_r" if nw_signed > 0 else "side_skirt_l"), 0.8
+    if nu > 0.75 and nw_abs < 0.4:
+        return ("hood_scoop" if nl > 0.55 else "roof_scoop"), 0.55
     return "unknown", 0.3
+
+
+def _mesh_area_mm2(obj) -> float:
+    """Sum polygon areas in Blender's local mm units."""
+    total = 0.0
+    for poly in obj.data.polygons:
+        total += float(poly.area)
+    return total
 
 
 # ────────────────────────────────────────────────────────────────────────────
