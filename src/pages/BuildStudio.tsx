@@ -124,10 +124,11 @@ export default function BuildStudio() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<TransformMode>("translate");
-  const [showGrid, setShowGrid] = useState(true);
+  const [showGrid, setShowGrid] = useState(false);
   const [showSnapZones, setShowSnapZones] = useState(true);
   const [preset, setPreset] = useState<CameraPreset>("free");
   const { quality, setQuality } = useRenderQuality();
+  const [presentationMode, setPresentationMode] = useState(false);
 
   // Tier 2 interaction tools
   const [tool, setTool] = useState<ViewportTool>("select");
