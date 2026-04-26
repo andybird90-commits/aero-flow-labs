@@ -536,6 +536,11 @@ function CarStlRow({
               </Badge>
             )}
             {splitBadge}
+            {hasGlb ? (
+              <Badge variant="outline" className="border-primary/40 text-primary">
+                <ImageIcon className="mr-1 h-3 w-3" /> Textured GLB
+              </Badge>
+            ) : null}
           </div>
           <div className="mt-1 text-mono text-[10px] uppercase tracking-widest text-muted-foreground truncate">
             {row.stl_path}
