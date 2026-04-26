@@ -54,6 +54,9 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  PanelLeftOpen,
+  PanelRightOpen,
+  SlidersHorizontal,
 } from "lucide-react";
 import { frameReset } from "@/components/build-studio/ViewportTools";
 import type { MeasureLine } from "@/components/build-studio/ViewportTools";
