@@ -623,6 +623,30 @@ export default function BuildStudio() {
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             <div className="h-5 w-px bg-border" />
             <Topbar />
+            {projectId && isMobile && !presentationMode && (
+              <div className="ml-auto flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 w-9 p-0"
+                  onClick={() => setMobileLeftOpen(true)}
+                  aria-label="Open part library"
+                  title="Part library"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 w-9 p-0"
+                  onClick={() => setMobileRightOpen(true)}
+                  aria-label="Open properties"
+                  title="Properties & annotations"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </header>
 
           {!projectId ? (
