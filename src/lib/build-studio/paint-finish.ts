@@ -81,8 +81,8 @@ export const DEFAULT_GLASS_FINISH: MaterialFinish = {
 
 export const DEFAULT_PAINT_FINISH: PaintFinish = {
   ...DEFAULT_BODY_FINISH,
-  env_intensity: 1.4,
-  env_preset: "warehouse",
+  env_intensity: 1.7,
+  env_preset: "studio",
   wheels: { ...DEFAULT_WHEEL_FINISH },
   tyres: { ...DEFAULT_TYRE_FINISH },
   glass: { ...DEFAULT_GLASS_FINISH },
