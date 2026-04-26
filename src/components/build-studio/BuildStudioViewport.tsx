@@ -45,6 +45,12 @@ import {
   type MeasureLine,
   type ClipAxis,
 } from "@/components/build-studio/ViewportTools";
+import {
+  CameraPoseProbe,
+  SurfaceStrokeRecorder,
+  SurfaceStrokesRenderer,
+} from "@/components/build-studio/annotate/SurfaceStrokes";
+import type { CameraPose } from "@/lib/build-studio/annotate/store";
 
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
