@@ -50,6 +50,8 @@ import {
   Tag,
   Focus,
   Trash2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { frameReset } from "@/components/build-studio/ViewportTools";
 import type { MeasureLine } from "@/components/build-studio/ViewportTools";
