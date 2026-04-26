@@ -877,16 +877,31 @@ export function BuildStudioViewport({
       <Suspense fallback={null}>
         {/* Environment: custom HDRI takes priority over preset. `background`
             controls whether the user actually sees the workshop walls or
-            just gets the lighting/reflection contribution. */}
+            just gets the lighting/reflection contribution.
+            `ground` projects the panorama onto a virtual ground sphere so
+            the HDRI's floor anchors at y=0 (right under the car's wheels)
+            instead of floating up at the horizon — this is what makes it
+            look like the car is *in* the warehouse vs sitting on a table
+            in front of a wall photo. */}
         {finish.custom_hdri_url ? (
           <Environment
             files={finish.custom_hdri_url}
             background={finish.show_backdrop ?? true}
+            ground={
+              finish.show_backdrop !== false
+                ? { height: 8, radius: Math.max(15, carLength * 6), scale: 100 }
+                : undefined
+            }
           />
         ) : (
           <Environment
             preset={finish.env_preset}
             background={finish.show_backdrop ?? true}
+            ground={
+              finish.show_backdrop !== false
+                ? groundProjectionFor(finish.env_preset, carLength) ?? undefined
+                : undefined
+            }
           />
         )}
       </Suspense>
@@ -906,18 +921,20 @@ export function BuildStudioViewport({
         />
       )}
 
-      {/* Reflective showroom floor: skip for outdoor HDRIs (sunset/dawn/park
-          /forest) — a polished mirror floor under a sunset sky looks wrong.
-          Custom HDRIs always get the floor unless the user disables backdrop. */}
+      {/* Reflective showroom floor: disabled whenever the HDRI is ground-projected
+          (the panorama itself provides a real floor — a mirror on top would
+          double up the reflection and break the illusion). Only kept for
+          the pure "studio" cyc which has no real ground. */}
       <ShowroomFloor
         reflector={
           settings.reflectorFloor &&
-          (finish.custom_hdri_url
-            ? true
-            : !["sunset", "dawn", "park", "forest"].includes(finish.env_preset))
+          !finish.custom_hdri_url &&
+          finish.env_preset === "studio" &&
+          finish.show_backdrop !== false
         }
         accumulative={settings.accumulativeShadows && !gizmoActive}
       />
+
 
       {/* Bounds wraps everything that should be framed by double-click. */}
       <Bounds clip observe margin={1.2}>
