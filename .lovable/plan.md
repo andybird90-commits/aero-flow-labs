@@ -1,82 +1,79 @@
-# Fix stuck bodykit bake by moving it to Blender
+# Add an AI brain to the cloud Blender worker
 
-## Diagnosis (confirmed from logs)
+You're right — `BLENDER_WORKER_URL` already points at your cloud Blender box, edge functions (`dispatch-blender-job`, `bake-bodykit-from-shell`, `geometry-job-status`, `upload-blender-output`) all talk to it, and `LOVABLE_API_KEY` is already in your secrets. Nothing about hosting needs to change. We just upgrade the worker code on that server from a "blind script" into an **observe → reason → act loop** driven by Lovable AI.
 
-- `body_kits` row `472b54fe…` is stuck in status `baking` since 21:43.
-- `bake-bodykit-from-shell` edge function logs show **`ERROR CPU Time exceeded`** ~4 seconds after invocation.
-- The current implementation tries to do CSG-style subtraction + crease splitting + welding **inside the Lovable Cloud edge runtime**, which has a hard ~5s CPU-time cap. `EdgeRuntime.waitUntil()` does *not* extend that cap — it only extends the response window.
-- Result: every non-trivial shell mesh fails. The pipeline is fundamentally in the wrong place.
+## What's broken today
 
-## Why fix this with Blender (not by tuning the edge function)
+`blender_jobs.py::op_bake_bodykit` does:
+1. Boolean subtract donor − shell.
+2. Split by loose parts.
+3. Label each island with a bbox heuristic (`_classify_aero_slot`).
+4. Upload, done.
 
-Blender already runs as `apex-blender-worker` on the Hetzner box at `https://blender.apexnext.co.uk`. It:
-- has minutes of CPU, not seconds;
-- does proper boolean CSG (donor-subtract) instead of our vertex-distance heuristic, which gives clean panel edges;
-- can do mesh-island separation + bbox-based slot classification natively;
-- already has the upload-back path wired (`upload-blender-output` edge function).
+If step 1 produces a yellow blob, no one notices. If step 3 over-splits, no one notices. If step 4 mislabels the splitter as a diffuser, no one notices. There's no eyes on the result.
 
-The cost is one new Blender op + a refactor of the bake function into a dispatcher.
+## What we're adding
 
-## Changes
+A small `ai_supervisor.py` next to `blender_jobs.py` on the cloud worker. After each meaningful step the worker:
 
-### 1. New Blender op: `bake_bodykit`
-File: `blender-worker/worker.py` (add a new operation alongside the existing fit/repair/decimate ops).
+1. **Renders 4 thumbnails** (front / side / top / iso) of the current scene at 512px using Blender's Eevee — fast, no GPU needed.
+2. **Collects metrics**: triangle count, manifold check (`bmesh.ops.holes`), bbox dims, panel count.
+3. **Sends thumbs + metrics + step name** to `https://ai.gateway.lovable.dev/v1/chat/completions` using `LOVABLE_API_KEY` and `google/gemini-2.5-pro` (vision).
+4. **Asks for a structured decision** via tool calling: `{ verdict: "accept" | "retry" | "fail", reason: string, suggested_params?: {...} }`.
+5. **Acts on the verdict** — retry the step (max 2x) with adjusted tolerance/solver, accept and continue, or write a clean failure with the AI's reasoning into `result.json`.
 
-Inputs:
-- `donor_stl_url` — signed URL to donor car STL
-- `shell_stl_url` — signed URL to body skin STL
-- `baked_transform` — `{position, rotation, scale}` snapshot
-- `tolerance_mm` — default 4
-- `min_panel_tris` — default 80
+For the labelling step specifically, the AI gets a **per-panel render + bbox + extents** and returns a slot name from a fixed enum (`front_splitter, front_canard_l/r, side_skirt_l/r, rear_diffuser, rear_wing, hood_vent, fender_flare_l/r, ...`) plus a confidence and one-line rationale.
 
-Pipeline inside Blender:
-1. Import donor + shell STLs.
-2. Apply baked transform to shell (convert m→mm for translation, XYZ Euler for rotation).
-3. Boolean DIFFERENCE: `shell - donor` (with a small inflation on donor to absorb tolerance_mm).
-4. Separate by loose parts.
-5. For each island: compute bbox, centroid, area, dominant normal.
-6. Classify slot from bbox position vs. donor bbox (front/rear by X, side_skirt by |Y|, rear_wing by Z high + rear, splitter by Z low + front, etc.) — same rules currently in `classify-car-panels.ts`, ported to Python.
-7. Export combined STL + one STL per island.
-8. POST each STL back via `upload-blender-output` and return:
-   ```json
-   { "combined_url": "...", "panels": [{slot, label, confidence, url, triangle_count, bbox, centroid}] }
-   ```
+## Files that change
 
-### 2. Rewrite `supabase/functions/bake-bodykit-from-shell/index.ts` as a dispatcher
-- Keep the same request signature (`{ body_kit_id }`).
-- Load kit + skin + donor rows (cheap DB work, well under CPU budget).
-- Sign donor + shell STLs.
-- POST to `${BLENDER_WORKER_URL}/bake_bodykit` with the payload above + bearer `BLENDER_WORKER_TOKEN`.
-- Use `EdgeRuntime.waitUntil()` only for the *fetch + DB writes*, not for any mesh math.
-- On worker response: download each panel's signed URL, upload to `body-skins/bodykits/<kit_id>/...`, insert `body_kit_parts` rows, flip status `ready`.
-- On any failure (worker timeout, classification empty, etc.): flip to `failed` with the error message.
+### `blender-worker/ai_supervisor.py` *(new)*
+- `render_quad_views(scene, out_dir) -> list[Path]` — 4 Eevee renders, cheap.
+- `collect_metrics(obj) -> dict` — tri count, manifold, bbox, watertight check.
+- `ask_validator(step_name, thumbs, metrics) -> Verdict` — single Gemini call with vision.
+- `ask_classifier(panel_obj, panel_thumb) -> {slot, label, confidence, reason}` — same gateway, slot enum enforced via tool schema.
+- All HTTP via `requests` (already a worker dep), reads `LOVABLE_API_KEY` from env.
 
-### 3. Status transitions
-Stay aligned with existing UI labels in `body-kits.ts`:
-`queued → baking → splitting → ready` (we drop the `subtracting` intermediate since Blender does it in one shot).
+### `blender-worker/blender_jobs.py` *(modified)*
+- Wrap `op_bake_bodykit` in an **agent loop**: boolean → validate → split → validate → per-panel classify. Up to 2 retries on the boolean step with bumped `tol_mm` / swapped solver if AI says "retry".
+- Replace `_classify_aero_slot` bbox heuristic with `ai_supervisor.ask_classifier` (keep bbox as fallback only if AI call fails).
+- Write AI reasoning into `result.json` so it flows back through `upload-blender-output`.
 
-### 4. Recover the currently-stuck row
-The existing `472b54fe…` row will be left in `baking` forever. After deploying:
-- Add a one-shot SQL migration that flips any `body_kits` row stuck in `baking`/`subtracting`/`splitting` for >10 minutes to `failed` with error "Stale bake — please retry".
-- Then the UI's existing delete button + "Bake bodykit" can be retried by the user.
+### `blender-worker/start.ps1` *(modified)*
+- Add `LOVABLE_API_KEY` to the env block and `LOVABLE_FUNCTIONS_URL` (already there). One line each. Document in `docs/blender-worker.md`.
+- **Action you'll take on the cloud server**: pull the new code and add `LOVABLE_API_KEY=...` to the env / systemd unit / wherever `start.ps1` equivalent runs. I'll spell out exactly which env vars in the docs.
 
-### 5. Worker side: confirm `BLENDER_WORKER_URL` is reachable from edge
-Already verified earlier today: `https://blender.apexnext.co.uk/health` returns `{ok:true, blender_exists:true}`. No infra work needed.
+### `supabase/functions/bake-bodykit-from-shell/index.ts` *(modified)*
+- When ingesting `result.json`, pull the new `ai_label`, `ai_confidence`, `ai_reasoning`, `ai_attempts` fields and write them into `body_kit_parts` / `body_kits`.
 
-## Out of scope (explicitly)
+### Database migration *(new)*
+- `body_kit_parts`: add `ai_label text`, `ai_confidence numeric`, `ai_reasoning text`.
+- `body_kits`: add `ai_attempts integer default 0`, `ai_notes text`.
+- No backfill — only new bakes get the columns populated.
 
-- We're **not** changing the bake UI, the `body_kits` schema, or the `body_kit_parts` schema.
-- We're **not** porting all 14 ops from the schema file — only `bake_bodykit` for now. The other ops can move to Blender opportunistically as users hit similar limits.
-- The browser-side viewer code that reads `body_kit_parts` rows is unchanged.
+### `src/components/build-studio/BodyKitViewerDialog.tsx` *(modified)*
+- Show AI confidence badge + reasoning tooltip per panel.
+- Show overall `ai_notes` at the kit level if present (so you see "shell collapsed during boolean, retried with tol=8mm, accepted" rather than a silent success).
 
-## Risk / rollback
+## What this fixes
 
-- If the Blender worker is down, bakes will fail fast with a clear error (instead of hanging) — strictly better than today.
-- Old behaviour is fully replaced; there is no fallback path. If we need to revert, restore `bake-bodykit-from-shell/index.ts` from git.
+- **The mislabelled splitter/diffuser** → AI sees the actual geometry, not just bbox z-position.
+- **The yellow-blob bake** → validator catches it before save and either retries with different params or fails loudly with a reason.
+- **"Worker is just following a script"** → it now reasons about its own output between steps.
 
-## Acceptance test
+## What's explicitly out of scope
 
-1. On `/build-studio` with the `986 Hypercar` project, click "Bake bodykit from current shell".
-2. Status chip transitions `queued → baking → splitting → ready` within ~30–60s.
-3. `body_kit_parts` rows appear with sensible slot labels (`front_splitter`, `side_skirt`, etc.).
-4. Each panel STL downloads from the `body-skins` bucket and renders in the viewer.
+- No code-writing agent (AI doesn't author new Blender Python on the fly — too risky to sandbox, can revisit later).
+- No retraining / fine-tuning. Pure prompt + vision.
+- No changes to `dispatch-blender-job`, `dispatch-geometry-job`, `geometry-job-status`, `blender-job-status`, or `upload-blender-output` — the protocol between Lovable Cloud and your worker stays identical.
+- No new external services. Uses Lovable AI gateway you already have.
+
+## Cost / latency note
+
+Each bake currently makes 0 AI calls. After this PR: ~1 validator call after boolean + 1 after split + 1 classifier call per panel (typically 6–10). At Gemini 2.5 Pro that's ~10–20s extra wall time and ~12 vision calls. If that's too heavy I'll switch the per-panel classifier to `gemini-3-flash-preview` and keep Pro only for the validator — drops cost ~5x with minimal accuracy loss.
+
+## Rollout
+
+1. Land the migration + edge function changes (safe even if worker hasn't been updated — old worker just won't populate the new columns).
+2. You pull the worker code on the cloud box and add `LOVABLE_API_KEY` to its env.
+3. Run one bake. Inspect AI reasoning in the dialog.
+4. If labels look right, delete the old bad bakes and re-bake.

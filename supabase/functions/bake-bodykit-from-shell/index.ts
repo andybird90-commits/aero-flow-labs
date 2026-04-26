@@ -116,6 +116,9 @@ interface PanelManifestEntry {
   triangle_count: number;
   bbox: { min: number[]; max: number[] };
   centroid: number[];
+  ai_label?: string | null;
+  ai_confidence?: number | null;
+  ai_reasoning?: string | null;
 }
 
 async function runBake(admin: any, bodyKitId: string, userId: string): Promise<void> {
@@ -243,6 +246,9 @@ async function ingestWorkerOutputs(
   const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as {
     panels: PanelManifestEntry[];
     combined_triangle_count?: number;
+    ai_attempts?: number;
+    ai_notes?: string;
+    ai_enabled?: boolean;
   };
 
   // Wipe existing rows (idempotent re-bake)
@@ -273,6 +279,9 @@ async function ingestWorkerOutputs(
         min: panel.bbox?.min ?? [0, 0, 0],
         max: panel.bbox?.max ?? [0, 0, 0],
       },
+      ai_label: panel.ai_label ?? null,
+      ai_confidence: panel.ai_confidence ?? null,
+      ai_reasoning: panel.ai_reasoning ?? null,
     });
     panelCount++;
   }
@@ -288,6 +297,8 @@ async function ingestWorkerOutputs(
       panel_count: panelCount,
       triangle_count: manifest.combined_triangle_count ?? null,
       combined_stl_path: combinedUrl,
+      ai_attempts: manifest.ai_attempts ?? 0,
+      ai_notes: manifest.ai_notes ?? null,
       error: null,
     })
     .eq("id", bodyKitId);

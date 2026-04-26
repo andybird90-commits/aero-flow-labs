@@ -14,7 +14,8 @@ import * as THREE from "three";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Download, ExternalLink, Package } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Loader2, Download, ExternalLink, Package, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useBodyKitParts, type BodyKit } from "@/lib/build-studio/body-kits";
 
@@ -26,8 +27,11 @@ interface Props {
 
 export function BodyKitViewerDialog({ kit, open, onOpenChange }: Props) {
   const { data: parts = [], isLoading } = useBodyKitParts(kit?.id ?? null);
+  const aiAttempts = (kit as any)?.ai_attempts as number | undefined;
+  const aiNotes = (kit as any)?.ai_notes as string | null | undefined;
 
   return (
+    <TooltipProvider delayDuration={150}>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl">
         <DialogHeader>
@@ -44,6 +48,24 @@ export function BodyKitViewerDialog({ kit, open, onOpenChange }: Props) {
               <span>{kit.panel_count} panel{kit.panel_count === 1 ? "" : "s"}</span>
               <span>·</span>
               <span>{formatDistanceToNow(new Date(kit.created_at), { addSuffix: true })}</span>
+              {aiAttempts !== undefined && aiAttempts > 0 && (
+                <>
+                  <span>·</span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex items-center gap-1 text-primary">
+                        <Sparkles className="h-3 w-3" />
+                        AI · {aiAttempts} attempt{aiAttempts === 1 ? "" : "s"}
+                      </span>
+                    </TooltipTrigger>
+                    {aiNotes && (
+                      <TooltipContent className="max-w-md whitespace-pre-line text-[10px]">
+                        {aiNotes}
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </>
+              )}
             </div>
           )}
         </DialogHeader>
@@ -88,13 +110,37 @@ export function BodyKitViewerDialog({ kit, open, onOpenChange }: Props) {
               </div>
             ) : (
               <ul className="max-h-[420px] space-y-1 overflow-y-auto pr-1">
-                {parts.map((p) => (
+                {parts.map((p) => {
+                  const aiLabel = (p as any).ai_label as string | null | undefined;
+                  const aiConf = (p as any).ai_confidence as number | null | undefined;
+                  const aiReason = (p as any).ai_reasoning as string | null | undefined;
+                  return (
                   <li
                     key={p.id}
                     className="flex items-center justify-between gap-2 rounded-md border border-border bg-card/40 p-2 text-xs"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{p.label ?? p.slot}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate font-medium">{p.label ?? p.slot}</span>
+                        {aiLabel && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-primary/15 px-1 py-px text-[9px] font-medium text-primary">
+                                <Sparkles className="h-2.5 w-2.5" />
+                                {aiConf !== null && aiConf !== undefined
+                                  ? `${Math.round(aiConf * 100)}%`
+                                  : "AI"}
+                              </span>
+                            </TooltipTrigger>
+                            {aiReason && (
+                              <TooltipContent className="max-w-xs text-[10px]">
+                                <div className="font-semibold">AI: {aiLabel}</div>
+                                <div className="mt-0.5 text-muted-foreground">{aiReason}</div>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        )}
+                      </div>
                       <div className="mt-0.5 text-[10px] text-muted-foreground">
                         {p.slot} · {p.triangle_count.toLocaleString()} tris ·{" "}
                         {(p.area_m2 * 10000).toFixed(0)} cm²
@@ -112,7 +158,8 @@ export function BodyKitViewerDialog({ kit, open, onOpenChange }: Props) {
                       </a>
                     </Button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
 
@@ -133,6 +180,7 @@ export function BodyKitViewerDialog({ kit, open, onOpenChange }: Props) {
         </div>
       </DialogContent>
     </Dialog>
+    </TooltipProvider>
   );
 }
 
