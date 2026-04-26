@@ -1020,7 +1020,7 @@ export function BuildStudioViewport({
         <PartTransformGizmo
           object={shellNode}
           mode={transformMode}
-          size={0.9}
+          size={isTouchDevice() ? 1.6 : 0.9}
           orbitRef={orbitRef}
           interactionRef={transformInteractionRef}
           onRelease={() => {
