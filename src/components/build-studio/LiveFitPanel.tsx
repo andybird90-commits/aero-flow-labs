@@ -236,6 +236,14 @@ export function LiveFitPanel({
         offsetM: offsetMm / 1000,
       });
       setPreviewGeo(resultToLocalGeometry(result));
+      // The worker may decide to skip CSG (huge bodies / tricky geometry) and
+      // fall back to snap-only. Surface that so the user understands why the
+      // body isn't being cut, but keep the preview so Bake still works.
+      if ((result as any).trimApplied === false) {
+        setError("Body too large to trim live — snap applied. Use Print-ready for a clean cut.");
+      } else {
+        setError(null);
+      }
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
