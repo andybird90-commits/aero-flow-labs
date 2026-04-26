@@ -804,7 +804,7 @@ export function BuildStudioViewport({
   return (
     <Canvas
       shadows
-      camera={{ position: [4.5, 3, 4.5], fov: 38, near: 0.1, far: 100 }}
+      camera={{ position: [carLength * 1.1, carLength * 0.45, carLength * 1.1], fov: 32, near: 0.1, far: 100 }}
       onPointerMissed={() => {
         if (transformInteractionRef.current) return;
         if (tool === "select") onSelect(null);
@@ -815,13 +815,14 @@ export function BuildStudioViewport({
       {/* Fallback solid plate — only visible when no HDRI background is shown
           (i.e. user disabled "Show backdrop" or hasn't loaded yet). */}
       {!finish.show_backdrop && <color attach="background" args={["#08080a"]} />}
-      {!finish.show_backdrop && <fog attach="fog" args={["#08080a", 18, 38]} />}
+      {!finish.show_backdrop && <fog attach="fog" args={["#08080a", carLength * 1.6, carLength * 3.2]} />}
       {/* Atmospheric haze when the HDRI backdrop is visible: softens the
           hard line where the dark floor meets the bright workshop horizon
-          so the scene reads as one continuous space. Tuned to start past
-          the car and fully cover by the floor's far edge. */}
+          so the scene reads as one continuous space. Fog scales with the
+          car length so the horizon line always sits just past the car
+          regardless of model size. */}
       {finish.show_backdrop !== false && (
-        <fog attach="fog" args={[horizonFogColor(finish.env_preset), 14, 32]} />
+        <fog attach="fog" args={[horizonFogColor(finish.env_preset), carLength * 1.4, carLength * 2.8]} />
       )}
       <ambientLight intensity={0.28} />
       {/* Key — warm-white from front-right, casts the main shadow. */}
