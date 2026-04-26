@@ -101,6 +101,9 @@ export type Database = {
       }
       body_kit_parts: {
         Row: {
+          ai_confidence: number | null
+          ai_label: string | null
+          ai_reasoning: string | null
           anchor_position: Json | null
           area_m2: number
           bbox: Json
@@ -119,6 +122,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_confidence?: number | null
+          ai_label?: string | null
+          ai_reasoning?: string | null
           anchor_position?: Json | null
           area_m2?: number
           bbox?: Json
@@ -137,6 +143,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_confidence?: number | null
+          ai_label?: string | null
+          ai_reasoning?: string | null
           anchor_position?: Json | null
           area_m2?: number
           bbox?: Json
@@ -173,6 +182,8 @@ export type Database = {
       }
       body_kits: {
         Row: {
+          ai_attempts: number
+          ai_notes: string | null
           baked_transform: Json
           body_skin_id: string
           combined_glb_url: string | null
@@ -193,6 +204,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_attempts?: number
+          ai_notes?: string | null
           baked_transform?: Json
           body_skin_id: string
           combined_glb_url?: string | null
@@ -213,6 +226,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_attempts?: number
+          ai_notes?: string | null
           baked_transform?: Json
           body_skin_id?: string
           combined_glb_url?: string | null
