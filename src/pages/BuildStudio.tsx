@@ -86,6 +86,7 @@ import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
 import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
 import { BackdropPicker } from "@/components/build-studio/BackdropPicker";
+import { CarTemplatePickerDialog } from "@/components/CarTemplatePickerDialog";
 import { useHistory, useHistoryShortcuts } from "@/lib/build-studio/history";
 import { useCarMaterialMap } from "@/lib/build-studio/use-car-material-map";
 import {
@@ -135,6 +136,7 @@ export default function BuildStudio() {
   const [preset, setPreset] = useState<CameraPreset>("free");
   const { quality, setQuality } = useRenderQuality();
   const [presentationMode, setPresentationMode] = useState(false);
+  const [carPickerOpen, setCarPickerOpen] = useState(false);
 
   // Tier 2 interaction tools
   const [tool, setTool] = useState<ViewportTool>("select");
@@ -644,8 +646,26 @@ export default function BuildStudio() {
                   <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
                     Aero Design
                   </div>
-                  <div className="text-sm font-semibold truncate max-w-[220px]" style={{ color: "hsl(var(--studio-accent-glow))" }}>
-                    {project?.name}
+                  <div className="flex items-center gap-1.5">
+                    <div className="text-sm font-semibold truncate max-w-[180px]" style={{ color: "hsl(var(--studio-accent-glow))" }}>
+                      {project?.name}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                      onClick={() => setCarPickerOpen(true)}
+                      title="Swap donor car for this project"
+                    >
+                      {(() => {
+                        const tplId = (project?.car as any)?.template_id;
+                        const tpl = templates.find((t) => t.id === tplId);
+                        return tpl
+                          ? `${tpl.make} ${tpl.model}`
+                          : "Pick car";
+                      })()}
+                      <Boxes className="ml-1 h-3 w-3" />
+                    </Button>
                   </div>
                 </div>
                 <Separator orientation="vertical" className="h-7" />
@@ -1067,6 +1087,11 @@ export default function BuildStudio() {
           )}
         </div>
       </div>
+      <CarTemplatePickerDialog
+        open={carPickerOpen}
+        onOpenChange={setCarPickerOpen}
+        car={(project?.car as any) ?? null}
+      />
     </SidebarProvider>
   );
 }
