@@ -126,7 +126,11 @@ def _bbox_world(obj):
 def _classify_aero_slot(part_bbox, donor_bbox) -> tuple[str, float]:
     """Classify a panel by its position relative to the donor car bbox.
 
-    Frame from the app: +X right, +Y up, -Z forward (Three.js).
+    Axis convention (matches the STL data we receive — Z-up, right-handed):
+      X = left/right (+X right)
+      Y = fore/aft   (+Y forward / front of car, -Y rear)
+      Z = vertical   (+Z up)
+
     Slots: front_splitter, rear_wing, rear_diffuser, side_skirt_l/r,
     front_canard_l/r, hood_scoop, roof_scoop, unknown.
     """
@@ -136,33 +140,34 @@ def _classify_aero_slot(part_bbox, donor_bbox) -> tuple[str, float]:
     cy = (pmin[1] + pmax[1]) / 2
     cz = (pmin[2] + pmax[2]) / 2
 
-    car_len_z = max(dmax[2] - dmin[2], 1.0)
-    car_h_y = max(dmax[1] - dmin[1], 1.0)
-    car_w_x = max(dmax[0] - dmin[0], 1.0)
-    nz = (cz - dmin[2]) / car_len_z      # 0=front (-Z), 1=rear (+Z)
-    ny = (cy - dmin[1]) / car_h_y        # 0=bottom, 1=top
+    car_w_x  = max(dmax[0] - dmin[0], 1.0)
+    car_len_y = max(dmax[1] - dmin[1], 1.0)
+    car_h_z  = max(dmax[2] - dmin[2], 1.0)
+    # Normalised positions: 0=rear/bottom/left, 1=front/top/right
+    ny = (cy - dmin[1]) / car_len_y      # 0 = rear (-Y), 1 = front (+Y)
+    nz = (cz - dmin[2]) / car_h_z        # 0 = bottom, 1 = top
     nx_abs = abs(cx - (dmin[0] + dmax[0]) / 2) / (car_w_x / 2)  # 0=centre, 1=edge
 
-    # Rear region
-    if nz > 0.75:
-        if ny > 0.7:
+    # Rear region (back third of car)
+    if ny < 0.25:
+        if nz > 0.7:
             return "rear_wing", 0.85
-        if ny < 0.35:
+        if nz < 0.35:
             return "rear_diffuser", 0.8
         return "rear_bumper_addon", 0.6
-    # Front region
-    if nz < 0.25:
-        if ny < 0.35:
+    # Front region (front third)
+    if ny > 0.75:
+        if nz < 0.35:
             return "front_splitter", 0.85
         if nx_abs > 0.55:
             return ("front_canard_r" if cx > 0 else "front_canard_l"), 0.7
         return "front_lip", 0.6
-    # Mid region
-    if nx_abs > 0.55 and ny < 0.5:
+    # Mid region (middle third)
+    if nx_abs > 0.55 and nz < 0.5:
         return ("side_skirt_r" if cx > 0 else "side_skirt_l"), 0.8
-    if ny > 0.75 and nx_abs < 0.4:
+    if nz > 0.75 and nx_abs < 0.4:
         # Top centre
-        return ("roof_scoop" if nz > 0.45 else "hood_scoop"), 0.55
+        return ("hood_scoop" if ny > 0.55 else "roof_scoop"), 0.55
     return "unknown", 0.3
 
 
