@@ -646,8 +646,26 @@ export default function BuildStudio() {
                   <div className="text-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
                     Aero Design
                   </div>
-                  <div className="text-sm font-semibold truncate max-w-[220px]" style={{ color: "hsl(var(--studio-accent-glow))" }}>
-                    {project?.name}
+                  <div className="flex items-center gap-1.5">
+                    <div className="text-sm font-semibold truncate max-w-[180px]" style={{ color: "hsl(var(--studio-accent-glow))" }}>
+                      {project?.name}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                      onClick={() => setCarPickerOpen(true)}
+                      title="Swap donor car for this project"
+                    >
+                      {(() => {
+                        const tplId = (project?.car as any)?.template_id;
+                        const tpl = templates.find((t) => t.id === tplId);
+                        return tpl
+                          ? `${tpl.make} ${tpl.model}`
+                          : "Pick car";
+                      })()}
+                      <Boxes className="ml-1 h-3 w-3" />
+                    </Button>
                   </div>
                 </div>
                 <Separator orientation="vertical" className="h-7" />
