@@ -588,6 +588,41 @@ function CarStlRow({
               <Palette className="mr-1.5 h-3.5 w-3.5" /> Edit paint map
             </Link>
           </Button>
+          <input
+            ref={glbInputRef}
+            type="file"
+            accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onPickGlb(f);
+            }}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => glbInputRef.current?.click()}
+            disabled={uploadGlb.isPending}
+            title="Upload a fully textured GLB version of this car for premium rendering in Build Studio"
+          >
+            {uploadGlb.isPending ? (
+              <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Uploading…</>
+            ) : (
+              <><ImageIcon className="mr-1.5 h-3.5 w-3.5" /> {hasGlb ? "Replace GLB" : "Add textured GLB"}</>
+            )}
+          </Button>
+          {hasGlb && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRemoveGlb}
+              disabled={deleteGlb.isPending}
+              className="text-muted-foreground hover:text-destructive"
+              title="Remove the textured GLB and revert to the plain STL"
+            >
+              {deleteGlb.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+            </Button>
+          )}
           {panels.length > 0 && (
             <Button
               variant="ghost"
