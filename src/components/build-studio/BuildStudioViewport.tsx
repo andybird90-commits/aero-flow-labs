@@ -137,11 +137,13 @@ function HeroStlCar({
   template,
   paintFinish,
   materialTags,
+  onTriangleCount,
 }: {
   url: string;
   template?: CarTemplate | null;
   paintFinish: PaintFinish;
   materialTags?: Uint8Array | null;
+  onTriangleCount?: (n: number) => void;
 }) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
   const matRefs = useRef<{
@@ -163,6 +165,7 @@ function HeroStlCar({
         geo.computeVertexNormals();
 
         const triCount = geo.attributes.position.count / 3;
+        onTriangleCount?.(triCount);
         const tagsValid = materialTags && materialTags.length === triCount;
 
         // Build materials in fixed order: 0=body, 1=glass, 2=wheel, 3=tyre.
