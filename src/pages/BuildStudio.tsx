@@ -1087,6 +1087,11 @@ export default function BuildStudio() {
           )}
         </div>
       </div>
+      <CarTemplatePickerDialog
+        open={carPickerOpen}
+        onOpenChange={setCarPickerOpen}
+        car={(project?.car as any) ?? null}
+      />
     </SidebarProvider>
   );
 }
