@@ -123,6 +123,12 @@ function parseMaterial(raw: unknown, fb: MaterialFinish): MaterialFinish {
 export function parsePaintFinish(raw: unknown): PaintFinish {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_PAINT_FINISH };
   const r = raw as Record<string, unknown>;
+  const customHdri = typeof r.custom_hdri_url === "string" && r.custom_hdri_url
+    ? (r.custom_hdri_url as string)
+    : null;
+  const showBackdrop = typeof r.show_backdrop === "boolean"
+    ? (r.show_backdrop as boolean)
+    : DEFAULT_PAINT_FINISH.show_backdrop ?? true;
   return {
     color: str(r.color, DEFAULT_PAINT_FINISH.color),
     metalness: num(r.metalness, DEFAULT_PAINT_FINISH.metalness),
@@ -131,6 +137,8 @@ export function parsePaintFinish(raw: unknown): PaintFinish {
     clearcoat_roughness: num(r.clearcoat_roughness, DEFAULT_PAINT_FINISH.clearcoat_roughness),
     env_intensity: num(r.env_intensity, DEFAULT_PAINT_FINISH.env_intensity),
     env_preset: str(r.env_preset, DEFAULT_PAINT_FINISH.env_preset) as EnvPreset,
+    custom_hdri_url: customHdri,
+    show_backdrop: showBackdrop,
     wheels: parseMaterial(r.wheels, DEFAULT_WHEEL_FINISH),
     tyres: parseMaterial(r.tyres, DEFAULT_TYRE_FINISH),
     glass: parseMaterial(r.glass, DEFAULT_GLASS_FINISH),
