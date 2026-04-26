@@ -19,12 +19,18 @@ import * as THREE from "three";
 import { MeshBVH } from "three-mesh-bvh";
 import { snapToSurface } from "@/lib/build-studio/fit/snap-to-surface";
 import { trimToBody } from "@/lib/build-studio/fit/trim-to-body";
+import { clipGeometryToAabb, partAabb } from "@/lib/build-studio/fit/clip-region";
 
 interface BaseEntry {
   geometry: THREE.BufferGeometry;
   bvh: MeshBVH;
+  triCount: number;
 }
 const baseCache = new Map<string, BaseEntry>();
+
+/** CSG cost grows ~quadratically with body tris. Above this, trim is skipped
+ *  unless we can clip down to a small region around the part. */
+const TRIM_GLOBAL_HARD_CAP = 60_000;
 
 function buildGeometry(
   positions: Float32Array,
@@ -52,7 +58,10 @@ self.onmessage = (e: MessageEvent) => {
     if (msg.type === "set-base") {
       const geo = buildGeometry(msg.positions, msg.indices ?? null, null);
       const bvh = new MeshBVH(geo, { strategy: 0, maxLeafTris: 10 });
-      baseCache.set(msg.baseId, { geometry: geo, bvh });
+      const triCount = geo.index
+        ? geo.index.count / 3
+        : geo.attributes.position.count / 3;
+      baseCache.set(msg.baseId, { geometry: geo, bvh, triCount });
       (self as any).postMessage({ type: "base-ready", baseId: msg.baseId });
       return;
     }
@@ -86,10 +95,45 @@ self.onmessage = (e: MessageEvent) => {
         );
       }
 
-      const trimmed = trimToBody({ partGeometry: part, baseGeometry: base.geometry });
-      const pos = trimmed.attributes.position.array as Float32Array;
-      const nor = trimmed.attributes.normal.array as Float32Array;
-      const idxAttr = trimmed.index;
+      // Clip the base body to a small region around the (snapped) part. This
+      // keeps the CSG SUBTRACTION evaluator's intermediate buffers bounded —
+      // unclipped bodies can blow past 4 GB allocations and crash the worker.
+      const aabb = partAabb(part);
+      const clipped = clipGeometryToAabb(base.geometry, aabb, {
+        paddingM: 0.18,
+        maxTris: 18_000,
+      });
+
+      let trimmed: THREE.BufferGeometry | null = null;
+      // Skip trim entirely if the clipped region is empty or still too big,
+      // or if there's no overlap at all (snap result is fine on its own).
+      const safeForCsg =
+        !clipped.truncated &&
+        clipped.triCount > 0 &&
+        clipped.triCount <= TRIM_GLOBAL_HARD_CAP;
+
+      if (safeForCsg) {
+        try {
+          trimmed = trimToBody({
+            partGeometry: part,
+            baseGeometry: clipped.geometry,
+          });
+        } catch (csgErr) {
+          // CSG can still OOM on tricky geometry — fall back to snap-only.
+          (self as any).postMessage({
+            type: "trim-warning",
+            reqId: msg.reqId,
+            message: `Trim skipped: ${String((csgErr as Error)?.message ?? csgErr)}`,
+          });
+          trimmed = null;
+        }
+      }
+
+      const finalGeo = trimmed ?? part;
+      const pos = finalGeo.attributes.position.array as Float32Array;
+      const nor = (finalGeo.attributes.normal?.array as Float32Array | undefined) ??
+        new Float32Array(pos.length);
+      const idxAttr = finalGeo.index;
       const idx = idxAttr ? (idxAttr.array as Uint32Array).slice() : null;
 
       const transfer: ArrayBuffer[] = [pos.buffer as ArrayBuffer, nor.buffer as ArrayBuffer];
@@ -102,6 +146,8 @@ self.onmessage = (e: MessageEvent) => {
           positions: pos,
           normals: nor,
           indices: idx,
+          /** Tells the UI whether CSG actually ran or we fell back to snap. */
+          trimApplied: !!trimmed,
         },
         transfer,
       );
@@ -117,3 +163,4 @@ self.onmessage = (e: MessageEvent) => {
 };
 
 export {};
+
