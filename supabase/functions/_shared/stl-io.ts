@@ -21,23 +21,47 @@ export function parseStl(bytes: Uint8Array): Mesh {
   return parseBinaryStl(bytes);
 }
 
+/**
+ * Edge functions run with a ~150 MB heap. A binary STL with N triangles
+ * needs N * 9 * 4 bytes (positions) + N * 3 * 4 bytes (indices) ≈ 48 N.
+ * To stay well under the limit (and leave room for downstream buffers like
+ * adjacency / centroid arrays) we cap the parsed triangle count and uniformly
+ * downsample anything larger. The classifier only needs an indicative tag
+ * map per triangle, so a uniform sample preserves accuracy.
+ */
+const MAX_PARSED_TRIANGLES = 750_000;
+
 function parseBinaryStl(bytes: Uint8Array): Mesh {
   if (bytes.length < 84) return emptyMesh();
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const count = dv.getUint32(80, true);
+  const total = dv.getUint32(80, true);
+  // Stride > 1 means "keep every Nth triangle" — uniform decimation.
+  const stride = total > MAX_PARSED_TRIANGLES
+    ? Math.ceil(total / MAX_PARSED_TRIANGLES)
+    : 1;
+  const count = Math.ceil(total / stride);
   const positions = new Float32Array(count * 9);
   const indices = new Uint32Array(count * 3);
-  let off = 84;
   let vi = 0;
-  for (let i = 0; i < count; i++) {
+  let written = 0;
+  for (let i = 0; i < total && written < count; i++) {
+    if (i % stride !== 0) continue;
+    const off = 84 + i * 50;
     if (off + 50 > bytes.length) break;
     for (let k = 0; k < 9; k++) {
-      positions[i * 9 + k] = dv.getFloat32(off + 12 + k * 4, true);
+      positions[written * 9 + k] = dv.getFloat32(off + 12 + k * 4, true);
     }
-    indices[i * 3]     = vi++;
-    indices[i * 3 + 1] = vi++;
-    indices[i * 3 + 2] = vi++;
-    off += 50;
+    indices[written * 3]     = vi++;
+    indices[written * 3 + 1] = vi++;
+    indices[written * 3 + 2] = vi++;
+    written++;
+  }
+  // Trim unused tail if early-exit triggered.
+  if (written < count) {
+    return {
+      positions: positions.slice(0, written * 9),
+      indices: indices.slice(0, written * 3),
+    };
   }
   return { positions, indices };
 }
