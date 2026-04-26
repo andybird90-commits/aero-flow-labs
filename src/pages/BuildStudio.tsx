@@ -446,7 +446,7 @@ export default function BuildStudio() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, presentationMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDuplicate = () => {
     if (!selected) return;
