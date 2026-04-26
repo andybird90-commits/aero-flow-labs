@@ -28,9 +28,18 @@ interface BaseEntry {
 }
 const baseCache = new Map<string, BaseEntry>();
 
-/** CSG cost grows ~quadratically with body tris. Above this, trim is skipped
- *  unless we can clip down to a small region around the part. */
-const TRIM_GLOBAL_HARD_CAP = 60_000;
+// CSG cost grows with both part tris and body-region tris. Keep live trim
+// deliberately conservative so the worker never asks three-bvh-csg for a
+// multi-GB typed array; snap still works when trim is skipped.
+const TRIM_BASE_REGION_HARD_CAP = 18_000;
+const TRIM_PART_HARD_CAP = 12_000;
+const TRIM_PAIR_COST_HARD_CAP = 36_000_000;
+
+function geometryTriCount(geo: THREE.BufferGeometry): number {
+  return geo.index
+    ? geo.index.count / 3
+    : geo.attributes.position.count / 3;
+}
 
 function buildGeometry(
   positions: Float32Array,
