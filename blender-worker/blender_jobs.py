@@ -507,6 +507,7 @@ def op_bake_bodykit(inputs: dict, out_dir: Path) -> dict:
     manifest_path.write_text(json.dumps({
         "panels": manifest,
         "donor_bbox": {"min": list(donor_bbox[0]), "max": list(donor_bbox[1])},
+        "car_axes": car_axes,
         "combined_triangle_count": combined_tris,
         "ai_attempts": len(attempt_log),
         "ai_notes": ai_notes,
