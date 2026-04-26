@@ -550,6 +550,7 @@ export type Database = {
           car_template_id: string
           created_at: string
           forward_axis: string
+          glb_path: string | null
           id: string
           manifold_clean: boolean
           notes: string | null
@@ -565,6 +566,7 @@ export type Database = {
           car_template_id: string
           created_at?: string
           forward_axis?: string
+          glb_path?: string | null
           id?: string
           manifold_clean?: boolean
           notes?: string | null
@@ -580,6 +582,7 @@ export type Database = {
           car_template_id?: string
           created_at?: string
           forward_axis?: string
+          glb_path?: string | null
           id?: string
           manifold_clean?: boolean
           notes?: string | null
