@@ -93,9 +93,19 @@ export function ShowroomFloor({ reflector, accumulative }: Props) {
         </AccumulativeShadows>
       )}
 
-      {/* Fallback contact shadow when neither effect is on (Draft mode). */}
+      {/* Fallback contact shadow when neither effect is on (Draft mode, or
+          outdoor HDRIs where the reflector is disabled). Use a strong, dark
+          shadow so the car visibly grounds against bright outdoor backdrops
+          (grass, sky) — otherwise it reads as floating. */}
       {!reflector && !accumulative && (
-        <ContactShadows position={[0, 0.001, 0]} opacity={0.45} scale={14} blur={2.5} far={4} />
+        <ContactShadows
+          position={[0, 0.001, 0]}
+          opacity={0.85}
+          scale={16}
+          blur={2.2}
+          far={4}
+          color="#000000"
+        />
       )}
 
       {/* Keep a softer contact shadow alongside the reflector floor so parts
