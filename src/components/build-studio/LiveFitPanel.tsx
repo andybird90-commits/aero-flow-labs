@@ -120,10 +120,14 @@ export function LiveFitPanel({
         setBaseReady(true);
       } catch (e: any) {
         if (!cancelled) {
-          setError(String(e?.message ?? e));
+          const detail = String(e?.message ?? e);
+          console.error("[LiveFit] load failed", { baseMeshUrl, partUrl, baseKind, partKind, error: e });
+          setError(detail);
           toast({
             title: "Live Fit unavailable",
-            description: "Couldn't load the base or part mesh — falling back to the worker flow.",
+            description: detail && detail !== "[object Object]"
+              ? detail
+              : "Couldn't load the base or part mesh — falling back to the worker flow.",
             variant: "destructive",
           });
         }
