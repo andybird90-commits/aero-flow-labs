@@ -114,6 +114,7 @@ interface PanelManifestEntry {
   slot_name: string;
   confidence: number;
   triangle_count: number;
+  area_m2?: number;
   bbox: { min: number[]; max: number[] };
   centroid: number[];
   ai_label?: string | null;
