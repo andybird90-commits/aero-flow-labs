@@ -954,6 +954,7 @@ export default function BuildStudio() {
                   <BuildStudioViewport
                     template={template}
                     heroStlUrl={heroStlUrl}
+                    heroGlbUrl={heroGlbUrl ?? null}
                     bodySkinUrl={bodySkinUrl ?? null}
                     bodySkinKind={skinKind}
                     shellTransform={shellTransform}
