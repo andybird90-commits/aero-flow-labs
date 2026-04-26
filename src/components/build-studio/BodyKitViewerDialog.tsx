@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, Download, ExternalLink, Package, Sparkles, Info } from "lucide-react";
+import { Loader2, Download, ExternalLink, Package, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useBodyKitParts, type BodyKit } from "@/lib/build-studio/body-kits";
 
