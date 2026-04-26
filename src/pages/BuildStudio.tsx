@@ -60,7 +60,7 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentProject } from "@/hooks/useCurrentProject";
-import { useCarTemplates, useMyLibrary, useHeroStlForProject, useSignedCarStlUrl, useUpdateProject, type LibraryItem } from "@/lib/repo";
+import { useCarTemplates, useMyLibrary, useHeroStlForProject, useSignedCarStlUrl, useSignedCarGlbUrl, useUpdateProject, type LibraryItem } from "@/lib/repo";
 import {
   usePlacedParts,
   useAddPlacedPart,
@@ -109,6 +109,9 @@ export default function BuildStudio() {
   const { data: parts = [] } = usePlacedParts(projectId);
   const { data: heroStl } = useHeroStlForProject(projectId);
   const { data: heroStlUrl } = useSignedCarStlUrl(heroStl);
+  // Optional textured-GLB hero — when admins upload one, the viewport renders
+  // it with its authored PBR materials instead of the default paint shader.
+  const { data: heroGlbUrl } = useSignedCarGlbUrl(heroStl);
   const { tags: materialTags } = useCarMaterialMap(heroStl?.id);
 
   const addPart = useAddPlacedPart();
@@ -951,6 +954,7 @@ export default function BuildStudio() {
                   <BuildStudioViewport
                     template={template}
                     heroStlUrl={heroStlUrl}
+                    heroGlbUrl={heroGlbUrl ?? null}
                     bodySkinUrl={bodySkinUrl ?? null}
                     bodySkinKind={skinKind}
                     shellTransform={shellTransform}

@@ -22,13 +22,14 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import {
   useIsAdmin, useCarStls, useUpsertCarStl, useDeleteCarStl, useUpdateCarStlAxis,
-  useCarTemplates, useCreateCarTemplate, type CarStl, type CarTemplate,
+  useCarTemplates, useCreateCarTemplate, useUploadCarGlb, useDeleteCarGlb,
+  type CarStl, type CarTemplate,
 } from "@/lib/repo";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { decimateClientSide } from "@/lib/decimate-client";
 import {
-  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles, Palette, Scissors, ChevronDown, ChevronUp,
+  Upload, Wrench, Trash2, CheckCircle2, AlertTriangle, Loader2, FileBox, Plus, X, Sparkles, Palette, Scissors, ChevronDown, ChevronUp, Image as ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -431,9 +432,40 @@ function CarStlRow({
   const { data: panels = [] } = useCarPanels(row.id);
   const runSplit = useRunAutoSplit();
   const updateSlot = useUpdateCarPanelSlot();
+  const uploadGlb = useUploadCarGlb();
+  const deleteGlb = useDeleteCarGlb();
+  const glbInputRef = useRef<HTMLInputElement>(null);
   const [showPanels, setShowPanels] = useState(false);
   const [splitConfirmOpen, setSplitConfirmOpen] = useState(false);
   const [highlighted, setHighlighted] = useState<string | null>(null);
+  const hasGlb = !!(row as CarStl & { glb_path?: string | null }).glb_path;
+
+  const onPickGlb = async (file: File) => {
+    if (!/\.(glb|gltf)$/i.test(file.name)) {
+      toast({ title: "GLB or GLTF files only", variant: "destructive" });
+      return;
+    }
+    try {
+      await uploadGlb.mutateAsync({ row, file });
+      toast({
+        title: "Textured GLB uploaded",
+        description: "Build Studio will now show this car with its authored materials.",
+      });
+      if (glbInputRef.current) glbInputRef.current.value = "";
+    } catch (e: any) {
+      toast({ title: "GLB upload failed", description: String(e.message ?? e), variant: "destructive" });
+    }
+  };
+
+  const onRemoveGlb = async () => {
+    if (!confirm("Remove the textured GLB? Build Studio will fall back to the plain STL.")) return;
+    try {
+      await deleteGlb.mutateAsync(row);
+      toast({ title: "Textured GLB removed" });
+    } catch (e: any) {
+      toast({ title: "Remove failed", description: String(e.message ?? e), variant: "destructive" });
+    }
+  };
 
   const onAutoSplit = async () => {
     setSplitConfirmOpen(false);
@@ -504,6 +536,11 @@ function CarStlRow({
               </Badge>
             )}
             {splitBadge}
+            {hasGlb ? (
+              <Badge variant="outline" className="border-primary/40 text-primary">
+                <ImageIcon className="mr-1 h-3 w-3" /> Textured GLB
+              </Badge>
+            ) : null}
           </div>
           <div className="mt-1 text-mono text-[10px] uppercase tracking-widest text-muted-foreground truncate">
             {row.stl_path}
@@ -551,6 +588,41 @@ function CarStlRow({
               <Palette className="mr-1.5 h-3.5 w-3.5" /> Edit paint map
             </Link>
           </Button>
+          <input
+            ref={glbInputRef}
+            type="file"
+            accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onPickGlb(f);
+            }}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => glbInputRef.current?.click()}
+            disabled={uploadGlb.isPending}
+            title="Upload a fully textured GLB version of this car for premium rendering in Build Studio"
+          >
+            {uploadGlb.isPending ? (
+              <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Uploading…</>
+            ) : (
+              <><ImageIcon className="mr-1.5 h-3.5 w-3.5" /> {hasGlb ? "Replace GLB" : "Add textured GLB"}</>
+            )}
+          </Button>
+          {hasGlb && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRemoveGlb}
+              disabled={deleteGlb.isPending}
+              className="text-muted-foreground hover:text-destructive"
+              title="Remove the textured GLB and revert to the plain STL"
+            >
+              {deleteGlb.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+            </Button>
+          )}
           {panels.length > 0 && (
             <Button
               variant="ghost"
