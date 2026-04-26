@@ -76,14 +76,14 @@ export function PartLibraryRail({ items, isLoading, onAdd, onAddBlank }: Props) 
             out, or generate parts in Concept Studio.
           </div>
         ) : (
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {meshes.map((item) => (
               <button
                 key={item.id}
                 onClick={() => onAdd(item)}
-                className="group flex w-full items-center gap-2 rounded-md border border-border bg-card/40 p-2 text-left transition hover:border-primary/50 hover:bg-card"
+                className="group flex w-full items-center gap-2 rounded-md border border-border bg-card/40 p-1.5 text-left transition hover:border-primary/50 hover:bg-card"
               >
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
                   {item.thumbnail_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -92,18 +92,18 @@ export function PartLibraryRail({ items, isLoading, onAdd, onAddBlank }: Props) 
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <Box className="h-5 w-5 text-muted-foreground" />
+                    <Box className="h-4 w-4 text-muted-foreground" />
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium text-foreground">
+                  <div className="truncate text-[11px] font-medium leading-tight text-foreground">
                     {item.title}
                   </div>
-                  <div className="truncate text-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <div className="truncate text-mono text-[9px] uppercase tracking-wider text-muted-foreground/80">
                     {item.kind.replace(/_/g, " ")}
                   </div>
                 </div>
-                <Plus className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 group-hover:text-primary" />
+                <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 group-hover:text-primary" />
               </button>
             ))}
           </div>
