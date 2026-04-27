@@ -162,9 +162,9 @@ export function LiveFitPanel({
     part.scale.x, part.scale.y, part.scale.z,
   ]);
 
-  // 2) Run snap (fast) on every offset change. Debounce trim (slower).
+  // 2) Run surface snap on every offset / transform change. Live Fit must work
+  // on authored GLBs and other non-manifold bodies, so this avoids CSG here.
   const snapTimer = useRef<number | null>(null);
-  const trimTimer = useRef<number | null>(null);
   useEffect(() => {
     if (!partGeo || !baseReady) return;
     if (snapTimer.current) window.clearTimeout(snapTimer.current);
@@ -174,17 +174,6 @@ export function LiveFitPanel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offsetMm, partGeo, baseReady, partWorldMatrix]);
-
-  useEffect(() => {
-    if (!partGeo || !baseReady) return;
-    if (!trim) return; // snap covers the no-trim case
-    if (trimTimer.current) window.clearTimeout(trimTimer.current);
-    trimTimer.current = window.setTimeout(() => void runFit(), 220);
-    return () => {
-      if (trimTimer.current) window.clearTimeout(trimTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offsetMm, trim, partGeo, baseReady, partWorldMatrix]);
 
   const partAsFitGeometry = (g: THREE.BufferGeometry): FitGeometry => {
     const worked = g.clone();
@@ -240,39 +229,12 @@ export function LiveFitPanel({
         offsetM: offsetMm / 1000,
         maxDistance: computeMaxDistance(partGeo),
       });
-      // Always show the snapped surface immediately. If trim is enabled, the
-      // slower CSG pass can replace this later; if trim is skipped/fails, Live
-      // Fit still visibly works instead of leaving an empty preview.
       setPreviewGeo(resultToLocalGeometry(result));
-      if (!trim) setError(null);
+      setError(null);
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
       setBusy((b) => (b === "snap" ? null : b));
-    }
-  }
-
-  async function runFit() {
-    if (!partGeo || !baseReady || !trim) return;
-    try {
-      setBusy("trim");
-      const result = await run("snap-and-trim", baseId, partAsFitGeometry(partGeo), {
-        offsetM: offsetMm / 1000,
-        maxDistance: computeMaxDistance(partGeo),
-      });
-      setPreviewGeo(resultToLocalGeometry(result));
-      // The worker may decide to skip CSG (huge bodies / tricky geometry) and
-      // fall back to snap-only. Surface that so the user understands why the
-      // body isn't being cut, but keep the preview so Bake still works.
-      if ((result as any).trimApplied === false) {
-        setError("Body too large to trim live — snap applied. Use Print-ready for a clean cut.");
-      } else {
-        setError(null);
-      }
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
-    } finally {
-      setBusy((b) => (b === "trim" ? null : b));
     }
   }
 
