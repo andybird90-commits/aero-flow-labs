@@ -1,5 +1,5 @@
 /**
- * LiveFitPanel — in-app, real-time body conform + CSG trim.
+ * LiveFitPanel — in-app, real-time body conform for non-manifold car meshes.
  *
  * Mounted inside PropertiesPanel when:
  *   • The selected placed_part has an asset URL (library_item_id resolvable),
@@ -9,7 +9,8 @@
  *
  * Flow:
  *   1. On open: load base + part geometries (cached), upload base to worker.
- *   2. On every offset change: debounced snap+trim via worker → preview updates.
+ *   2. On every offset change: surface-snap via worker → preview updates.
+ *      The live loop makes no watertight/manifold assumptions about GLB cars.
  *   3. Bake: convert preview geometry to STL, upload, create library_item,
  *      repoint the placed_part. Done in <1s, fully local except the upload.
  *   4. Send for print-ready STL: pre-fills SendToGeometryWorker with the
@@ -19,10 +20,9 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Bounds, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import { Loader2, Magnet, Scissors, Wand2, Send, Save } from "lucide-react";
+import { Loader2, Magnet, Wand2, Send, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -73,12 +73,11 @@ export function LiveFitPanel({
   const [baseReady, setBaseReady] = useState(false);
   const [previewGeo, setPreviewGeo] = useState<THREE.BufferGeometry | null>(null);
   const [loadingAssets, setLoadingAssets] = useState(false);
-  const [busy, setBusy] = useState<"snap" | "trim" | "bake" | null>(null);
+  const [busy, setBusy] = useState<"snap" | "bake" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // UI state
   const [offsetMm, setOffsetMm] = useState(2);
-  const [trim, setTrim] = useState(true);
   const [baking, setBaking] = useState(false);
 
   const baseId = baseMeshUrl ?? "__none__";
