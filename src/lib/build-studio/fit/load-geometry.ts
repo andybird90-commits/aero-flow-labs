@@ -114,14 +114,18 @@ async function loadRaw(url: string, kind: FitMeshKind): Promise<THREE.BufferGeom
         gltf.scene.traverse((o) => {
           const m = o as THREE.Mesh;
           if (m.isMesh && m.geometry) {
-            const cloned = m.geometry.clone();
+            let cloned = m.geometry.clone();
             m.updateMatrixWorld(true);
             cloned.applyMatrix4(m.matrixWorld);
+            // GLB meshes are usually indexed. If we simply remove the index,
+            // the remaining vertex order no longer describes triangles, which
+            // makes the Live Fit preview render as long spike-like ribbons.
+            // Expand first so every consecutive 3 vertices is a real triangle.
+            if (cloned.index) cloned = cloned.toNonIndexed();
             // Strip non-position/normal attributes — CSG is picky.
             for (const k of Object.keys(cloned.attributes)) {
               if (k !== "position" && k !== "normal") cloned.deleteAttribute(k);
             }
-            if (cloned.index) cloned.index = null as any; // un-index for safety
             geos.push(cloned);
           }
         });
