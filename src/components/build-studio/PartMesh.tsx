@@ -59,6 +59,8 @@ export function PartMesh({ libraryItem, selected, locked }: Props) {
 
   const url = libraryItem?.asset_url ?? null;
   const kind = detectMeshKind(libraryItem ?? null);
+  const metadata = (libraryItem?.metadata ?? {}) as Record<string, unknown>;
+  const preservesLocalFrame = metadata.source === "live-fit";
 
   useEffect(() => {
     let cancelled = false;
@@ -74,22 +76,26 @@ export function PartMesh({ libraryItem, selected, locked }: Props) {
         return;
       }
 
-      // Fit + ground the loaded mesh into a unit-ish bounding box.
+      // Fit ordinary uploads into a unit-ish bounding box. Baked Live Fit
+      // meshes are already written in the placed part's local frame; centring
+      // them again moves the conformed arch away from the exact fitted offset.
       const wrapper = new THREE.Group();
       wrapper.add(obj);
 
-      const box = new THREE.Box3().setFromObject(wrapper);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const longest = Math.max(size.x, size.y, size.z);
-      if (isFinite(longest) && longest > 0) {
-        wrapper.scale.setScalar(TARGET_FIT / longest);
-      }
+      if (!preservesLocalFrame) {
+        const box = new THREE.Box3().setFromObject(wrapper);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const longest = Math.max(size.x, size.y, size.z);
+        if (isFinite(longest) && longest > 0) {
+          wrapper.scale.setScalar(TARGET_FIT / longest);
+        }
 
-      const fitted = new THREE.Box3().setFromObject(wrapper);
-      const center = new THREE.Vector3();
-      fitted.getCenter(center);
-      wrapper.position.sub(center);
+        const fitted = new THREE.Box3().setFromObject(wrapper);
+        const center = new THREE.Vector3();
+        fitted.getCenter(center);
+        wrapper.position.sub(center);
+      }
 
       // Apply a clean motorsport material to anything missing one.
       wrapper.traverse((c) => {
@@ -115,7 +121,7 @@ export function PartMesh({ libraryItem, selected, locked }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [url, kind]);
+  }, [url, kind, preservesLocalFrame]);
 
   // Selected outline: re-tint materials. Keep simple.
   useEffect(() => {
