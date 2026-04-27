@@ -219,17 +219,23 @@ function Stat({ label, value, accent }: { label: string; value: number; accent?:
 }
 
 function ItemCard({
-  item, onTogglePrivacy, onPublish, onDelete,
+  item, onTogglePrivacy, onPublish, onDelete, onSculpt,
 }: {
   item: LibraryItem & { marketplace_listings: MarketplaceListing[] };
   onTogglePrivacy: () => void;
   onPublish: () => void;
   onDelete: () => void;
+  onSculpt: () => void;
 }) {
   const meta = KIND_META[item.kind];
   const Icon = meta.icon;
   const listing = item.marketplace_listings?.find(l => l.status === "active");
   const isPublic = item.visibility === "public";
+  const url = (item.asset_url ?? "").toLowerCase().split("?")[0];
+  const mime = (item.asset_mime ?? "").toLowerCase();
+  const isMesh =
+    mime.includes("gltf") || mime.includes("glb") || mime.includes("stl") ||
+    url.endsWith(".glb") || url.endsWith(".gltf") || url.endsWith(".stl");
 
   const download = async () => {
     if (!item.asset_url) return;
@@ -322,6 +328,11 @@ function ItemCard({
             <Store className="mr-1 h-3.5 w-3.5" />
             {listing ? "Edit listing" : "Sell"}
           </Button>
+          {isMesh && (
+            <Button variant="glass" size="sm" onClick={onSculpt} title="Sculpt this mesh">
+              <Sparkles className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button variant="glass" size="sm" onClick={download} disabled={!item.asset_url} title="Download">
             <Download className="h-3.5 w-3.5" />
           </Button>
