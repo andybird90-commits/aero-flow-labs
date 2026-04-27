@@ -65,6 +65,7 @@ export default function LibraryPage() {
 
   const [filter, setFilter] = useState<LibraryItemKind | "all">("all");
   const [publishing, setPublishing] = useState<LibraryItem | null>(null);
+  const [sculpting, setSculpting] = useState<LibraryItem | null>(null);
 
   const filtered = useMemo(
     () => filter === "all" ? items : items.filter(i => i.kind === filter),
@@ -167,6 +168,7 @@ export default function LibraryPage() {
                 onTogglePrivacy={() => togglePrivacy(item)}
                 onPublish={() => setPublishing(item)}
                 onDelete={() => onDelete(item)}
+                onSculpt={() => setSculpting(item)}
               />
             ))}
           </div>
@@ -192,6 +194,11 @@ export default function LibraryPage() {
             toast({ title: "Could not list", description: String(e.message ?? e), variant: "destructive" });
           }
         }}
+      />
+      <SculptStudioDialog
+        item={sculpting}
+        open={!!sculpting}
+        onOpenChange={(o) => { if (!o) setSculpting(null); }}
       />
     </AppLayout>
   );
