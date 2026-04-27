@@ -3,7 +3,8 @@
  * with a configurable offset.
  *
  * Pipeline:
- *   1. Find the closest body point for each vertex.
+ *   1. Find the closest body point for each vertex (surface-only; no manifold
+ *      or watertight assumptions).
  *   2. Treat only the nearest/contact-side band as deformable.
  *   3. Move the rest of the mesh by the average contact displacement so the
  *      part keeps its thickness instead of collapsing every vertex to the car.
@@ -77,6 +78,7 @@ export function snapToSurface(
     target: THREE.Vector3;
     delta: THREE.Vector3;
   }> = [];
+  const hitDistances: number[] = [];
   let minDistance = Number.POSITIVE_INFINITY;
 
   for (let i = 0; i < positions.count; i++) {
@@ -94,10 +96,23 @@ export function snapToSurface(
     if (best) {
       getTriangleHitPointInfo(best.point, baseBVH.geometry, best.faceIndex, triInfo);
       const surfaceNormal = triInfo.face.normal as THREE.Vector3;
-      const newPos = best.point.clone().add(surfaceNormal.clone().normalize().multiplyScalar(offset));
-      const delta = newPos.clone().sub(v);
+      surfaceNormal.normalize();
+
+      // Non-manifold GLBs often contain open panels, separate trim pieces, or
+      // inconsistent winding. Orient the offset normal toward the vertex itself
+      // instead of trusting mesh winding, then move mostly along that normal.
+      // This avoids tangential "nearest point" pulls that create saw-tooth
+      // spikes on arches and split body panels.
+      const toVertex = v.clone().sub(best.point);
+      if (toVertex.lengthSq() > 1e-12 && surfaceNormal.dot(toVertex) < 0) {
+        surfaceNormal.multiplyScalar(-1);
+      }
+      const signedSeparation = toVertex.dot(surfaceNormal);
+      const delta = surfaceNormal.clone().multiplyScalar(offset - signedSeparation);
+      const newPos = v.clone().add(delta);
       const distance = typeof best.distance === "number" ? best.distance : delta.length();
       minDistance = Math.min(minDistance, distance);
+      hitDistances.push(distance);
       hits.push({ hit: true, distance, target: newPos, delta });
     } else {
       hits.push({ hit: false, distance: Number.POSITIVE_INFINITY, target: v.clone(), delta: new THREE.Vector3() });
