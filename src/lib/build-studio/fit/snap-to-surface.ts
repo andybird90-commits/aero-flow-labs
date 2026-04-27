@@ -14,7 +14,7 @@
  * Pure function — safe to call from the main thread or a web worker.
  */
 import * as THREE from "three";
-import { MeshBVH } from "three-mesh-bvh";
+import { MeshBVH, getTriangleHitPointInfo } from "three-mesh-bvh";
 
 export interface SnapOptions {
   /** Body offset in metres (positive = pushed away from body surface). */
@@ -60,8 +60,8 @@ export function snapToSurface(
 
   const v = new THREE.Vector3();
   const n = new THREE.Vector3();
-  const ray = new THREE.Ray();
-  const hit: any = {};
+  const closest: any = { point: new THREE.Vector3(), distance: 0, faceIndex: 0 };
+  const triInfo: any = { face: { normal: new THREE.Vector3() }, uv: new THREE.Vector2() };
 
   const snapped = new Float32Array(positions.array.length);
   for (let i = 0; i < positions.count; i++) {
@@ -77,26 +77,16 @@ export function snapToSurface(
       }
     }
 
-    // Try inward (towards body) first, then outward as fallback.
-    let best: { distance: number; point: THREE.Vector3; normal: THREE.Vector3 } | null = null;
-    for (const dir of [n.clone().multiplyScalar(-1), n.clone()]) {
-      ray.origin.copy(v);
-      ray.direction.copy(dir);
-      const target = baseBVH.raycastFirst(ray, THREE.DoubleSide) as any;
-      if (target && target.distance <= maxDist) {
-        if (!best || target.distance < best.distance) {
-          best = {
-            distance: target.distance,
-            point: target.point.clone(),
-            normal: (target.face?.normal ?? dir.clone().multiplyScalar(-1)).clone(),
-          };
-        }
-      }
-    }
+    const best = baseBVH.closestPointToPoint(v, closest, 0, maxDist) as any;
 
     if (best) {
-      // Push out along the surface normal by `offset`.
-      const newPos = best.point.clone().add(best.normal.clone().multiplyScalar(offset));
+      getTriangleHitPointInfo(best.point, baseBVH.geometry, best.faceIndex, triInfo);
+      const surfaceNormal = triInfo.face.normal as THREE.Vector3;
+      // Use nearest-surface projection rather than normal ray hits. Ray snaps
+      // only move a subset of vertices on curved / imported GLBs, stretching
+      // triangles into visible spikes. Nearest-point keeps neighbouring
+      // vertices coherent and leaves distant vertices unchanged.
+      const newPos = best.point.clone().add(surfaceNormal.clone().normalize().multiplyScalar(offset));
       snapped[i * 3 + 0] = newPos.x;
       snapped[i * 3 + 1] = newPos.y;
       snapped[i * 3 + 2] = newPos.z;
