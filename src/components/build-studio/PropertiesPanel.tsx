@@ -244,7 +244,18 @@ export function PropertiesPanel({
         </div>
       </div>
 
-      <div className="border-t border-border p-2">
+      <div className="space-y-1.5 border-t border-border p-2">
+        {selectedLibraryItem?.asset_url && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSculptOpen(true)}
+            className="h-7 w-full text-xs"
+            title="Push, pull and smooth this part's geometry"
+          >
+            <Sparkles className="mr-1 h-3 w-3 text-primary" /> Sculpt mesh
+          </Button>
+        )}
         <div className="grid grid-cols-3 gap-1.5">
           <Button size="sm" variant="outline" onClick={onMirror} className="h-7 text-xs">
             <FlipHorizontal className="mr-1 h-3 w-3" /> Flip
@@ -257,6 +268,14 @@ export function PropertiesPanel({
           </Button>
         </div>
       </div>
+
+      {selectedLibraryItem && (
+        <SculptStudioDialog
+          item={selectedLibraryItem}
+          open={sculptOpen}
+          onOpenChange={setSculptOpen}
+        />
+      )}
     </div>
   );
 }
