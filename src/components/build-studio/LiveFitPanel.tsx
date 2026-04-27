@@ -216,12 +216,30 @@ export function LiveFitPanel({
     return g;
   }
 
+  /**
+   * Snap rays must be long enough to actually find the body. Tiny default
+   * (0.25 m) was missing — placed parts often sit 0.4–0.8 m off the body
+   * before fitting, so we size maxDistance from the part's world bounds:
+   *   max(longest world axis, 1.0 m) × 1.2 — generous, but capped so a
+   * vertex deep inside the car never grabs the wrong far surface.
+   */
+  function computeMaxDistance(g: THREE.BufferGeometry): number {
+    const worked = g.clone();
+    worked.applyMatrix4(partWorldMatrix);
+    worked.computeBoundingBox();
+    const size = new THREE.Vector3();
+    worked.boundingBox!.getSize(size);
+    const longest = Math.max(size.x, size.y, size.z, 0.5);
+    return Math.min(Math.max(longest * 1.2, 0.6), 2.5);
+  }
+
   async function runSnap() {
     if (!partGeo || !baseReady) return;
     try {
       setBusy("snap");
       const result = await run("snap", baseId, partAsFitGeometry(partGeo), {
         offsetM: offsetMm / 1000,
+        maxDistance: computeMaxDistance(partGeo),
       });
       // Always show the snapped surface immediately. If trim is enabled, the
       // slower CSG pass can replace this later; if trim is skipped/fails, Live
@@ -241,6 +259,7 @@ export function LiveFitPanel({
       setBusy("trim");
       const result = await run("snap-and-trim", baseId, partAsFitGeometry(partGeo), {
         offsetM: offsetMm / 1000,
+        maxDistance: computeMaxDistance(partGeo),
       });
       setPreviewGeo(resultToLocalGeometry(result));
       // The worker may decide to skip CSG (huge bodies / tricky geometry) and
