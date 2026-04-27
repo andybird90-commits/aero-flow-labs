@@ -269,7 +269,8 @@ export function LiveFitPanel({
           source: "live-fit",
           source_part_id: part.id,
           offset_mm: offsetMm,
-          trimmed: trim,
+          trimmed: false,
+          fit_mode: "non_manifold_surface_snap",
         },
       };
       const { data: row, error: insErr } = await (supabase as any)
@@ -323,7 +324,6 @@ export function LiveFitPanel({
 
   const liveStatus =
     busy === "snap" ? "Conforming…"
-    : busy === "trim" ? "Trimming…"
     : loadingAssets ? "Loading meshes…"
     : "Live";
 
@@ -396,13 +396,6 @@ export function LiveFitPanel({
           onValueChange={(v) => setOffsetMm(v[0] ?? 0)}
           disabled={loadingAssets}
         />
-      </div>
-
-      <div className="flex items-center justify-between">
-        <Label className="flex items-center gap-1.5 text-[11px]">
-          <Scissors className="h-3 w-3" /> Cut where it overlaps body
-        </Label>
-        <Switch checked={trim} onCheckedChange={setTrim} disabled={loadingAssets} />
       </div>
 
       <Separator />
