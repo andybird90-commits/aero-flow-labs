@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Box, ImageIcon } from "lucide-react";
 import type { LibraryItem } from "@/lib/repo";
+import { MeshStructureChip } from "@/components/build-studio/MeshStructureChip";
 
 const MESH_KINDS = new Set([
   "aero_kit_mesh",
@@ -101,6 +102,9 @@ export function PartLibraryRail({ items, isLoading, onAdd, onAddBlank }: Props) 
                   </div>
                   <div className="truncate text-mono text-[9px] uppercase tracking-wider text-muted-foreground/80">
                     {item.kind.replace(/_/g, " ")}
+                  </div>
+                  <div className="mt-0.5 truncate">
+                    <MeshStructureChip item={item} variant="inline" />
                   </div>
                 </div>
                 <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 group-hover:text-primary" />

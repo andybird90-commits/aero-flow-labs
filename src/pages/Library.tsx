@@ -29,9 +29,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Box, Download, Trash2, Image as ImageIcon, Layers, Wrench,
-  Globe, Lock, Tag, Store, ImageOff, Beaker, Wand2,
+  Globe, Lock, Tag, Store, ImageOff, Beaker, Wand2, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MeshStructureChip } from "@/components/build-studio/MeshStructureChip";
+import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
 
 const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: string }> = {
   concept_image:       { label: "Concept image", icon: ImageIcon, tone: "text-cyan-400"    },
@@ -63,6 +65,7 @@ export default function LibraryPage() {
 
   const [filter, setFilter] = useState<LibraryItemKind | "all">("all");
   const [publishing, setPublishing] = useState<LibraryItem | null>(null);
+  const [sculpting, setSculpting] = useState<LibraryItem | null>(null);
 
   const filtered = useMemo(
     () => filter === "all" ? items : items.filter(i => i.kind === filter),
@@ -165,6 +168,7 @@ export default function LibraryPage() {
                 onTogglePrivacy={() => togglePrivacy(item)}
                 onPublish={() => setPublishing(item)}
                 onDelete={() => onDelete(item)}
+                onSculpt={() => setSculpting(item)}
               />
             ))}
           </div>
@@ -191,6 +195,11 @@ export default function LibraryPage() {
           }
         }}
       />
+      <SculptStudioDialog
+        item={sculpting}
+        open={!!sculpting}
+        onOpenChange={(o) => { if (!o) setSculpting(null); }}
+      />
     </AppLayout>
   );
 }
@@ -210,17 +219,23 @@ function Stat({ label, value, accent }: { label: string; value: number; accent?:
 }
 
 function ItemCard({
-  item, onTogglePrivacy, onPublish, onDelete,
+  item, onTogglePrivacy, onPublish, onDelete, onSculpt,
 }: {
   item: LibraryItem & { marketplace_listings: MarketplaceListing[] };
   onTogglePrivacy: () => void;
   onPublish: () => void;
   onDelete: () => void;
+  onSculpt: () => void;
 }) {
   const meta = KIND_META[item.kind];
   const Icon = meta.icon;
   const listing = item.marketplace_listings?.find(l => l.status === "active");
   const isPublic = item.visibility === "public";
+  const url = (item.asset_url ?? "").toLowerCase().split("?")[0];
+  const mime = (item.asset_mime ?? "").toLowerCase();
+  const isMesh =
+    mime.includes("gltf") || mime.includes("glb") || mime.includes("stl") ||
+    url.endsWith(".glb") || url.endsWith(".gltf") || url.endsWith(".stl");
 
   const download = async () => {
     if (!item.asset_url) return;
@@ -286,6 +301,9 @@ function ItemCard({
           <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             {new Date(item.created_at).toLocaleDateString()}
           </div>
+          <div className="mt-1.5">
+            <MeshStructureChip item={item} variant="pill" />
+          </div>
         </div>
 
         <div className="flex items-center justify-between rounded-md border border-border bg-surface-0/40 px-2.5 py-1.5">
@@ -310,6 +328,11 @@ function ItemCard({
             <Store className="mr-1 h-3.5 w-3.5" />
             {listing ? "Edit listing" : "Sell"}
           </Button>
+          {isMesh && (
+            <Button variant="glass" size="sm" onClick={onSculpt} title="Sculpt this mesh">
+              <Sparkles className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button variant="glass" size="sm" onClick={download} disabled={!item.asset_url} title="Download">
             <Download className="h-3.5 w-3.5" />
           </Button>
