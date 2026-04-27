@@ -29,10 +29,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Box, Download, Trash2, Image as ImageIcon, Layers, Wrench,
-  Globe, Lock, Tag, Store, ImageOff, Beaker, Wand2,
+  Globe, Lock, Tag, Store, ImageOff, Beaker, Wand2, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MeshStructureChip } from "@/components/build-studio/MeshStructureChip";
+import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
 
 const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: string }> = {
   concept_image:       { label: "Concept image", icon: ImageIcon, tone: "text-cyan-400"    },
