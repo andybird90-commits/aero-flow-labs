@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet } from "lucide-react";
+import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles } from "lucide-react";
+import { useState } from "react";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import {
   type SnapZone,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/build-studio/snap-zones";
 import type { LibraryItem } from "@/lib/repo";
 import { LiveFitPanel } from "@/components/build-studio/LiveFitPanel";
+import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
 
 interface Props {
   part: PlacedPart | null;
