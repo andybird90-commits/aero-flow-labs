@@ -1,5 +1,5 @@
 /**
- * LiveFitPanel — in-app, real-time body conform + CSG trim.
+ * LiveFitPanel — in-app, real-time body conform for non-manifold car meshes.
  *
  * Mounted inside PropertiesPanel when:
  *   • The selected placed_part has an asset URL (library_item_id resolvable),
@@ -9,7 +9,8 @@
  *
  * Flow:
  *   1. On open: load base + part geometries (cached), upload base to worker.
- *   2. On every offset change: debounced snap+trim via worker → preview updates.
+ *   2. On every offset change: surface-snap via worker → preview updates.
+ *      The live loop makes no watertight/manifold assumptions about GLB cars.
  *   3. Bake: convert preview geometry to STL, upload, create library_item,
  *      repoint the placed_part. Done in <1s, fully local except the upload.
  *   4. Send for print-ready STL: pre-fills SendToGeometryWorker with the
@@ -19,10 +20,9 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Bounds, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import { Loader2, Magnet, Scissors, Wand2, Send, Save } from "lucide-react";
+import { Loader2, Magnet, Wand2, Send, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -73,12 +73,11 @@ export function LiveFitPanel({
   const [baseReady, setBaseReady] = useState(false);
   const [previewGeo, setPreviewGeo] = useState<THREE.BufferGeometry | null>(null);
   const [loadingAssets, setLoadingAssets] = useState(false);
-  const [busy, setBusy] = useState<"snap" | "trim" | "bake" | null>(null);
+  const [busy, setBusy] = useState<"snap" | "bake" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // UI state
   const [offsetMm, setOffsetMm] = useState(2);
-  const [trim, setTrim] = useState(true);
   const [baking, setBaking] = useState(false);
 
   const baseId = baseMeshUrl ?? "__none__";
@@ -163,9 +162,9 @@ export function LiveFitPanel({
     part.scale.x, part.scale.y, part.scale.z,
   ]);
 
-  // 2) Run snap (fast) on every offset change. Debounce trim (slower).
+  // 2) Run surface snap on every offset / transform change. Live Fit must work
+  // on authored GLBs and other non-manifold bodies, so this avoids CSG here.
   const snapTimer = useRef<number | null>(null);
-  const trimTimer = useRef<number | null>(null);
   useEffect(() => {
     if (!partGeo || !baseReady) return;
     if (snapTimer.current) window.clearTimeout(snapTimer.current);
@@ -175,17 +174,6 @@ export function LiveFitPanel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offsetMm, partGeo, baseReady, partWorldMatrix]);
-
-  useEffect(() => {
-    if (!partGeo || !baseReady) return;
-    if (!trim) return; // snap covers the no-trim case
-    if (trimTimer.current) window.clearTimeout(trimTimer.current);
-    trimTimer.current = window.setTimeout(() => void runFit(), 220);
-    return () => {
-      if (trimTimer.current) window.clearTimeout(trimTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offsetMm, trim, partGeo, baseReady, partWorldMatrix]);
 
   const partAsFitGeometry = (g: THREE.BufferGeometry): FitGeometry => {
     const worked = g.clone();
@@ -241,39 +229,12 @@ export function LiveFitPanel({
         offsetM: offsetMm / 1000,
         maxDistance: computeMaxDistance(partGeo),
       });
-      // Always show the snapped surface immediately. If trim is enabled, the
-      // slower CSG pass can replace this later; if trim is skipped/fails, Live
-      // Fit still visibly works instead of leaving an empty preview.
       setPreviewGeo(resultToLocalGeometry(result));
-      if (!trim) setError(null);
+      setError(null);
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
       setBusy((b) => (b === "snap" ? null : b));
-    }
-  }
-
-  async function runFit() {
-    if (!partGeo || !baseReady || !trim) return;
-    try {
-      setBusy("trim");
-      const result = await run("snap-and-trim", baseId, partAsFitGeometry(partGeo), {
-        offsetM: offsetMm / 1000,
-        maxDistance: computeMaxDistance(partGeo),
-      });
-      setPreviewGeo(resultToLocalGeometry(result));
-      // The worker may decide to skip CSG (huge bodies / tricky geometry) and
-      // fall back to snap-only. Surface that so the user understands why the
-      // body isn't being cut, but keep the preview so Bake still works.
-      if ((result as any).trimApplied === false) {
-        setError("Body too large to trim live — snap applied. Use Print-ready for a clean cut.");
-      } else {
-        setError(null);
-      }
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
-    } finally {
-      setBusy((b) => (b === "trim" ? null : b));
     }
   }
 
@@ -308,7 +269,8 @@ export function LiveFitPanel({
           source: "live-fit",
           source_part_id: part.id,
           offset_mm: offsetMm,
-          trimmed: trim,
+          trimmed: false,
+          fit_mode: "non_manifold_surface_snap",
         },
       };
       const { data: row, error: insErr } = await (supabase as any)
@@ -362,7 +324,6 @@ export function LiveFitPanel({
 
   const liveStatus =
     busy === "snap" ? "Conforming…"
-    : busy === "trim" ? "Trimming…"
     : loadingAssets ? "Loading meshes…"
     : "Live";
 
@@ -435,13 +396,6 @@ export function LiveFitPanel({
           onValueChange={(v) => setOffsetMm(v[0] ?? 0)}
           disabled={loadingAssets}
         />
-      </div>
-
-      <div className="flex items-center justify-between">
-        <Label className="flex items-center gap-1.5 text-[11px]">
-          <Scissors className="h-3 w-3" /> Cut where it overlaps body
-        </Label>
-        <Switch checked={trim} onCheckedChange={setTrim} disabled={loadingAssets} />
       </div>
 
       <Separator />

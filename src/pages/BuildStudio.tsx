@@ -1089,7 +1089,7 @@ export default function BuildStudio() {
                         onSnapToZone={handleSnapToZone}
                         onMirrorToZone={handleMirrorToZone}
                         selectedLibraryItem={selectedLibraryItem}
-                        baseMeshUrl={heroStlUrl ?? null}
+                        baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
                         userId={user?.id ?? null}
                         onLiveFitBaked={handleLiveFitBaked}
                       />
@@ -1149,7 +1149,7 @@ export default function BuildStudio() {
                           onSnapToZone={handleSnapToZone}
                           onMirrorToZone={handleMirrorToZone}
                           selectedLibraryItem={selectedLibraryItem}
-                          baseMeshUrl={heroStlUrl ?? null}
+                          baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
                           userId={user?.id ?? null}
                           onLiveFitBaked={handleLiveFitBaked}
                         />
