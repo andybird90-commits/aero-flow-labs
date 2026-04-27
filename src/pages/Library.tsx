@@ -32,6 +32,7 @@ import {
   Globe, Lock, Tag, Store, ImageOff, Beaker, Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MeshStructureChip } from "@/components/build-studio/MeshStructureChip";
 
 const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: string }> = {
   concept_image:       { label: "Concept image", icon: ImageIcon, tone: "text-cyan-400"    },
@@ -285,6 +286,9 @@ function ItemCard({
           <div className="text-sm font-medium truncate" title={item.title}>{item.title}</div>
           <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             {new Date(item.created_at).toLocaleDateString()}
+          </div>
+          <div className="mt-1.5">
+            <MeshStructureChip item={item} variant="pill" />
           </div>
         </div>
 
