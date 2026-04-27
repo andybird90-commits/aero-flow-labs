@@ -100,6 +100,8 @@ export function PropertiesPanel({
   selectedLibraryItem = null, baseMeshUrl = null, userId = null,
   onLiveFitBaked, onSendForPrint,
 }: Props) {
+  const [sculptOpen, setSculptOpen] = useState(false);
+
   if (!part) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-4 text-center">
