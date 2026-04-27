@@ -2,10 +2,11 @@
  * Snap a part's vertices onto the base body surface along the inward normal,
  * with a configurable offset.
  *
- * Pipeline per vertex:
- *   1. Cast a ray from the vertex along its outward normal (both + and -).
- *   2. Take the closer hit on the base BVH.
- *   3. Move the vertex to `hit.point + hit.normal * offsetMm`.
+ * Pipeline:
+ *   1. Find the closest body point for each vertex.
+ *   2. Treat only the nearest/contact-side band as deformable.
+ *   3. Move the rest of the mesh by the average contact displacement so the
+ *      part keeps its thickness instead of collapsing every vertex to the car.
  *   4. If no hit within `maxDistance`, leave the vertex untouched.
  *
  * This is a *visual* fit, not a manifold guarantee. For a printable result the
@@ -59,20 +60,31 @@ export function snapToSurface(
   const offset = opts.offsetM;
 
   const v = new THREE.Vector3();
-  const n = new THREE.Vector3();
   const closest: any = { point: new THREE.Vector3(), distance: 0, faceIndex: 0 };
   const triInfo: any = { face: { normal: new THREE.Vector3() }, uv: new THREE.Vector2() };
 
-  const snapped = new Float32Array(positions.array.length);
+  out.computeBoundingBox();
+  const size = new THREE.Vector3();
+  out.boundingBox?.getSize(size);
+  const longest = Math.max(size.x, size.y, size.z, 0.05);
+  const contactBand = THREE.MathUtils.clamp(longest * 0.18, 0.025, 0.12);
+  const falloffBand = contactBand * 1.6;
+  const maxMove = Math.min(maxDist, Math.max(0.08, longest * 0.7));
+
+  const hits: Array<{
+    hit: boolean;
+    distance: number;
+    target: THREE.Vector3;
+    delta: THREE.Vector3;
+  }> = [];
+  let minDistance = Number.POSITIVE_INFINITY;
+
   for (let i = 0; i < positions.count; i++) {
     v.fromBufferAttribute(positions, i);
-    n.fromBufferAttribute(norm, i).normalize();
 
     if (opts.maskAxis && typeof opts.maskMin === "number") {
       if (v.dot(opts.maskAxis) < opts.maskMin) {
-        snapped[i * 3 + 0] = v.x;
-        snapped[i * 3 + 1] = v.y;
-        snapped[i * 3 + 2] = v.z;
+        hits.push({ hit: false, distance: Number.POSITIVE_INFINITY, target: v.clone(), delta: new THREE.Vector3() });
         continue;
       }
     }
@@ -82,19 +94,50 @@ export function snapToSurface(
     if (best) {
       getTriangleHitPointInfo(best.point, baseBVH.geometry, best.faceIndex, triInfo);
       const surfaceNormal = triInfo.face.normal as THREE.Vector3;
-      // Use nearest-surface projection rather than normal ray hits. Ray snaps
-      // only move a subset of vertices on curved / imported GLBs, stretching
-      // triangles into visible spikes. Nearest-point keeps neighbouring
-      // vertices coherent and leaves distant vertices unchanged.
       const newPos = best.point.clone().add(surfaceNormal.clone().normalize().multiplyScalar(offset));
-      snapped[i * 3 + 0] = newPos.x;
-      snapped[i * 3 + 1] = newPos.y;
-      snapped[i * 3 + 2] = newPos.z;
+      const delta = newPos.clone().sub(v);
+      const distance = typeof best.distance === "number" ? best.distance : delta.length();
+      minDistance = Math.min(minDistance, distance);
+      hits.push({ hit: true, distance, target: newPos, delta });
     } else {
-      snapped[i * 3 + 0] = v.x;
-      snapped[i * 3 + 1] = v.y;
-      snapped[i * 3 + 2] = v.z;
+      hits.push({ hit: false, distance: Number.POSITIVE_INFINITY, target: v.clone(), delta: new THREE.Vector3() });
     }
+  }
+
+  if (!Number.isFinite(minDistance)) {
+    return out;
+  }
+
+  const contactLimit = minDistance + contactBand;
+  const averageDelta = new THREE.Vector3();
+  let contactCount = 0;
+  for (const h of hits) {
+    if (h.hit && h.distance <= contactLimit) {
+      averageDelta.add(h.delta);
+      contactCount++;
+    }
+  }
+  if (contactCount > 0) averageDelta.multiplyScalar(1 / contactCount);
+  if (averageDelta.length() > maxMove) averageDelta.setLength(maxMove);
+
+  const snapped = new Float32Array(positions.array.length);
+  const blendedDelta = new THREE.Vector3();
+  for (let i = 0; i < positions.count; i++) {
+    v.fromBufferAttribute(positions, i);
+    const h = hits[i];
+
+    if (h.hit) {
+      const conformWeight = 1 - smoothstep(contactLimit, contactLimit + falloffBand, h.distance);
+      blendedDelta.copy(averageDelta).lerp(h.delta, conformWeight);
+      if (blendedDelta.length() > maxMove) blendedDelta.setLength(maxMove);
+      v.add(blendedDelta);
+    } else if (contactCount > 0 && (!opts.maskAxis || typeof opts.maskMin !== "number" || v.dot(opts.maskAxis) >= opts.maskMin)) {
+      v.add(averageDelta);
+    }
+
+    snapped[i * 3 + 0] = v.x;
+    snapped[i * 3 + 1] = v.y;
+    snapped[i * 3 + 2] = v.z;
   }
 
   out.setAttribute("position", new THREE.BufferAttribute(snapped, 3));
@@ -102,4 +145,10 @@ export function snapToSurface(
   out.computeBoundingBox();
   out.computeBoundingSphere();
   return out;
+}
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  if (edge0 === edge1) return x < edge0 ? 0 : 1;
+  const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
 }
