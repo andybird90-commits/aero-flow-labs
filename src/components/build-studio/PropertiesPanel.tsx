@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet } from "lucide-react";
+import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles } from "lucide-react";
+import { useState } from "react";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import {
   type SnapZone,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/build-studio/snap-zones";
 import type { LibraryItem } from "@/lib/repo";
 import { LiveFitPanel } from "@/components/build-studio/LiveFitPanel";
+import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
 
 interface Props {
   part: PlacedPart | null;
@@ -98,6 +100,8 @@ export function PropertiesPanel({
   selectedLibraryItem = null, baseMeshUrl = null, userId = null,
   onLiveFitBaked, onSendForPrint,
 }: Props) {
+  const [sculptOpen, setSculptOpen] = useState(false);
+
   if (!part) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-4 text-center">
@@ -240,7 +244,18 @@ export function PropertiesPanel({
         </div>
       </div>
 
-      <div className="border-t border-border p-2">
+      <div className="space-y-1.5 border-t border-border p-2">
+        {selectedLibraryItem?.asset_url && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSculptOpen(true)}
+            className="h-7 w-full text-xs"
+            title="Push, pull and smooth this part's geometry"
+          >
+            <Sparkles className="mr-1 h-3 w-3 text-primary" /> Sculpt mesh
+          </Button>
+        )}
         <div className="grid grid-cols-3 gap-1.5">
           <Button size="sm" variant="outline" onClick={onMirror} className="h-7 text-xs">
             <FlipHorizontal className="mr-1 h-3 w-3" /> Flip
@@ -253,6 +268,14 @@ export function PropertiesPanel({
           </Button>
         </div>
       </div>
+
+      {selectedLibraryItem && (
+        <SculptStudioDialog
+          item={selectedLibraryItem}
+          open={sculptOpen}
+          onOpenChange={setSculptOpen}
+        />
+      )}
     </div>
   );
 }
