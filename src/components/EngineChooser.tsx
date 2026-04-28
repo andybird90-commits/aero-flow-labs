@@ -16,6 +16,22 @@ import { Button } from "@/components/ui/button";
 import { Wrench, Wand2, Send } from "lucide-react";
 import { isBodyConforming } from "@/lib/part-classification";
 
+/**
+ * Part kinds the `generate-cad-recipe` edge function has a trusted CadQuery
+ * builder for. Keep this in sync with the BUILDERS list in
+ * `supabase/functions/generate-cad-recipe/index.ts` — anything not listed
+ * here will hit a 400 from the function ("No trusted CAD builder yet…").
+ */
+const CAD_SUPPORTED_PART_KINDS = [
+  "front_arch", "front_fender_flare", "wide_arch",
+  "arch_left", "arch_right", "fender_flare", "arch",
+];
+
+function isCadSupported(partKind: string): boolean {
+  const k = (partKind ?? "").toLowerCase();
+  return CAD_SUPPORTED_PART_KINDS.some((p) => k.includes(p) || p.includes(k));
+}
+
 export type BuildEngine = "cad" | "mesh" | "blender";
 
 interface Props {
@@ -27,7 +43,8 @@ interface Props {
 
 export function EngineChooser({ partKind, hasBaseMesh, onPick, disabled }: Props) {
   const bodyConforming = isBodyConforming(partKind);
-  const recommended: BuildEngine = bodyConforming ? "blender" : "cad";
+  const cadSupported = isCadSupported(partKind);
+  const recommended: BuildEngine = bodyConforming ? "blender" : (cadSupported ? "cad" : "mesh");
 
   const engines: Array<{
     id: BuildEngine;
@@ -45,6 +62,7 @@ export function EngineChooser({ partKind, hasBaseMesh, onPick, disabled }: Props
       blurb: "Parametric CadQuery build. Clean B-rep, sharp edges, real STEP.",
       eta: "~3 min",
       formats: "STEP · STL · GLB",
+      disabledReason: cadSupported ? undefined : `No CAD builder yet for "${partKind}". Use Mesh AI or Blender.`,
     },
     {
       id: "mesh",
