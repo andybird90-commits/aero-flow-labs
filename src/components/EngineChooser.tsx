@@ -43,7 +43,8 @@ interface Props {
 
 export function EngineChooser({ partKind, hasBaseMesh, onPick, disabled }: Props) {
   const bodyConforming = isBodyConforming(partKind);
-  const recommended: BuildEngine = bodyConforming ? "blender" : "cad";
+  const cadSupported = isCadSupported(partKind);
+  const recommended: BuildEngine = bodyConforming ? "blender" : (cadSupported ? "cad" : "mesh");
 
   const engines: Array<{
     id: BuildEngine;
@@ -61,6 +62,7 @@ export function EngineChooser({ partKind, hasBaseMesh, onPick, disabled }: Props
       blurb: "Parametric CadQuery build. Clean B-rep, sharp edges, real STEP.",
       eta: "~3 min",
       formats: "STEP · STL · GLB",
+      disabledReason: cadSupported ? undefined : `No CAD builder yet for "${partKind}". Use Mesh AI or Blender.`,
     },
     {
       id: "mesh",
