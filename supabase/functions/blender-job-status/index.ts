@@ -153,6 +153,32 @@ Deno.serve(async (req) => {
           completed_at: new Date().toISOString(),
         })
         .eq("id", job_id);
+
+      // For generate_part jobs, materialise a row in generated_parts so the
+      // admin curation UI and Build Studio library can pick it up.
+      if (job.operation_type === "generate_part") {
+        const metrics = (w?.metrics ?? {}) as Record<string, unknown>;
+        const params = (job.parameters ?? {}) as Record<string, unknown>;
+        const glbUrl = rehosted["generated_part_glb"] ?? null;
+        const thumbUrl = rehosted["generated_part_thumb_png"] ?? preview ?? null;
+        if (glbUrl) {
+          const { error: gpErr } = await admin.from("generated_parts").insert({
+            part_kind: String(params.part_kind ?? metrics.part_kind ?? "unknown"),
+            style_tag: (params.style_tag as string | undefined) ?? null,
+            prompt: String(params.style_prompt ?? metrics.style_prompt ?? ""),
+            glb_url: glbUrl,
+            thumbnail_url: thumbUrl,
+            bbox_mm: (metrics.bbox_mm as object) ?? {},
+            tri_count: Number(metrics.tri_count ?? 0),
+            blender_job_id: job_id,
+            status: "pending_review",
+            notes: typeof metrics.reason === "string" ? metrics.reason.slice(0, 500) : null,
+            created_by: userId,
+          });
+          if (gpErr) console.error("generated_parts insert failed:", gpErr.message);
+        }
+      }
+
       return json({ status: "complete", outputs: rehosted });
     }
 

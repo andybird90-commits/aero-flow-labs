@@ -146,7 +146,10 @@ def _run_job(task_id: str, job_type: str, inputs: dict[str, Any]) -> None:
                      error=f"Failed to upload {key} to Lovable Cloud (see worker log).")
                 return
 
-        _set(task_id, status="succeeded", progress=1.0, outputs=outputs)
+        # Forward Blender-side metrics (e.g. tri_count, bbox, verdict for generate_part)
+        # so the edge function can populate generated_parts without re-parsing files.
+        metrics = result.get("metrics") or {}
+        _set(task_id, status="succeeded", progress=1.0, outputs=outputs, metrics=metrics)
         print(f"[{task_id}] succeeded with outputs: {list(outputs)}")
 
     except subprocess.TimeoutExpired:
@@ -187,7 +190,7 @@ async def create_job(request: Request, authorization: str | None = Header(defaul
     inputs = body.get("inputs") or {}
     if job_type not in {
         "prepare_base_mesh", "fit_part_to_zone", "mirror_part", "export_stl",
-        "bake_bodykit", "repair_donor_stl",
+        "bake_bodykit", "repair_donor_stl", "generate_part",
     }:
         raise HTTPException(400, f"Unknown job_type: {job_type}")
 
@@ -215,6 +218,7 @@ def get_job(task_id: str, authorization: str | None = Header(default=None)):
         "status": job["status"],
         "progress": job["progress"],
         "outputs": job["outputs"],
+        "metrics": job.get("metrics"),
         "error": job["error"],
     })
 
