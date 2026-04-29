@@ -218,6 +218,7 @@ def get_job(task_id: str, authorization: str | None = Header(default=None)):
         "status": job["status"],
         "progress": job["progress"],
         "outputs": job["outputs"],
+        "metrics": job.get("metrics"),
         "error": job["error"],
     })
 
