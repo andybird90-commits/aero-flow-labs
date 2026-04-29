@@ -53,6 +53,7 @@ def main() -> None:
     handlers = {
         "bake_bodykit": op_bake_bodykit,
         "repair_donor_stl": op_repair_donor_stl,
+        "generate_part": op_generate_part,
     }
     if job_type not in handlers:
         raise SystemExit(f"job_type {job_type!r} not implemented in blender_jobs.py")
@@ -643,6 +644,69 @@ def op_bake_bodykit(inputs: dict, out_dir: Path) -> dict:
     outputs["panel_manifest_json"] = "panel_manifest.json"
 
     return {"outputs": outputs}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# generate_part — Claude-as-actor procedural part generation
+# ────────────────────────────────────────────────────────────────────────────
+
+def op_generate_part(inputs: dict, out_dir: Path) -> dict:
+    """Drive the AI actor loop to procedurally model an aero part.
+
+    Inputs:
+      params: {
+        part_kind: str                  e.g. "ducktail", "front_arch", "side_skirt"
+        style_prompt: str               free-text style hint
+        envelope_mm: [w, l, h]          max bbox the part must fit inside
+        symmetry: "none" | "x"          if "x", actor models RHS only then mirrors
+        seed: int (optional)            for future determinism (currently unused)
+      }
+    Outputs (relative paths in out_dir):
+      generated_part.glb, generated_part_thumb.png
+      result.json metrics: tri_count, bbox_mm, steps, verdict
+    """
+    try:
+        import ai_actor  # type: ignore
+    except Exception as e:
+        return {"outputs": {}, "error": f"ai_actor unavailable: {e}"}
+
+    params = inputs.get("params") or inputs
+    part_kind = str(params.get("part_kind", "")).strip()
+    if not part_kind:
+        return {"outputs": {}, "error": "part_kind is required"}
+    style_prompt = str(params.get("style_prompt", ""))
+    envelope = params.get("envelope_mm") or [800, 800, 400]
+    if len(envelope) != 3:
+        envelope = [800, 800, 400]
+    symmetry = str(params.get("symmetry", "x")).lower()
+
+    res = ai_actor.run_actor(
+        part_kind=part_kind,
+        style_prompt=style_prompt,
+        envelope_mm=[float(envelope[0]), float(envelope[1]), float(envelope[2])],
+        symmetry=symmetry,
+        out_dir=out_dir,
+    )
+
+    outputs: dict = {}
+    if res.get("ok") and res.get("glb_path"):
+        outputs["generated_part_glb"] = Path(res["glb_path"]).name
+    if res.get("thumb_path"):
+        outputs["generated_part_thumb_png"] = Path(res["thumb_path"]).name
+
+    return {
+        "outputs": outputs,
+        "metrics": {
+            "tri_count": res.get("tri_count", 0),
+            "bbox_mm": res.get("bbox_mm", {}),
+            "steps": res.get("steps", 0),
+            "verdict": res.get("verdict", {}),
+            "reason": res.get("reason", ""),
+            "part_kind": part_kind,
+            "style_prompt": style_prompt,
+        },
+        "error": None if res.get("ok") else res.get("reason", "actor failed"),
+    }
 
 
 if __name__ == "__main__":
