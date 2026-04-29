@@ -1281,6 +1281,57 @@ export type Database = {
         }
         Relationships: []
       }
+      generated_parts: {
+        Row: {
+          bbox_mm: Json
+          blender_job_id: string | null
+          created_at: string
+          created_by: string | null
+          glb_url: string | null
+          id: string
+          notes: string | null
+          part_kind: string
+          prompt: string
+          status: Database["public"]["Enums"]["generated_part_status"]
+          style_tag: string | null
+          thumbnail_url: string | null
+          tri_count: number
+          updated_at: string
+        }
+        Insert: {
+          bbox_mm?: Json
+          blender_job_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          glb_url?: string | null
+          id?: string
+          notes?: string | null
+          part_kind: string
+          prompt?: string
+          status?: Database["public"]["Enums"]["generated_part_status"]
+          style_tag?: string | null
+          thumbnail_url?: string | null
+          tri_count?: number
+          updated_at?: string
+        }
+        Update: {
+          bbox_mm?: Json
+          blender_job_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          glb_url?: string | null
+          id?: string
+          notes?: string | null
+          part_kind?: string
+          prompt?: string
+          status?: Database["public"]["Enums"]["generated_part_status"]
+          style_tag?: string | null
+          thumbnail_url?: string | null
+          tri_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       geometries: {
         Row: {
           created_at: string
@@ -2221,6 +2272,12 @@ export type Database = {
         | "single_part_obj"
         | "project_pack"
       export_status: "generating" | "ready" | "expired" | "failed"
+      generated_part_status:
+        | "pending_review"
+        | "approved"
+        | "rejected"
+        | "retry"
+        | "failed"
       job_state:
         | "queued"
         | "preprocessing"
@@ -2236,6 +2293,7 @@ export type Database = {
         | "prototype_part_mesh"
         | "geometry_part_mesh"
         | "cad_part_mesh"
+        | "generated_part_mesh"
       library_visibility: "private" | "public"
       marketplace_listing_status: "draft" | "active" | "paused"
       meshy_generation_status: "queued" | "running" | "complete" | "failed"
@@ -2452,6 +2510,13 @@ export const Constants = {
         "project_pack",
       ],
       export_status: ["generating", "ready", "expired", "failed"],
+      generated_part_status: [
+        "pending_review",
+        "approved",
+        "rejected",
+        "retry",
+        "failed",
+      ],
       job_state: [
         "queued",
         "preprocessing",
@@ -2468,6 +2533,7 @@ export const Constants = {
         "prototype_part_mesh",
         "geometry_part_mesh",
         "cad_part_mesh",
+        "generated_part_mesh",
       ],
       library_visibility: ["private", "public"],
       marketplace_listing_status: ["draft", "active", "paused"],
