@@ -38,6 +38,8 @@ const ALLOWED_OPS = new Set([
   "add_mounting_tabs", "mirror_part", "split_for_print_bed", "repair_watertight",
   "decimate_mesh", "cut_wheel_arches", "cut_window_openings", "panelise_body_skin",
   "export_stl", "export_glb_preview",
+  // Phase: AI-actor procedural part generation
+  "generate_part",
 ]);
 
 Deno.serve(async (req) => {
