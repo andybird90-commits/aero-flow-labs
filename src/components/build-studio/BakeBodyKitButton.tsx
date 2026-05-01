@@ -12,6 +12,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Package, Loader2, CheckCircle2, AlertCircle, Trash2, Sparkles, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -23,6 +28,7 @@ import {
   isBodyKitInFlight,
   type BodyKit,
   type BodyKitStatus,
+  type AutofitPartKind,
 } from "@/lib/build-studio/body-kits";
 import type { ShellTransform } from "@/components/build-studio/BuildStudioViewport";
 import { BodyKitViewerDialog } from "@/components/build-studio/BodyKitViewerDialog";
@@ -43,6 +49,15 @@ interface Props {
   disabled?: boolean;
 }
 
+const PART_KIND_OPTIONS: Array<{ value: AutofitPartKind; label: string; w: number; h: number; d: number }> = [
+  { value: "wing",     label: "Wing",     w: 1500, h: 200, d: 400 },
+  { value: "spoiler",  label: "Spoiler",  w: 1400, h: 120, d: 250 },
+  { value: "bumper",   label: "Bumper",   w: 1700, h: 350, d: 500 },
+  { value: "lip",      label: "Lip",      w: 1600, h: 80,  d: 200 },
+  { value: "skirt",    label: "Skirt",    w: 1800, h: 100, d: 180 },
+  { value: "diffuser", label: "Diffuser", w: 1500, h: 150, d: 400 },
+];
+
 export function BakeBodyKitButton({
   projectId,
   userId,
@@ -55,11 +70,25 @@ export function BakeBodyKitButton({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [viewKit, setViewKit] = useState<BodyKit | null>(null);
+  const [partKind, setPartKind] = useState<AutofitPartKind>("wing");
+  const [widthMm, setWidthMm] = useState<number>(1500);
+  const [heightMm, setHeightMm] = useState<number>(200);
+  const [depthMm, setDepthMm] = useState<number>(400);
   const { data: kits = [], isLoading } = useBodyKits(projectId);
   const bake = useBakeBodyKit();
   const del = useDeleteBodyKit();
 
   const canBake = !!projectId && !!userId && !!bodySkinId && !!shellTransform;
+
+  const handlePartKindChange = (value: AutofitPartKind) => {
+    setPartKind(value);
+    const preset = PART_KIND_OPTIONS.find((p) => p.value === value);
+    if (preset) {
+      setWidthMm(preset.w);
+      setHeightMm(preset.h);
+      setDepthMm(preset.d);
+    }
+  };
 
   const handleBake = async () => {
     if (!canBake) {
@@ -79,10 +108,14 @@ export function BakeBodyKitButton({
           scale: shellTransform!.scale,
           scale_to_wheelbase: stretchEnabled,
         },
+        part_kind: partKind,
+        width_mm: widthMm,
+        height_mm: heightMm,
+        depth_mm: depthMm,
       });
-      toast.success("Bodykit queued — worker will pick it up shortly.");
+      toast.success(`${partKind} fitted ✓`);
     } catch (e) {
-      toast.error(`Bake failed: ${(e as Error).message}`);
+      toast.error(`Autofit failed: ${(e as Error).message}`);
     }
   };
 
@@ -119,12 +152,52 @@ export function BakeBodyKitButton({
       <PopoverContent align="end" className="w-[360px] p-3">
         <div className="mb-2 flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-semibold">Bodykit bake</h3>
+          <h3 className="text-sm font-semibold">Autofit part</h3>
         </div>
         <p className="mb-3 text-[11px] leading-snug text-muted-foreground">
-          Freeze the aligned shell into individual panels (splitter, skirts,
-          wing…) ready to attach as snap parts or list on the marketplace.
+          Pick a part kind and dimensions, then hit Autofit. The mesh server
+          fits a {partKind} to the donor car body and returns a GLB.
         </p>
+
+        <div className="mb-3 space-y-2">
+          <div>
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Part kind
+            </Label>
+            <Select value={partKind} onValueChange={(v) => handlePartKindChange(v as AutofitPartKind)}>
+              <SelectTrigger className="mt-1 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PART_KIND_OPTIONS.map((p) => (
+                  <SelectItem key={p.value} value={p.value} className="text-xs">
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">W (mm)</Label>
+              <Input type="number" min={1} max={5000} value={widthMm}
+                onChange={(e) => setWidthMm(Number(e.target.value))}
+                className="mt-1 h-8 text-xs" />
+            </div>
+            <div>
+              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">H (mm)</Label>
+              <Input type="number" min={1} max={5000} value={heightMm}
+                onChange={(e) => setHeightMm(Number(e.target.value))}
+                className="mt-1 h-8 text-xs" />
+            </div>
+            <div>
+              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">D (mm)</Label>
+              <Input type="number" min={1} max={5000} value={depthMm}
+                onChange={(e) => setDepthMm(Number(e.target.value))}
+                className="mt-1 h-8 text-xs" />
+            </div>
+          </div>
+        </div>
 
         <Button
           onClick={handleBake}
@@ -137,7 +210,7 @@ export function BakeBodyKitButton({
           ) : (
             <Package className="mr-2 h-3.5 w-3.5" />
           )}
-          Bake bodykit from current shell
+          {bake.isPending ? "Fitting…" : `Autofit ${partKind}`}
         </Button>
         {!canBake && (
           <p className="mt-1.5 text-[10px] text-muted-foreground">
