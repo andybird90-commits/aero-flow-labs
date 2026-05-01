@@ -14,6 +14,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Wand2, RefreshCw, ArrowRight, Wrench, AlertCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { GeneratePartDialog } from "@/components/GeneratePartDialog";
+import { useIsAdmin } from "@/lib/repo";
 
 const PART_KINDS = [
   { kind: "splitter",    label: "Front splitter",   defaults: { depth: 80, fence_height: 30, fence_inset: 60 } },
@@ -47,6 +49,8 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
   const upsert = useUpsertFittedPart();
   const [measuring, setMeasuring] = useState(false);
   const [reasoning, setReasoning] = useState<Record<string, string>>({});
+  const [genOpen, setGenOpen] = useState(false);
+  const { data: isAdmin } = useIsAdmin(user?.id);
 
   const partByKind = (k: string) => parts.find((p) => p.kind === k);
 
@@ -205,12 +209,24 @@ function PartsInner({ projectId, project }: { projectId: string; project: any })
           </div>
         </div>
 
+        {isAdmin && (
+          <Button variant="glass" size="lg" className="w-full" onClick={() => setGenOpen(true)}>
+            <Sparkles className="mr-2 h-4 w-4" /> Generate part with AI
+          </Button>
+        )}
+
         <Button variant="glass" size="lg" className="w-full" asChild disabled={parts.filter((p) => p.enabled).length === 0}>
           <Link to={`/refine?project=${projectId}`}>
             Refine parts <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
         </Button>
       </div>
+
+      <GeneratePartDialog
+        open={genOpen}
+        onOpenChange={setGenOpen}
+        projectId={projectId}
+      />
     </div>
   );
 }
