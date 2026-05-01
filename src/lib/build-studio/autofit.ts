@@ -85,30 +85,76 @@ function exportGlb(root: THREE.Object3D): Promise<Blob> {
  * group is positioned/rotated/scaled to match the viewport, so the resulting
  * GLB is in the same world frame as the car GLB.
  */
+/**
+ * Bake a transform into mesh geometry vertices.
+ *
+ * Walks the loaded scene, clones each mesh + its geometry, applies the
+ * computed world matrix to the cloned geometry, then resets the clone's
+ * local TRS to identity. The returned root contains meshes whose vertices
+ * are already in world space — GLTFExporter will write those exact
+ * coordinates regardless of any parent transform.
+ */
+function bakeWorldTransformIntoGeometry(
+  source: THREE.Object3D,
+  worldMatrix: THREE.Matrix4,
+): THREE.Object3D {
+  const root = new THREE.Group();
+
+  // Make sure children's matrixWorld is current relative to `source`.
+  source.updateMatrixWorld(true);
+
+  source.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!(mesh as any).isMesh || !mesh.geometry) return;
+
+    const cloned = mesh.clone();
+    cloned.geometry = mesh.geometry.clone();
+
+    // Combined matrix = outer placed transform * mesh's own world matrix
+    // inside the loaded scene (handles nested mesh hierarchies in the GLB).
+    const combined = new THREE.Matrix4()
+      .multiplyMatrices(worldMatrix, mesh.matrixWorld);
+    cloned.geometry.applyMatrix4(combined);
+
+    cloned.position.set(0, 0, 0);
+    cloned.rotation.set(0, 0, 0);
+    cloned.scale.set(1, 1, 1);
+    cloned.updateMatrix();
+    cloned.updateMatrixWorld(true);
+
+    root.add(cloned);
+  });
+
+  return root;
+}
+
 async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promise<Blob> {
   const partRoot = await loadGlb(partUrl);
-  const wrapper = new THREE.Group();
-  wrapper.add(partRoot);
-  wrapper.position.set(part.position.x, part.position.y, part.position.z);
-  wrapper.rotation.set(part.rotation.x, part.rotation.y, part.rotation.z);
-  wrapper.scale.set(
-    part.scale.x,
-    part.scale.y,
-    // Mirror flag flips Z — matches viewport convention.
-    part.mirrored ? -part.scale.z : part.scale.z,
-  );
-  wrapper.updateMatrixWorld(true);
 
-  // Diagnostic: log the world-space bbox of the part as it will be exported.
-  // If position/rotation/scale are baked correctly, min/max should reflect
-  // the part sitting where the user placed it (NOT centred at origin).
-  const bbox = new THREE.Box3().setFromObject(wrapper);
+  // Build the placed-part world matrix from its TRS (mirrored = flip Z).
+  const placedMatrix = new THREE.Matrix4().compose(
+    new THREE.Vector3(part.position.x, part.position.y, part.position.z),
+    new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(part.rotation.x, part.rotation.y, part.rotation.z),
+    ),
+    new THREE.Vector3(
+      part.scale.x,
+      part.scale.y,
+      part.mirrored ? -part.scale.z : part.scale.z,
+    ),
+  );
+
+  const baked = bakeWorldTransformIntoGeometry(partRoot, placedMatrix);
+
+  // Diagnostic: bbox of the baked root. Vertices are now in world space, so
+  // bounds should match where the part visually sits in the viewport.
+  const bbox = new THREE.Box3().setFromObject(baked);
   const size = new THREE.Vector3();
   const center = new THREE.Vector3();
   bbox.getSize(size);
   bbox.getCenter(center);
   // eslint-disable-next-line no-console
-  console.log("[autofit] exporting part GLB — world bbox", {
+  console.log("[autofit] exporting part GLB — baked world bbox", {
     placed_part_id: part.id,
     transform: {
       position: part.position,
@@ -124,14 +170,29 @@ async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promi
     },
   });
 
-  return exportGlb(wrapper);
+  return exportGlb(baked);
 }
 
 async function buildCarBlob(carUrl: string): Promise<Blob> {
-  // Car GLB is already in world frame — re-export as-is so the worker gets
-  // the exact same bytes the viewport is rendering.
   const carRoot = await loadGlb(carUrl);
-  return exportGlb(carRoot);
+  // Car GLB is already authored in world frame, but bake identity anyway so
+  // any nested transforms inside the GLB are flattened into the vertices —
+  // this guarantees the worker sees identical coordinates to the viewport.
+  const baked = bakeWorldTransformIntoGeometry(carRoot, new THREE.Matrix4());
+
+  const bbox = new THREE.Box3().setFromObject(baked);
+  const size = new THREE.Vector3();
+  bbox.getSize(size);
+  // eslint-disable-next-line no-console
+  console.log("[autofit] exporting car GLB — baked world bbox", {
+    bbox: {
+      min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
+      max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
+      size: { x: size.x, y: size.y, z: size.z },
+    },
+  });
+
+  return exportGlb(baked);
 }
 
 export function useAutofitPlacedPart() {
