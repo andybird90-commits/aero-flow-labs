@@ -12,6 +12,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Package, Loader2, CheckCircle2, AlertCircle, Trash2, Sparkles, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -23,6 +28,7 @@ import {
   isBodyKitInFlight,
   type BodyKit,
   type BodyKitStatus,
+  type AutofitPartKind,
 } from "@/lib/build-studio/body-kits";
 import type { ShellTransform } from "@/components/build-studio/BuildStudioViewport";
 import { BodyKitViewerDialog } from "@/components/build-studio/BodyKitViewerDialog";
@@ -43,6 +49,15 @@ interface Props {
   disabled?: boolean;
 }
 
+const PART_KIND_OPTIONS: Array<{ value: AutofitPartKind; label: string; w: number; h: number; d: number }> = [
+  { value: "wing",     label: "Wing",     w: 1500, h: 200, d: 400 },
+  { value: "spoiler",  label: "Spoiler",  w: 1400, h: 120, d: 250 },
+  { value: "bumper",   label: "Bumper",   w: 1700, h: 350, d: 500 },
+  { value: "lip",      label: "Lip",      w: 1600, h: 80,  d: 200 },
+  { value: "skirt",    label: "Skirt",    w: 1800, h: 100, d: 180 },
+  { value: "diffuser", label: "Diffuser", w: 1500, h: 150, d: 400 },
+];
+
 export function BakeBodyKitButton({
   projectId,
   userId,
@@ -55,11 +70,25 @@ export function BakeBodyKitButton({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [viewKit, setViewKit] = useState<BodyKit | null>(null);
+  const [partKind, setPartKind] = useState<AutofitPartKind>("wing");
+  const [widthMm, setWidthMm] = useState<number>(1500);
+  const [heightMm, setHeightMm] = useState<number>(200);
+  const [depthMm, setDepthMm] = useState<number>(400);
   const { data: kits = [], isLoading } = useBodyKits(projectId);
   const bake = useBakeBodyKit();
   const del = useDeleteBodyKit();
 
   const canBake = !!projectId && !!userId && !!bodySkinId && !!shellTransform;
+
+  const handlePartKindChange = (value: AutofitPartKind) => {
+    setPartKind(value);
+    const preset = PART_KIND_OPTIONS.find((p) => p.value === value);
+    if (preset) {
+      setWidthMm(preset.w);
+      setHeightMm(preset.h);
+      setDepthMm(preset.d);
+    }
+  };
 
   const handleBake = async () => {
     if (!canBake) {
@@ -79,10 +108,14 @@ export function BakeBodyKitButton({
           scale: shellTransform!.scale,
           scale_to_wheelbase: stretchEnabled,
         },
+        part_kind: partKind,
+        width_mm: widthMm,
+        height_mm: heightMm,
+        depth_mm: depthMm,
       });
-      toast.success("Bodykit queued — worker will pick it up shortly.");
+      toast.success(`${partKind} fitted ✓`);
     } catch (e) {
-      toast.error(`Bake failed: ${(e as Error).message}`);
+      toast.error(`Autofit failed: ${(e as Error).message}`);
     }
   };
 
