@@ -59,14 +59,21 @@ function loadObject(
   });
 }
 
-export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Props) {
+function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
   const [failed, setFailed] = useState(false);
 
   // Autofit override wins over the library asset, so a re-baked part can swap
   // in without touching the shared library_items row.
   const autofitUrl = (placedMetadata?.autofit_glb_url as string | undefined) ?? null;
-  const url = autofitUrl ?? libraryItem?.asset_url ?? null;
+  const baseUrl = autofitUrl ?? libraryItem?.asset_url ?? null;
+  // Cache-bust autofit results so Three.js / browser GLTF cache doesn't
+  // hand back the previous fitted GLB when the URL string is reused.
+  const url = baseUrl
+    ? (autofitUrl ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}t=${encodeURIComponent(
+        (placedMetadata?.autofit_at as string | undefined) ?? Date.now().toString(),
+      )}` : baseUrl)
+    : null;
 
   // Debug: log every render so we can see whether the autofit metadata is
   // actually reaching this component after the mutation completes.
