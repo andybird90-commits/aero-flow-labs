@@ -57,7 +57,7 @@ function loadGlb(url: string): Promise<THREE.Object3D> {
       url,
       (gltf) => resolve(gltf.scene),
       undefined,
-      (err) => reject(new Error(`Failed to load GLB ${url}: ${(err as Error)?.message ?? err}`)),
+      (err) => reject(new Error(`Failed to load GLB ${url}: ${(err as any)?.message ?? String(err)}`)),
     );
   });
 }
@@ -75,7 +75,7 @@ function exportGlb(root: THREE.Object3D): Promise<Blob> {
           resolve(new Blob([JSON.stringify(result)], { type: "model/gltf+json" }));
         }
       },
-      (err) => reject(new Error(`GLTFExporter failed: ${(err as Error)?.message ?? err}`)),
+      (err) => reject(new Error(`GLTFExporter failed: ${(err as any)?.message ?? String(err)}`)),
       { binary: true, embedImages: true, onlyVisible: true } as Record<string, unknown>,
     );
   });
