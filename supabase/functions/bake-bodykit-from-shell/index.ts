@@ -193,9 +193,21 @@ Deno.serve(async (req) => {
       autofit_processing_ms: workerJson.processing_ms ?? null,
       autofit_at: new Date().toISOString(),
     };
+    // Autofit returns the mesh in the donor car's world frame. Reset the
+    // placed_part transform to identity so the viewport renders the fitted
+    // GLB exactly where the worker placed it on the car (otherwise the user's
+    // previous position/scale would shove it off into space and the part
+    // appears to "disappear").
+    const identity = { x: 0, y: 0, z: 0 };
+    const unitScale = { x: 1, y: 1, z: 1 };
     const { error: updErr } = await admin
       .from("placed_parts")
-      .update({ metadata: nextMeta })
+      .update({
+        metadata: nextMeta,
+        position: identity,
+        rotation: identity,
+        scale: unitScale,
+      })
       .eq("id", body.placed_part_id);
     if (updErr) return json({ error: updErr.message }, 500);
 
