@@ -98,6 +98,32 @@ async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promi
     part.mirrored ? -part.scale.z : part.scale.z,
   );
   wrapper.updateMatrixWorld(true);
+
+  // Diagnostic: log the world-space bbox of the part as it will be exported.
+  // If position/rotation/scale are baked correctly, min/max should reflect
+  // the part sitting where the user placed it (NOT centred at origin).
+  const bbox = new THREE.Box3().setFromObject(wrapper);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  bbox.getSize(size);
+  bbox.getCenter(center);
+  // eslint-disable-next-line no-console
+  console.log("[autofit] exporting part GLB — world bbox", {
+    placed_part_id: part.id,
+    transform: {
+      position: part.position,
+      rotation: part.rotation,
+      scale: part.scale,
+      mirrored: part.mirrored,
+    },
+    bbox: {
+      min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
+      max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
+      size: { x: size.x, y: size.y, z: size.z },
+      center: { x: center.x, y: center.y, z: center.z },
+    },
+  });
+
   return exportGlb(wrapper);
 }
 
