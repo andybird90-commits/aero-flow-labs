@@ -143,6 +143,13 @@ Deno.serve(async (req) => {
       if (!fetched.ok) throw new Error(`Download result_url failed: ${fetched.status}`);
       const bytes = new Uint8Array(await fetched.arrayBuffer());
       const path = `${userId}/autofit/${placedPartId}/${partKind}-${Date.now()}.glb`;
+      console.log("[autofit] uploading fitted GLB", {
+        placedPartId,
+        partKind,
+        path,
+        bytes: bytes.byteLength,
+        worker_result_url: workerJson.result_url,
+      });
       const { error: upErr } = await admin.storage
         .from("geometries")
         .upload(path, bytes, { contentType: "model/gltf-binary", upsert: true });
@@ -151,6 +158,12 @@ Deno.serve(async (req) => {
         .from("geometries")
         .createSignedUrl(path, 60 * 60 * 24 * 7);
       storedUrl = signed?.signedUrl ?? workerJson.result_url;
+      console.log("[autofit] stored URL resolved", {
+        placedPartId,
+        path,
+        storedUrl,
+        usedFallback: !signed?.signedUrl,
+      });
     } catch (e) {
       return json({ error: `Re-host failed: ${(e as Error).message}`.slice(0, 1000) }, 500);
     }
