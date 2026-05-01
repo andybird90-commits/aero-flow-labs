@@ -92,23 +92,35 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
   // was before autofit was called.
   const preservesLocalFrame = metadata.source === "live-fit";
 
+  // Dispose helper — releases GPU memory of the previously loaded GLB so
+  // a re-fitted part doesn't leak geometry/materials each iteration.
+  const disposeObject = (obj: THREE.Object3D | null) => {
+    if (!obj) return;
+    obj.traverse((c) => {
+      const m = c as THREE.Mesh;
+      if (m.isMesh) {
+        m.geometry?.dispose?.();
+        const mat = m.material as any;
+        if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.());
+        else mat?.dispose?.();
+      }
+    });
+  };
+
   useEffect(() => {
     let cancelled = false;
-    setObject(null);
+    setObject((prev) => { disposeObject(prev); return null; });
     setFailed(false);
 
     if (!url || !kind) return () => { cancelled = true; };
 
     loadObject(url, kind).then((obj) => {
-      if (cancelled) return;
+      if (cancelled) { disposeObject(obj); return; }
       if (!obj) {
         setFailed(true);
         return;
       }
 
-      // Fit ordinary uploads into a unit-ish bounding box. Baked Live Fit
-      // meshes are already written in the placed part's local frame; centring
-      // them again moves the conformed arch away from the exact fitted offset.
       const wrapper = new THREE.Group();
       wrapper.add(obj);
 
@@ -127,7 +139,6 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
         wrapper.position.sub(center);
       }
 
-      // Apply a clean motorsport material to anything missing one.
       wrapper.traverse((c) => {
         const m = c as THREE.Mesh;
         if (m.isMesh) {
@@ -152,6 +163,12 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
       cancelled = true;
     };
   }, [url, kind, preservesLocalFrame]);
+
+  // Dispose on unmount.
+  useEffect(() => {
+    return () => { disposeObject(object); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Selected outline: re-tint materials. Keep simple.
   useEffect(() => {
