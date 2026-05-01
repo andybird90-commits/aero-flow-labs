@@ -34,6 +34,7 @@ export const BLENDER_OP_META: Record<
   panelise_body_skin: { label: "Panelise body skin", group: "Panelise", description: "Split a full body skin into bonnet / doors / quarters / bumpers panels." },
   export_stl: { label: "Export STL", group: "Export", description: "Write a print-ready binary STL with chosen units." },
   export_glb_preview: { label: "Export GLB preview", group: "Export", description: "Write a textured GLB for in-browser preview." },
+  generate_part: { label: "Generate part (AI)", group: "Export", description: "AI-driven procedural part generation via the Blender actor." },
 };
 
 export const BLENDER_OPS: BlenderJobType[] = Object.keys(BLENDER_OP_META) as BlenderJobType[];
@@ -69,6 +70,8 @@ export function defaultParamsFor(op: BlenderJobType): Record<string, unknown> {
       return { units: "mm", binary: true };
     case "export_glb_preview":
       return { draco: true };
+    case "generate_part":
+      return { part_kind: "front_splitter", style_prompt: "", symmetry: "mirror_x" };
   }
 }
 
