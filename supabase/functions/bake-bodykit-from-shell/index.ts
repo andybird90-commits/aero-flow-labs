@@ -1,25 +1,26 @@
 /**
- * bake-bodykit-from-shell  (a.k.a. "Autofit")
+ * autofit-placed-part  (legacy filename: bake-bodykit-from-shell)
  *
- * Calls the FastAPI mesh-fitting server (`POST /autofit`) to fit a single
- * part (wing / bumper / spoiler / lip / skirt / diffuser) against a donor
- * car GLB. Synchronous — should complete in ~5–30s.
+ * Calls the FastAPI mesh-fitting server (`POST /autofit`) to deform an
+ * existing part GLB so it fits the donor car. Synchronous — should
+ * complete in a few seconds.
  *
- * Request body:
+ * Worker contract:
+ *   POST /autofit  { car_url, part_url, part_kind } -> { result_url, processing_ms }
+ *
+ * Request body to this edge function:
  *   {
- *     body_kit_id: string,       // existing body_kits row to update
- *     part_kind: "wing" | "bumper" | "spoiler" | "lip" | "skirt" | "diffuser",
- *     width_mm: number,
- *     height_mm: number,
- *     depth_mm: number
+ *     placed_part_id: string,   // placed_parts row to update
+ *     part_kind: "wing" | "bumper" | "spoiler" | "lip" | "skirt" | "diffuser"
  *   }
  *
  * Flow:
- *   1. Resolve donor car GLB public URL (car-stls bucket is public).
- *   2. POST to ${MESH_API_URL}/autofit with car_url + part dims.
- *   3. Download the result_url returned by the worker.
- *   4. Re-host the GLB into the `geometries` bucket (signed URL, 7 days).
- *   5. Update body_kits row to status=ready with combined_glb_url.
+ *   1. Load placed_part → project → car_template_id → car_stls.glb_path  (car_url)
+ *   2. Load placed_part.library_item_id → library_items.asset_url        (part_url)
+ *   3. POST { car_url, part_url, part_kind } to ${MESH_API_URL}/autofit
+ *   4. Download result_url, re-host into `geometries` bucket, signed 7d
+ *   5. Save the signed url to placed_parts.metadata.autofit_glb_url so the
+ *      viewport renders the fitted part instead of the original library asset.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -46,22 +47,14 @@ Deno.serve(async (req) => {
   }
   try {
     const body = (await req.json().catch(() => ({}))) as {
-      body_kit_id?: string;
+      placed_part_id?: string;
       part_kind?: string;
-      width_mm?: number;
-      height_mm?: number;
-      depth_mm?: number;
     };
 
-    if (!body.body_kit_id) return json({ error: "body_kit_id required" }, 400);
+    if (!body.placed_part_id) return json({ error: "placed_part_id required" }, 400);
     if (!body.part_kind || !ALLOWED_PARTS.has(body.part_kind)) {
       return json({ error: `part_kind must be one of: ${[...ALLOWED_PARTS].join(", ")}` }, 400);
     }
-    const w = Number(body.width_mm), h = Number(body.height_mm), d = Number(body.depth_mm);
-    if (![w, h, d].every((n) => Number.isFinite(n) && n > 0 && n < 5000)) {
-      return json({ error: "width_mm/height_mm/depth_mm must be positive numbers under 5000" }, 400);
-    }
-
     if (!MESH_API_URL) {
       return json({ error: "Mesh API not configured. Set MESH_API_URL secret." }, 503);
     }
@@ -77,54 +70,82 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    // --- Verify ownership ---
-    const { data: kitData, error: kitErr } = await admin
-      .from("body_kits")
-      .select("id, user_id, donor_car_template_id")
-      .eq("id", body.body_kit_id)
+    // --- Load placed part + verify ownership ---
+    const { data: placed, error: placedErr } = await admin
+      .from("placed_parts")
+      .select("id, user_id, project_id, library_item_id, metadata")
+      .eq("id", body.placed_part_id)
       .maybeSingle();
-    if (kitErr) return json({ error: kitErr.message }, 500);
-    if (!kitData) return json({ error: "body_kits row not found" }, 404);
-    if ((kitData as any).user_id !== userId) return json({ error: "Forbidden" }, 403);
-    const donorId = (kitData as any).donor_car_template_id as string | null;
-    if (!donorId) return json({ error: "No donor car template attached to this kit." }, 400);
-
-    // --- Resolve donor car GLB public URL ---
-    const { data: carStl, error: carErr } = await admin
-      .from("car_stls")
-      .select("glb_path, repaired_stl_path, stl_path")
-      .eq("car_template_id", donorId)
-      .maybeSingle();
-    if (carErr) return json({ error: `Donor lookup failed: ${carErr.message}` }, 500);
-    if (!carStl) return json({ error: "Donor car has no STL/GLB configured." }, 400);
-    // Worker requires a GLB — STL fallbacks would trip "incorrect header on GLB file".
-    const donorPath = (carStl as any).glb_path as string | null;
-    if (!donorPath) {
-      const msg = "Donor car has no GLB available. Convert the donor STL to GLB first (Admin → Car STLs → Generate GLB).";
-      await admin.from("body_kits").update({ status: "failed", error: msg }).eq("id", body.body_kit_id);
-      return json({ error: msg }, 400);
+    if (placedErr) return json({ error: placedErr.message }, 500);
+    if (!placed) return json({ error: "placed_parts row not found" }, 404);
+    if ((placed as any).user_id !== userId) return json({ error: "Forbidden" }, 403);
+    const libraryItemId = (placed as any).library_item_id as string | null;
+    if (!libraryItemId) {
+      return json({ error: "Placed part has no library item — nothing to autofit." }, 400);
     }
-    const carUrl = publicUrl(admin, "car-stls", donorPath);
 
-    // Flip to baking so the UI shows progress.
-    await admin.from("body_kits")
-      .update({ status: "baking", error: null })
-      .eq("id", body.body_kit_id);
+    // --- Resolve part GLB URL ---
+    const { data: item, error: itemErr } = await admin
+      .from("library_items")
+      .select("asset_url, asset_mime")
+      .eq("id", libraryItemId)
+      .maybeSingle();
+    if (itemErr) return json({ error: `Library lookup failed: ${itemErr.message}` }, 500);
+    if (!item?.asset_url) return json({ error: "Library item has no asset_url." }, 400);
+    const partMime = ((item as any).asset_mime ?? "").toString().toLowerCase();
+    const partUrlLower = (item as any).asset_url.toString().toLowerCase().split("?")[0];
+    const isGlb = partMime.includes("gltf") || partMime.includes("glb")
+      || partUrlLower.endsWith(".glb") || partUrlLower.endsWith(".gltf");
+    if (!isGlb) {
+      return json({ error: "Autofit requires a GLB part. This library item isn't a GLB." }, 400);
+    }
+    const partUrl = (item as any).asset_url as string;
+
+    // --- Resolve donor car GLB URL via project → car → template → car_stls ---
+    const { data: project, error: projErr } = await admin
+      .from("projects")
+      .select("id, car_id")
+      .eq("id", (placed as any).project_id)
+      .maybeSingle();
+    if (projErr) return json({ error: `Project lookup failed: ${projErr.message}` }, 500);
+    if (!project) return json({ error: "Project not found." }, 404);
+
+    const { data: car, error: carErr } = await admin
+      .from("cars")
+      .select("id, template_id")
+      .eq("id", (project as any).car_id)
+      .maybeSingle();
+    if (carErr) return json({ error: `Car lookup failed: ${carErr.message}` }, 500);
+    const templateId = (car as any)?.template_id as string | null;
+    if (!templateId) return json({ error: "Project car has no template — pick a donor car first." }, 400);
+
+    const { data: carStl, error: stlErr } = await admin
+      .from("car_stls")
+      .select("glb_path")
+      .eq("car_template_id", templateId)
+      .maybeSingle();
+    if (stlErr) return json({ error: `Donor lookup failed: ${stlErr.message}` }, 500);
+    if (!carStl?.glb_path) {
+      return json({
+        error: "Donor car has no GLB available. Upload a GLB for it in Admin → Car STLs.",
+      }, 400);
+    }
+    const carUrl = admin.storage.from("car-stls").getPublicUrl((carStl as any).glb_path).data.publicUrl;
 
     // --- Call FastAPI /autofit ---
-    let workerJson: { result_url?: string; processing_ms?: number; error?: string };
+    let workerJson: { result_url?: string; processing_ms?: number; error?: string; detail?: string };
+    let workerStatus = 0;
     try {
       const resp = await fetch(`${MESH_API_URL.replace(/\/$/, "")}/autofit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           car_url: carUrl,
+          part_url: partUrl,
           part_kind: body.part_kind,
-          width_mm: w,
-          height_mm: h,
-          depth_mm: d,
         }),
       });
+      workerStatus = resp.status;
       const text = await resp.text();
       try {
         workerJson = JSON.parse(text);
@@ -132,28 +153,25 @@ Deno.serve(async (req) => {
         throw new Error(`Worker returned non-JSON (${resp.status}): ${text.slice(0, 300)}`);
       }
       if (!resp.ok) {
-        throw new Error(workerJson?.error ?? `Worker ${resp.status}: ${text.slice(0, 200)}`);
+        const detail = workerJson?.detail ?? workerJson?.error ?? text.slice(0, 200);
+        throw new Error(`Worker ${resp.status}: ${detail}`);
       }
     } catch (e) {
       const msg = `Autofit call failed: ${(e as Error).message}`.slice(0, 1000);
-      await admin.from("body_kits").update({ status: "failed", error: msg }).eq("id", body.body_kit_id);
-      return json({ error: msg }, 502);
+      return json({ error: msg }, workerStatus >= 400 && workerStatus < 600 ? workerStatus : 502);
     }
 
     if (!workerJson.result_url) {
-      const msg = "Worker returned no result_url.";
-      await admin.from("body_kits").update({ status: "failed", error: msg }).eq("id", body.body_kit_id);
-      return json({ error: msg }, 502);
+      return json({ error: "Worker returned no result_url." }, 502);
     }
 
-    // --- Re-host GLB into geometries bucket ---
+    // --- Re-host fitted GLB into geometries bucket ---
     let storedUrl: string;
-    let triCount: number | null = null;
     try {
       const fetched = await fetch(workerJson.result_url);
       if (!fetched.ok) throw new Error(`Download result_url failed: ${fetched.status}`);
       const bytes = new Uint8Array(await fetched.arrayBuffer());
-      const path = `${userId}/autofit/${body.body_kit_id}/${body.part_kind}-${Date.now()}.glb`;
+      const path = `${userId}/autofit/${body.placed_part_id}/${body.part_kind}-${Date.now()}.glb`;
       const { error: upErr } = await admin.storage
         .from("geometries")
         .upload(path, bytes, { contentType: "model/gltf-binary", upsert: true });
@@ -163,43 +181,27 @@ Deno.serve(async (req) => {
         .createSignedUrl(path, 60 * 60 * 24 * 7);
       storedUrl = signed?.signedUrl ?? workerJson.result_url;
     } catch (e) {
-      const msg = `Re-host failed: ${(e as Error).message}`.slice(0, 1000);
-      await admin.from("body_kits").update({ status: "failed", error: msg }).eq("id", body.body_kit_id);
-      return json({ error: msg }, 500);
+      return json({ error: `Re-host failed: ${(e as Error).message}`.slice(0, 1000) }, 500);
     }
 
-    // --- Mark kit ready ---
-    const { error: updErr } = await admin.from("body_kits").update({
-      status: "ready",
-      combined_glb_url: storedUrl,
-      panel_count: 1,
-      triangle_count: triCount,
-      error: null,
-      ai_notes: workerJson.processing_ms != null
-        ? `Autofit ${body.part_kind} in ${workerJson.processing_ms} ms`
-        : `Autofit ${body.part_kind}`,
-    }).eq("id", body.body_kit_id);
+    // --- Persist override on the placed part ---
+    const prevMeta = ((placed as any).metadata ?? {}) as Record<string, unknown>;
+    const nextMeta = {
+      ...prevMeta,
+      autofit_glb_url: storedUrl,
+      autofit_part_kind: body.part_kind,
+      autofit_processing_ms: workerJson.processing_ms ?? null,
+      autofit_at: new Date().toISOString(),
+    };
+    const { error: updErr } = await admin
+      .from("placed_parts")
+      .update({ metadata: nextMeta })
+      .eq("id", body.placed_part_id);
     if (updErr) return json({ error: updErr.message }, 500);
-
-    // Replace any prior parts row with the new single fitted part.
-    await admin.from("body_kit_parts").delete().eq("body_kit_id", body.body_kit_id);
-    await admin.from("body_kit_parts").insert({
-      body_kit_id: body.body_kit_id,
-      user_id: userId,
-      slot: body.part_kind,
-      label: body.part_kind,
-      confidence: 1,
-      stl_path: storedUrl,
-      glb_url: storedUrl,
-      triangle_count: 0,
-      area_m2: 0,
-      bbox: { dims_mm: { w, h, d } },
-    });
 
     return json({
       ok: true,
-      status: "ready",
-      body_kit_id: body.body_kit_id,
+      placed_part_id: body.placed_part_id,
       result_url: storedUrl,
       processing_ms: workerJson.processing_ms ?? null,
     });
@@ -213,13 +215,4 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function publicUrl(
-  admin: ReturnType<typeof createClient>,
-  bucket: string,
-  pathOrUrl: string,
-): string {
-  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-  return admin.storage.from(bucket).getPublicUrl(pathOrUrl).data.publicUrl;
 }

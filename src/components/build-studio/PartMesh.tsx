@@ -22,6 +22,12 @@ interface Props {
   libraryItem?: LibraryItem | null;
   selected: boolean;
   locked: boolean;
+  /**
+   * Per-placed-part metadata. If it contains `autofit_glb_url`, that fitted
+   * GLB takes precedence over the library item's asset_url so the autofitted
+   * mesh shows in the viewport without mutating shared library entries.
+   */
+  placedMetadata?: Record<string, unknown> | null;
 }
 
 function loadObject(
@@ -53,14 +59,19 @@ function loadObject(
   });
 }
 
-export function PartMesh({ libraryItem, selected, locked }: Props) {
+export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Props) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
   const [failed, setFailed] = useState(false);
 
-  const url = libraryItem?.asset_url ?? null;
-  const kind = detectMeshKind(libraryItem ?? null);
+  // Autofit override wins over the library asset, so a re-baked part can swap
+  // in without touching the shared library_items row.
+  const autofitUrl = (placedMetadata?.autofit_glb_url as string | undefined) ?? null;
+  const url = autofitUrl ?? libraryItem?.asset_url ?? null;
+  const kind: "glb" | "stl" = autofitUrl ? "glb" : (detectMeshKind(libraryItem ?? null) ?? "stl");
   const metadata = (libraryItem?.metadata ?? {}) as Record<string, unknown>;
-  const preservesLocalFrame = metadata.source === "live-fit";
+  // Autofit results, like Live Fit bakes, are already in the placed part's
+  // local frame — don't recentre them or the fit shifts away from the car.
+  const preservesLocalFrame = metadata.source === "live-fit" || !!autofitUrl;
 
   useEffect(() => {
     let cancelled = false;
