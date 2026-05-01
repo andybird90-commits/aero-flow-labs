@@ -66,12 +66,18 @@ export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Prop
   // Autofit override wins over the library asset, so a re-baked part can swap
   // in without touching the shared library_items row.
   const autofitUrl = (placedMetadata?.autofit_glb_url as string | undefined) ?? null;
+  const autofitViewTransform = placedMetadata?.autofit_view_transform as
+    | { scale?: number; position?: { x?: number; y?: number; z?: number } }
+    | null
+    | undefined;
+  const viewScale = Number(autofitViewTransform?.scale);
+  const viewPosition = autofitViewTransform?.position;
   const url = autofitUrl ?? libraryItem?.asset_url ?? null;
   const kind: "glb" | "stl" = autofitUrl ? "glb" : (detectMeshKind(libraryItem ?? null) ?? "stl");
   const metadata = (libraryItem?.metadata ?? {}) as Record<string, unknown>;
   // Autofit results, like Live Fit bakes, are already in the placed part's
   // local frame — don't recentre them or the fit shifts away from the car.
-  const preservesLocalFrame = metadata.source === "live-fit" || !!autofitUrl;
+  const preservesLocalFrame = metadata.source === "live-fit" || (!!autofitUrl && Number.isFinite(viewScale));
 
   useEffect(() => {
     let cancelled = false;
@@ -93,7 +99,14 @@ export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Prop
       const wrapper = new THREE.Group();
       wrapper.add(obj);
 
-      if (!preservesLocalFrame) {
+      if (autofitUrl && Number.isFinite(viewScale) && viewScale > 0) {
+        wrapper.scale.setScalar(viewScale);
+        wrapper.position.set(
+          Number(viewPosition?.x) || 0,
+          Number(viewPosition?.y) || 0,
+          Number(viewPosition?.z) || 0,
+        );
+      } else if (!preservesLocalFrame) {
         const box = new THREE.Box3().setFromObject(wrapper);
         const size = new THREE.Vector3();
         box.getSize(size);
@@ -132,7 +145,7 @@ export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Prop
     return () => {
       cancelled = true;
     };
-  }, [url, kind, preservesLocalFrame]);
+  }, [url, kind, preservesLocalFrame, autofitUrl, viewScale, viewPosition?.x, viewPosition?.y, viewPosition?.z]);
 
   // Selected outline: re-tint materials. Keep simple.
   useEffect(() => {
