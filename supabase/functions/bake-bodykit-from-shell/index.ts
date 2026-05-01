@@ -244,3 +244,56 @@ function json(body: unknown, status = 200) {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+async function buildRawCarToViewportTransform(carUrl: string, targetLength: number) {
+  const resp = await fetch(carUrl);
+  if (!resp.ok) throw new Error(`Car GLB fetch failed: ${resp.status}`);
+  const bytes = new Uint8Array(await resp.arrayBuffer());
+  const bounds = readGlbAccessorBounds(bytes);
+  if (!bounds) throw new Error("Car GLB has no mesh bounds");
+
+  // BuildStudio normalises donor GLBs by scaling their longest side to the
+  // template length, centring X/Y/Z, then lifting the lowest point to y=0.
+  // The worker returns fitted parts in the donor car's *raw* GLB coordinates,
+  // so the viewport must apply the same normalisation to the fitted part.
+  const size = {
+    x: bounds.max.x - bounds.min.x,
+    y: bounds.max.y - bounds.min.y,
+    z: bounds.max.z - bounds.min.z,
+  };
+  const longest = Math.max(size.x, size.y, size.z);
+  if (!Number.isFinite(longest) || longest <= 0) throw new Error("Invalid car bounds");
+  const scale = targetLength / longest;
+  const center = {
+    x: (bounds.min.x + bounds.max.x) / 2,
+    y: (bounds.min.y + bounds.max.y) / 2,
+    z: (bounds.min.z + bounds.max.z) / 2,
+  };
+  return {
+    scale,
+    position: {
+      x: -center.x * scale,
+      y: -bounds.min.y * scale,
+      z: -center.z * scale,
+    },
+  };
+}
+
+function readGlbAccessorBounds(bytes: Uint8Array) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes.byteLength < 20 || view.getUint32(0, true) !== 0x46546c67) return null;
+  const jsonLength = view.getUint32(12, true);
+  const jsonType = view.getUint32(16, true);
+  if (jsonType !== 0x4e4f534a || 20 + jsonLength > bytes.byteLength) return null;
+  const jsonText = new TextDecoder().decode(bytes.slice(20, 20 + jsonLength)).trim();
+  const gltf = JSON.parse(jsonText) as { accessors?: Array<{ type?: string; min?: number[]; max?: number[] }> };
+  let min = { x: Infinity, y: Infinity, z: Infinity };
+  let max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const acc of gltf.accessors ?? []) {
+    if (acc.type !== "VEC3" || !acc.min || !acc.max) continue;
+    min = { x: Math.min(min.x, acc.min[0]), y: Math.min(min.y, acc.min[1]), z: Math.min(min.z, acc.min[2]) };
+    max = { x: Math.max(max.x, acc.max[0]), y: Math.max(max.y, acc.max[1]), z: Math.max(max.z, acc.max[2]) };
+  }
+  if (![min.x, min.y, min.z, max.x, max.y, max.z].every(Number.isFinite)) return null;
+  return { min, max };
+}
