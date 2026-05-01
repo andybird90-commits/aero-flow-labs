@@ -211,6 +211,66 @@ export function PropertiesPanel({
           </>
         )}
 
+        {/* Autofit — sends the part GLB + donor car GLB to the mesh worker,
+            which deforms the part to follow the car surface. The fitted GLB
+            is stored on placed_parts.metadata.autofit_glb_url and rendered
+            in place of the library asset. */}
+        {selectedLibraryItem?.asset_url && (
+          <>
+            <div className="space-y-2 rounded-md border border-border/60 bg-muted/30 p-2">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5 text-xs">
+                  <Wand2 className="h-3 w-3 text-primary" /> Autofit to car
+                </Label>
+                {hasAutofit && (
+                  <Badge variant="secondary" className="gap-1 text-[10px]">
+                    <CheckCircle2 className="h-3 w-3" /> Fitted
+                  </Badge>
+                )}
+              </div>
+              <Select value={autofitKind} onValueChange={(v) => setAutofitKind(v as AutofitPartKind)}>
+                <SelectTrigger className="h-7 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AUTOFIT_KINDS.map((k) => (
+                    <SelectItem key={k} value={k} className="text-xs capitalize">{k}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 w-full text-xs"
+                disabled={autofit.isPending}
+                onClick={async () => {
+                  try {
+                    await autofit.mutateAsync({
+                      placed_part_id: part.id,
+                      project_id: part.project_id,
+                      part_kind: autofitKind,
+                    });
+                    toast.success("Part fitted to car");
+                  } catch (e) {
+                    toast.error((e as Error).message ?? "Autofit failed");
+                  }
+                }}
+              >
+                {autofit.isPending ? (
+                  <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Fitting…</>
+                ) : (
+                  <><Wand2 className="mr-1 h-3 w-3" /> {hasAutofit ? "Re-fit to car" : "Autofit to car"}</>
+                )}
+              </Button>
+              <p className="text-[10px] leading-tight text-muted-foreground">
+                Sends this part + the donor car to the mesh worker. The part
+                is reshaped to follow the car surface.
+              </p>
+            </div>
+            <Separator />
+          </>
+        )}
+
         <VecRow
           label="Position (m)"
           value={part.position}
