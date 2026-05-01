@@ -753,7 +753,12 @@ function PlacedPartGroup({
         if (groupRef.current) onFrame(groupRef.current);
       }}
     >
-      <PartMesh libraryItem={libraryItem} selected={selected} locked={part.locked} />
+      <PartMesh
+        libraryItem={libraryItem}
+        selected={selected}
+        locked={part.locked}
+        placedMetadata={part.metadata}
+      />
       {showLabel && (
         <PartLabel
           position={[0, 0.18, 0]}
