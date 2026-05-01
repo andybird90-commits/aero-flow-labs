@@ -14,7 +14,7 @@
 > The worker is hosted separately (Modal / Fly / RunPod / your own box).
 > Lovable only knows two secrets:
 >
-> - `BLENDER_WORKER_URL` — base URL of the FastAPI server (e.g. `http://localhost:8000` during dev)
+> - `BLENDER_WORKER_URL` — base URL of the FastAPI server (e.g. `http://178.105.44.191:8000` during dev)
 > - `BLENDER_WORKER_TOKEN` — bearer token used in the `Authorization` header
 >
 > The secret names are kept as `BLENDER_*` for backwards compatibility — they
