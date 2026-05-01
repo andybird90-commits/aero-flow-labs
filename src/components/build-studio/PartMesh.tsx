@@ -203,3 +203,15 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
     </mesh>
   );
 }
+
+/**
+ * Public wrapper — keys the inner component on the autofit URL so when a
+ * re-baked GLB lands the loader is fully remounted (no stale state, no
+ * cached GLTF parser instance reusing the previous geometry).
+ */
+export function PartMesh(props: Props) {
+  const autofitUrl = (props.placedMetadata?.autofit_glb_url as string | undefined) ?? null;
+  const autofitAt = (props.placedMetadata?.autofit_at as string | undefined) ?? "";
+  const remountKey = autofitUrl ? `${autofitUrl}::${autofitAt}` : "base";
+  return <PartMeshInner key={remountKey} {...props} />;
+}
