@@ -105,6 +105,15 @@ export function PropertiesPanel({
   onLiveFitBaked, onSendForPrint,
 }: Props) {
   const [sculptOpen, setSculptOpen] = useState(false);
+  const autofitMeta = (part?.metadata ?? {}) as Record<string, unknown>;
+  const initialKind = (autofitMeta.autofit_part_kind as AutofitPartKind | undefined)
+    ?? (selectedLibraryItem?.metadata as any)?.part_kind
+    ?? "wing";
+  const [autofitKind, setAutofitKind] = useState<AutofitPartKind>(
+    AUTOFIT_KINDS.includes(initialKind as AutofitPartKind) ? (initialKind as AutofitPartKind) : "wing"
+  );
+  const autofit = useAutofitPlacedPart();
+  const hasAutofit = !!(autofitMeta.autofit_glb_url as string | undefined);
 
   if (!part) {
     return (
