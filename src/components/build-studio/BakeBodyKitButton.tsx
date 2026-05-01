@@ -152,12 +152,52 @@ export function BakeBodyKitButton({
       <PopoverContent align="end" className="w-[360px] p-3">
         <div className="mb-2 flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-semibold">Bodykit bake</h3>
+          <h3 className="text-sm font-semibold">Autofit part</h3>
         </div>
         <p className="mb-3 text-[11px] leading-snug text-muted-foreground">
-          Freeze the aligned shell into individual panels (splitter, skirts,
-          wing…) ready to attach as snap parts or list on the marketplace.
+          Pick a part kind and dimensions, then hit Autofit. The mesh server
+          fits a {partKind} to the donor car body and returns a GLB.
         </p>
+
+        <div className="mb-3 space-y-2">
+          <div>
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Part kind
+            </Label>
+            <Select value={partKind} onValueChange={(v) => handlePartKindChange(v as AutofitPartKind)}>
+              <SelectTrigger className="mt-1 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PART_KIND_OPTIONS.map((p) => (
+                  <SelectItem key={p.value} value={p.value} className="text-xs">
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">W (mm)</Label>
+              <Input type="number" min={1} max={5000} value={widthMm}
+                onChange={(e) => setWidthMm(Number(e.target.value))}
+                className="mt-1 h-8 text-xs" />
+            </div>
+            <div>
+              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">H (mm)</Label>
+              <Input type="number" min={1} max={5000} value={heightMm}
+                onChange={(e) => setHeightMm(Number(e.target.value))}
+                className="mt-1 h-8 text-xs" />
+            </div>
+            <div>
+              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">D (mm)</Label>
+              <Input type="number" min={1} max={5000} value={depthMm}
+                onChange={(e) => setDepthMm(Number(e.target.value))}
+                className="mt-1 h-8 text-xs" />
+            </div>
+          </div>
+        </div>
 
         <Button
           onClick={handleBake}
@@ -170,7 +210,7 @@ export function BakeBodyKitButton({
           ) : (
             <Package className="mr-2 h-3.5 w-3.5" />
           )}
-          Bake bodykit from current shell
+          {bake.isPending ? "Fitting…" : `Autofit ${partKind}`}
         </Button>
         {!canBake && (
           <p className="mt-1.5 text-[10px] text-muted-foreground">
