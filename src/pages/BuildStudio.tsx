@@ -945,15 +945,7 @@ export default function BuildStudio() {
                   onStretchChange={handleStretchChange}
                 />
 
-                <BakeBodyKitButton
-                  projectId={projectId}
-                  userId={user?.id ?? null}
-                  bodySkinId={shellSkinId}
-                  donorCarTemplateId={carTemplateIdForHp}
-                  shellAlignmentId={alignment?.id ?? null}
-                  shellTransform={shellTransform}
-                  stretchEnabled={stretchEnabled}
-                />
+                {/* Autofit moved to PropertiesPanel — per placed-part action. */}
 
 
                 <div className="ml-auto flex items-center gap-2">
