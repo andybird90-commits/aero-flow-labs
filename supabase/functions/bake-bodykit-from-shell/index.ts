@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
     // --- Load placed part + verify ownership ---
     const { data: placed, error: placedErr } = await admin
       .from("placed_parts")
-      .select("id, user_id, project_id, library_item_id, metadata")
+      .select("id, user_id, project_id, library_item_id, metadata, position, rotation, scale")
       .eq("id", body.placed_part_id)
       .maybeSingle();
     if (placedErr) return json({ error: placedErr.message }, 500);
@@ -131,6 +131,15 @@ Deno.serve(async (req) => {
       }, 400);
     }
     const carUrl = admin.storage.from("car-stls").getPublicUrl((carStl as any).glb_path).data.publicUrl;
+
+    const { data: template } = await admin
+      .from("car_templates")
+      .select("wheelbase_mm")
+      .eq("id", templateId)
+      .maybeSingle();
+
+    const targetLength = ((((template as any)?.wheelbase_mm ?? 2575) as number) / 1000) + 1.45;
+    const viewTransform = await buildRawCarToViewportTransform(carUrl, targetLength).catch(() => null);
 
     // --- Call FastAPI /autofit ---
     let workerJson: { result_url?: string; processing_ms?: number; error?: string; detail?: string };
@@ -192,6 +201,13 @@ Deno.serve(async (req) => {
       autofit_part_kind: body.part_kind,
       autofit_processing_ms: workerJson.processing_ms ?? null,
       autofit_at: new Date().toISOString(),
+      autofit_frame: viewTransform ? "donor-car-raw" : "unknown",
+      autofit_view_transform: viewTransform,
+      autofit_original_transform: {
+        position: (placed as any).position,
+        rotation: (placed as any).rotation,
+        scale: (placed as any).scale,
+      },
     };
     // Autofit returns the mesh in the donor car's world frame. Reset the
     // placed_part transform to identity so the viewport renders the fitted
