@@ -737,12 +737,13 @@ function PlacedPartGroup({
 
   if (part.hidden) return null;
 
-  // Autofit results are placed back at the part's pre-autofit transform —
-  // the worker's mesh swaps in for the original geometry but the placed
-  // position/rotation/scale are preserved exactly.
-  const position = part.position;
-  const rotation = part.rotation;
-  const scale = part.scale;
+  // Autofit results bake world-space vertices into the returned GLB, so the
+  // wrapper group must be at identity — applying the placed TRS again would
+  // double-transform the mesh. Non-autofit parts use their stored TRS.
+  const hasAutofit = !!(part.metadata as Record<string, unknown> | null)?.autofit_glb_url;
+  const position = hasAutofit ? { x: 0, y: 0, z: 0 } : part.position;
+  const rotation = hasAutofit ? { x: 0, y: 0, z: 0 } : part.rotation;
+  const scale = hasAutofit ? { x: 1, y: 1, z: 1 } : part.scale;
 
   const inner = (
     <group
