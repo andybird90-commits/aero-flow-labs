@@ -244,11 +244,22 @@ export function PropertiesPanel({
                 className="h-7 w-full text-xs"
                 disabled={autofit.isPending}
                 onClick={async () => {
+                  if (!selectedLibraryItem?.asset_url) {
+                    toast.error("Part has no GLB asset to fit.");
+                    return;
+                  }
+                  if (!baseMeshUrl) {
+                    toast.error("Donor car GLB not available.");
+                    return;
+                  }
                   try {
                     await autofit.mutateAsync({
                       placed_part_id: part.id,
                       project_id: part.project_id,
                       part_kind: autofitKind,
+                      car_url: baseMeshUrl,
+                      part_url: selectedLibraryItem.asset_url,
+                      part,
                     });
                     toast.success("Part fitted to car");
                   } catch (e) {

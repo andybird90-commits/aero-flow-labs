@@ -1,26 +1,32 @@
 /**
  * autofit-placed-part  (legacy filename: bake-bodykit-from-shell)
  *
- * Calls the FastAPI mesh-fitting server (`POST /autofit`) to deform an
- * existing part GLB so it fits the donor car. Synchronous — should
- * complete in a few seconds.
+ * Receives the donor car GLB and a positioned part GLB as multipart/form-data
+ * directly from the client (the part has already been transformed into the
+ * car's world frame in the browser via GLTFExporter), forwards both to the
+ * FastAPI mesh-fitting server's `POST /autofit` endpoint as multipart, then
+ * stores the fitted GLB and persists its signed URL onto
+ * `placed_parts.metadata.autofit_glb_url`.
  *
  * Worker contract:
- *   POST /autofit  { car_url, part_url, part_kind } -> { result_url, processing_ms }
+ *   POST /autofit   multipart/form-data
+ *     car:       file (model/gltf-binary)
+ *     part:      file (model/gltf-binary)
+ *     part_kind: string
+ *   -> { result_url, processing_ms }
  *
- * Request body to this edge function:
- *   {
- *     placed_part_id: string,   // placed_parts row to update
- *     part_kind: "wing" | "bumper" | "spoiler" | "lip" | "skirt" | "diffuser"
- *   }
+ * Edge function request body (multipart):
+ *   placed_part_id: string
+ *   part_kind:      "wing" | "bumper" | "spoiler" | "lip" | "skirt" | "diffuser"
+ *   car:            file (GLB bytes)
+ *   part:           file (GLB bytes — already in car-world coordinates)
  *
- * Flow:
- *   1. Load placed_part → project → car_template_id → car_stls.glb_path  (car_url)
- *   2. Load placed_part.library_item_id → library_items.asset_url        (part_url)
- *   3. POST { car_url, part_url, part_kind } to ${MESH_API_URL}/autofit
- *   4. Download result_url, re-host into `geometries` bucket, signed 7d
- *   5. Save the signed url to placed_parts.metadata.autofit_glb_url so the
- *      viewport renders the fitted part instead of the original library asset.
+ * Response:
+ *   { ok, placed_part_id, result_url, processing_ms }
+ *
+ * Because the part is sent already positioned, the worker's result is also
+ * in car-world coordinates. The placed_parts row is reset to identity transform
+ * and metadata.autofit_glb_url is rendered as-is by the viewport.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -46,17 +52,34 @@ Deno.serve(async (req) => {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   try {
-    const body = (await req.json().catch(() => ({}))) as {
-      placed_part_id?: string;
-      part_kind?: string;
-    };
-
-    if (!body.placed_part_id) return json({ error: "placed_part_id required" }, 400);
-    if (!body.part_kind || !ALLOWED_PARTS.has(body.part_kind)) {
-      return json({ error: `part_kind must be one of: ${[...ALLOWED_PARTS].join(", ")}` }, 400);
-    }
     if (!MESH_API_URL) {
       return json({ error: "Mesh API not configured. Set MESH_API_URL secret." }, 503);
+    }
+
+    // --- Parse multipart form ---
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch (e) {
+      return json({ error: `Expected multipart/form-data: ${(e as Error).message}` }, 400);
+    }
+
+    const placedPartId = form.get("placed_part_id");
+    const partKind = form.get("part_kind");
+    const carFile = form.get("car");
+    const partFile = form.get("part");
+
+    if (typeof placedPartId !== "string" || !placedPartId) {
+      return json({ error: "placed_part_id required" }, 400);
+    }
+    if (typeof partKind !== "string" || !ALLOWED_PARTS.has(partKind)) {
+      return json({ error: `part_kind must be one of: ${[...ALLOWED_PARTS].join(", ")}` }, 400);
+    }
+    if (!(carFile instanceof File) || carFile.size === 0) {
+      return json({ error: "car GLB file required (multipart field 'car')" }, 400);
+    }
+    if (!(partFile instanceof File) || partFile.size === 0) {
+      return json({ error: "part GLB file required (multipart field 'part')" }, 400);
     }
 
     // --- Auth ---
@@ -70,80 +93,28 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    // --- Load placed part + verify ownership ---
+    // --- Verify ownership of the placed part ---
     const { data: placed, error: placedErr } = await admin
       .from("placed_parts")
-      .select("id, user_id, project_id, library_item_id, metadata, position, rotation, scale")
-      .eq("id", body.placed_part_id)
+      .select("id, user_id, project_id, metadata, position, rotation, scale")
+      .eq("id", placedPartId)
       .maybeSingle();
     if (placedErr) return json({ error: placedErr.message }, 500);
     if (!placed) return json({ error: "placed_parts row not found" }, 404);
     if ((placed as any).user_id !== userId) return json({ error: "Forbidden" }, 403);
-    const libraryItemId = (placed as any).library_item_id as string | null;
-    if (!libraryItemId) {
-      return json({ error: "Placed part has no library item — nothing to autofit." }, 400);
-    }
 
-    // --- Resolve part GLB URL ---
-    const { data: item, error: itemErr } = await admin
-      .from("library_items")
-      .select("asset_url, asset_mime")
-      .eq("id", libraryItemId)
-      .maybeSingle();
-    if (itemErr) return json({ error: `Library lookup failed: ${itemErr.message}` }, 500);
-    if (!item?.asset_url) return json({ error: "Library item has no asset_url." }, 400);
-    const partMime = ((item as any).asset_mime ?? "").toString().toLowerCase();
-    const partUrlLower = (item as any).asset_url.toString().toLowerCase().split("?")[0];
-    const isGlb = partMime.includes("gltf") || partMime.includes("glb")
-      || partUrlLower.endsWith(".glb") || partUrlLower.endsWith(".gltf");
-    if (!isGlb) {
-      return json({ error: "Autofit requires a GLB part. This library item isn't a GLB." }, 400);
-    }
-    const partUrl = (item as any).asset_url as string;
+    // --- Forward to FastAPI /autofit as multipart ---
+    const workerForm = new FormData();
+    workerForm.append("car", carFile, "car.glb");
+    workerForm.append("part", partFile, "part.glb");
+    workerForm.append("part_kind", partKind);
 
-    // --- Resolve donor car GLB URL via project → car → template → car_stls ---
-    const { data: project, error: projErr } = await admin
-      .from("projects")
-      .select("id, car_id")
-      .eq("id", (placed as any).project_id)
-      .maybeSingle();
-    if (projErr) return json({ error: `Project lookup failed: ${projErr.message}` }, 500);
-    if (!project) return json({ error: "Project not found." }, 404);
-
-    const { data: car, error: carErr } = await admin
-      .from("cars")
-      .select("id, template_id")
-      .eq("id", (project as any).car_id)
-      .maybeSingle();
-    if (carErr) return json({ error: `Car lookup failed: ${carErr.message}` }, 500);
-    const templateId = (car as any)?.template_id as string | null;
-    if (!templateId) return json({ error: "Project car has no template — pick a donor car first." }, 400);
-
-    const { data: carStl, error: stlErr } = await admin
-      .from("car_stls")
-      .select("glb_path")
-      .eq("car_template_id", templateId)
-      .maybeSingle();
-    if (stlErr) return json({ error: `Donor lookup failed: ${stlErr.message}` }, 500);
-    if (!carStl?.glb_path) {
-      return json({
-        error: "Donor car has no GLB available. Upload a GLB for it in Admin → Car STLs.",
-      }, 400);
-    }
-    const carUrl = admin.storage.from("car-stls").getPublicUrl((carStl as any).glb_path).data.publicUrl;
-
-    // --- Call FastAPI /autofit ---
     let workerJson: { result_url?: string; processing_ms?: number; error?: string; detail?: string };
     let workerStatus = 0;
     try {
       const resp = await fetch(`${MESH_API_URL.replace(/\/$/, "")}/autofit`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          car_url: carUrl,
-          part_url: partUrl,
-          part_kind: body.part_kind,
-        }),
+        body: workerForm,
       });
       workerStatus = resp.status;
       const text = await resp.text();
@@ -171,7 +142,7 @@ Deno.serve(async (req) => {
       const fetched = await fetch(workerJson.result_url);
       if (!fetched.ok) throw new Error(`Download result_url failed: ${fetched.status}`);
       const bytes = new Uint8Array(await fetched.arrayBuffer());
-      const path = `${userId}/autofit/${body.placed_part_id}/${body.part_kind}-${Date.now()}.glb`;
+      const path = `${userId}/autofit/${placedPartId}/${partKind}-${Date.now()}.glb`;
       const { error: upErr } = await admin.storage
         .from("geometries")
         .upload(path, bytes, { contentType: "model/gltf-binary", upsert: true });
@@ -185,14 +156,14 @@ Deno.serve(async (req) => {
     }
 
     // --- Persist override on the placed part ---
-    // The worker returns a GLB baked in the car's world frame, so we reset
-    // the placed part's transform to identity. The viewport renders the
-    // autofit GLB as-is (see BuildStudioViewport + PartMesh).
+    // The part was sent already positioned in car-world coordinates, so the
+    // worker's GLB is also in car-world. Reset the placed transform to identity
+    // and let the viewport render the fitted GLB as-is.
     const prevMeta = ((placed as any).metadata ?? {}) as Record<string, unknown>;
     const nextMeta = {
       ...prevMeta,
       autofit_glb_url: storedUrl,
-      autofit_part_kind: body.part_kind,
+      autofit_part_kind: partKind,
       autofit_processing_ms: workerJson.processing_ms ?? null,
       autofit_at: new Date().toISOString(),
       autofit_frame: "car-world",
@@ -210,12 +181,12 @@ Deno.serve(async (req) => {
         rotation: { x: 0, y: 0, z: 0 },
         scale: { x: 1, y: 1, z: 1 },
       })
-      .eq("id", body.placed_part_id);
+      .eq("id", placedPartId);
     if (updErr) return json({ error: updErr.message }, 500);
 
     return json({
       ok: true,
-      placed_part_id: body.placed_part_id,
+      placed_part_id: placedPartId,
       result_url: storedUrl,
       processing_ms: workerJson.processing_ms ?? null,
     });
@@ -230,4 +201,3 @@ function json(body: unknown, status = 200) {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
-
