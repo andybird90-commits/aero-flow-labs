@@ -59,14 +59,21 @@ function loadObject(
   });
 }
 
-export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Props) {
+function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props) {
   const [object, setObject] = useState<THREE.Object3D | null>(null);
   const [failed, setFailed] = useState(false);
 
   // Autofit override wins over the library asset, so a re-baked part can swap
   // in without touching the shared library_items row.
   const autofitUrl = (placedMetadata?.autofit_glb_url as string | undefined) ?? null;
-  const url = autofitUrl ?? libraryItem?.asset_url ?? null;
+  const baseUrl = autofitUrl ?? libraryItem?.asset_url ?? null;
+  // Cache-bust autofit results so Three.js / browser GLTF cache doesn't
+  // hand back the previous fitted GLB when the URL string is reused.
+  const url = baseUrl
+    ? (autofitUrl ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}t=${encodeURIComponent(
+        (placedMetadata?.autofit_at as string | undefined) ?? Date.now().toString(),
+      )}` : baseUrl)
+    : null;
 
   // Debug: log every render so we can see whether the autofit metadata is
   // actually reaching this component after the mutation completes.
@@ -85,23 +92,35 @@ export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Prop
   // was before autofit was called.
   const preservesLocalFrame = metadata.source === "live-fit";
 
+  // Dispose helper — releases GPU memory of the previously loaded GLB so
+  // a re-fitted part doesn't leak geometry/materials each iteration.
+  const disposeObject = (obj: THREE.Object3D | null) => {
+    if (!obj) return;
+    obj.traverse((c) => {
+      const m = c as THREE.Mesh;
+      if (m.isMesh) {
+        m.geometry?.dispose?.();
+        const mat = m.material as any;
+        if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.());
+        else mat?.dispose?.();
+      }
+    });
+  };
+
   useEffect(() => {
     let cancelled = false;
-    setObject(null);
+    setObject((prev) => { disposeObject(prev); return null; });
     setFailed(false);
 
     if (!url || !kind) return () => { cancelled = true; };
 
     loadObject(url, kind).then((obj) => {
-      if (cancelled) return;
+      if (cancelled) { disposeObject(obj); return; }
       if (!obj) {
         setFailed(true);
         return;
       }
 
-      // Fit ordinary uploads into a unit-ish bounding box. Baked Live Fit
-      // meshes are already written in the placed part's local frame; centring
-      // them again moves the conformed arch away from the exact fitted offset.
       const wrapper = new THREE.Group();
       wrapper.add(obj);
 
@@ -120,7 +139,6 @@ export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Prop
         wrapper.position.sub(center);
       }
 
-      // Apply a clean motorsport material to anything missing one.
       wrapper.traverse((c) => {
         const m = c as THREE.Mesh;
         if (m.isMesh) {
@@ -145,6 +163,12 @@ export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Prop
       cancelled = true;
     };
   }, [url, kind, preservesLocalFrame]);
+
+  // Dispose on unmount.
+  useEffect(() => {
+    return () => { disposeObject(object); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Selected outline: re-tint materials. Keep simple.
   useEffect(() => {
@@ -178,4 +202,16 @@ export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Prop
       />
     </mesh>
   );
+}
+
+/**
+ * Public wrapper — keys the inner component on the autofit URL so when a
+ * re-baked GLB lands the loader is fully remounted (no stale state, no
+ * cached GLTF parser instance reusing the previous geometry).
+ */
+export function PartMesh(props: Props) {
+  const autofitUrl = (props.placedMetadata?.autofit_glb_url as string | undefined) ?? null;
+  const autofitAt = (props.placedMetadata?.autofit_at as string | undefined) ?? "";
+  const remountKey = autofitUrl ? `${autofitUrl}::${autofitAt}` : "base";
+  return <PartMeshInner key={remountKey} {...props} />;
 }
