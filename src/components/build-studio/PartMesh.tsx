@@ -67,6 +67,16 @@ export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Prop
   // in without touching the shared library_items row.
   const autofitUrl = (placedMetadata?.autofit_glb_url as string | undefined) ?? null;
   const url = autofitUrl ?? libraryItem?.asset_url ?? null;
+
+  // Debug: log every render so we can see whether the autofit metadata is
+  // actually reaching this component after the mutation completes.
+  // eslint-disable-next-line no-console
+  console.log("[PartMesh render]", {
+    placedMetadata,
+    autofitUrl,
+    url,
+    libraryItemId: libraryItem?.id ?? null,
+  });
   const kind: "glb" | "stl" = autofitUrl ? "glb" : (detectMeshKind(libraryItem ?? null) ?? "stl");
   const metadata = (libraryItem?.metadata ?? {}) as Record<string, unknown>;
   // Live Fit meshes are baked in the placed part's local frame — render as-is.
