@@ -2240,6 +2240,7 @@ export type Database = {
         | "panelise_body_skin"
         | "export_stl"
         | "export_glb_preview"
+        | "generate_part"
       body_kit_bake_status:
         | "idle"
         | "queued"
@@ -2473,6 +2474,7 @@ export const Constants = {
         "panelise_body_skin",
         "export_stl",
         "export_glb_preview",
+        "generate_part",
       ],
       body_kit_bake_status: [
         "idle",

@@ -179,6 +179,17 @@ export const BLENDER_OP_SCHEMA: Record<BlenderJobType, OpSchema> = {
       { key: "draco", kind: "boolean", label: "Draco compression" },
     ],
   },
+  generate_part: {
+    inputs: [],
+    params: [
+      { key: "part_kind", kind: "text", label: "Part kind", required: true, placeholder: "front_splitter" },
+      { key: "style_prompt", kind: "text", label: "Style prompt", placeholder: "aggressive carbon splitter" },
+      { key: "symmetry", kind: "select", label: "Symmetry", options: [
+        { value: "none", label: "None" },
+        { value: "mirror_x", label: "Mirror X" },
+      ] },
+    ],
+  },
 };
 
 /** Coerce a form-state record into the typed JSON the worker expects. */

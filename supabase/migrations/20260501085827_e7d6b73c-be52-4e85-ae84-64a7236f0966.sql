@@ -1,0 +1,1 @@
+ALTER TYPE blender_job_type ADD VALUE IF NOT EXISTS 'generate_part';
