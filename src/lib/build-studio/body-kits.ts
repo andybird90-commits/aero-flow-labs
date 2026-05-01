@@ -65,6 +65,9 @@ export function useBodyKitParts(bodyKitId: string | null | undefined) {
   });
 }
 
+export type AutofitPartKind =
+  | "wing" | "bumper" | "spoiler" | "lip" | "skirt" | "diffuser";
+
 export interface BakeBodyKitInput {
   user_id: string;
   project_id: string;
@@ -74,12 +77,21 @@ export interface BakeBodyKitInput {
   name?: string;
   baked_transform: BakedTransformSnapshot;
   notes?: string | null;
+  /** Part dimensions for the FastAPI /autofit call. */
+  part_kind: AutofitPartKind;
+  width_mm: number;
+  height_mm: number;
+  depth_mm: number;
 }
 
 /**
- * Queue a bake. Inserts a `body_kits` row in `queued` status — the edge
- * worker (next step) picks it up, transitions through `subtracting` /
- * `splitting`, and finally writes `body_kit_parts` rows + `combined_stl_path`.
+ * Run an Autofit bake against the FastAPI mesh server.
+ *
+ * Inserts a `body_kits` row, then synchronously invokes the
+ * `bake-bodykit-from-shell` edge function which calls
+ * `POST {MESH_API_URL}/autofit` with the donor car URL + part dimensions
+ * and re-hosts the returned GLB into the `geometries` bucket. The kit
+ * transitions queued → baking → ready (or failed).
  */
 export function useBakeBodyKit() {
   const qc = useQueryClient();
@@ -91,7 +103,7 @@ export function useBakeBodyKit() {
         body_skin_id: input.body_skin_id,
         shell_alignment_id: input.shell_alignment_id ?? null,
         donor_car_template_id: input.donor_car_template_id ?? null,
-        name: input.name ?? `Bodykit ${new Date().toLocaleString()}`,
+        name: input.name ?? `${input.part_kind} ${input.width_mm}×${input.height_mm}×${input.depth_mm}mm`,
         baked_transform: input.baked_transform as any,
         status: "queued",
         notes: input.notes ?? null,
@@ -104,16 +116,24 @@ export function useBakeBodyKit() {
       if (error) throw error;
       const kit = data as BodyKit;
 
-      // Fire-and-await the bake worker. It updates the row through the
-      // baking → subtracting → splitting → ready pipeline.
-      const { error: invokeErr } = await supabase.functions.invoke(
+      const { data: invokeData, error: invokeErr } = await supabase.functions.invoke(
         "bake-bodykit-from-shell",
-        { body: { body_kit_id: kit.id } },
+        {
+          body: {
+            body_kit_id: kit.id,
+            part_kind: input.part_kind,
+            width_mm: input.width_mm,
+            height_mm: input.height_mm,
+            depth_mm: input.depth_mm,
+          },
+        },
       );
       if (invokeErr) {
-        // Worker errored — the function itself flips the row to `failed`,
-        // but surface the message to the caller too.
-        throw new Error(invokeErr.message ?? "Bake worker failed");
+        throw new Error(
+          (invokeData as any)?.error
+            ?? invokeErr.message
+            ?? "Autofit worker failed",
+        );
       }
       return kit;
     },
