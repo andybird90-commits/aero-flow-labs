@@ -182,6 +182,7 @@ Deno.serve(async (req) => {
       ok: true,
       placed_part_id: placedPartId,
       result_url: storedUrl,
+      part_kind: partKind,
       processing_ms: workerJson.processing_ms ?? null,
     });
   } catch (e) {

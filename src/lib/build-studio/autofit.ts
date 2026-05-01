@@ -15,10 +15,8 @@
  *      worker's `/autofit` endpoint.
  *
  * The fitted GLB returned by the worker is then persisted onto
- * `placed_parts.metadata.autofit_glb_url` by the edge function. Because the
- * part was sent already positioned in car-world coordinates, the worker's
- * result is also in car-world coordinates and the viewport renders it with
- * an identity transform.
+ * `placed_parts.metadata.autofit_glb_url` by the edge function. The viewport
+ * keeps the placed part's existing transform and swaps only the rendered GLB.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as THREE from "three";
@@ -47,6 +45,7 @@ export interface AutofitPlacedPartResult {
   ok: boolean;
   placed_part_id: string;
   result_url: string;
+  part_kind?: string;
   processing_ms: number | null;
 }
 
@@ -137,8 +136,34 @@ export function useAutofitPlacedPart() {
       }
       return data as AutofitPlacedPartResult;
     },
-    onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ["placed_parts", vars.project_id] });
+    onSuccess: async (data, vars) => {
+      const queryKey = ["placed_parts", vars.project_id];
+
+      // Make the viewport receive the new metadata immediately instead of
+      // waiting for an async invalidation cycle. PartMesh reads this prop to
+      // choose metadata.autofit_glb_url over the original library asset_url.
+      qc.setQueryData<PlacedPart[]>(queryKey, (current) => {
+        if (!current) return current;
+        return current.map((part) => {
+          if (part.id !== vars.placed_part_id) return part;
+          return {
+            ...part,
+            metadata: {
+              ...(part.metadata ?? {}),
+              autofit_glb_url: data.result_url,
+              autofit_part_kind: data.part_kind ?? vars.part_kind,
+              autofit_processing_ms: data.processing_ms ?? null,
+              autofit_at: new Date().toISOString(),
+              autofit_frame: "part-local",
+            },
+          };
+        });
+      });
+
+      // Then force the active query to reconcile with the DB row written by
+      // the edge function, and keep mutateAsync pending until that completes.
+      await qc.invalidateQueries({ queryKey });
+      await qc.refetchQueries({ queryKey, type: "active" });
     },
   });
 }
