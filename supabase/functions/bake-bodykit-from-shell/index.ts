@@ -97,10 +97,13 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (carErr) return json({ error: `Donor lookup failed: ${carErr.message}` }, 500);
     if (!carStl) return json({ error: "Donor car has no STL/GLB configured." }, 400);
-    const donorPath = (carStl as any).glb_path
-      ?? (carStl as any).repaired_stl_path
-      ?? (carStl as any).stl_path;
-    if (!donorPath) return json({ error: "Donor car file path missing." }, 400);
+    // Worker requires a GLB — STL fallbacks would trip "incorrect header on GLB file".
+    const donorPath = (carStl as any).glb_path as string | null;
+    if (!donorPath) {
+      const msg = "Donor car has no GLB available. Convert the donor STL to GLB first (Admin → Car STLs → Generate GLB).";
+      await admin.from("body_kits").update({ status: "failed", error: msg }).eq("id", body.body_kit_id);
+      return json({ error: msg }, 400);
+    }
     const carUrl = publicUrl(admin, "car-stls", donorPath);
 
     // Flip to baking so the UI shows progress.
