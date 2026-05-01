@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles } from "lucide-react";
+import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import {
@@ -22,6 +22,10 @@ import {
 import type { LibraryItem } from "@/lib/repo";
 import { LiveFitPanel } from "@/components/build-studio/LiveFitPanel";
 import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
+import { useAutofitPlacedPart, type AutofitPartKind } from "@/lib/build-studio/autofit";
+import { toast } from "sonner";
+
+const AUTOFIT_KINDS: AutofitPartKind[] = ["wing", "bumper", "spoiler", "lip", "skirt", "diffuser"];
 
 interface Props {
   part: PlacedPart | null;
