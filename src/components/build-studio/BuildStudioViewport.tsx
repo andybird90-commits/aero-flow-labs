@@ -737,13 +737,12 @@ function PlacedPartGroup({
 
   if (part.hidden) return null;
 
-  // When a part has been Autofit, render the baked GLB at its server-baked
-  // position. Ignore any user drag offset — the worker has already placed it
-  // exactly where it belongs in the car's frame.
-  const isAutofit = !!part.metadata?.autofit_glb_url;
-  const position = isAutofit ? { x: 0, y: 0, z: 0 } : part.position;
-  const rotation = isAutofit ? { x: 0, y: 0, z: 0 } : part.rotation;
-  const scale = isAutofit ? { x: 1, y: 1, z: 1 } : part.scale;
+  // Autofit results are placed back at the part's pre-autofit transform —
+  // the worker's mesh swaps in for the original geometry but the placed
+  // position/rotation/scale are preserved exactly.
+  const position = part.position;
+  const rotation = part.rotation;
+  const scale = part.scale;
 
   const inner = (
     <group
