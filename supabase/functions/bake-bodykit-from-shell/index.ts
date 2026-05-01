@@ -185,6 +185,9 @@ Deno.serve(async (req) => {
     }
 
     // --- Persist override on the placed part ---
+    // The worker returns a GLB baked in the car's world frame, so we reset
+    // the placed part's transform to identity. The viewport renders the
+    // autofit GLB as-is (see BuildStudioViewport + PartMesh).
     const prevMeta = ((placed as any).metadata ?? {}) as Record<string, unknown>;
     const nextMeta = {
       ...prevMeta,
@@ -192,7 +195,7 @@ Deno.serve(async (req) => {
       autofit_part_kind: body.part_kind,
       autofit_processing_ms: workerJson.processing_ms ?? null,
       autofit_at: new Date().toISOString(),
-      autofit_frame: "placed-part-local",
+      autofit_frame: "car-world",
       autofit_original_transform: {
         position: (placed as any).position,
         rotation: (placed as any).rotation,
@@ -203,6 +206,9 @@ Deno.serve(async (req) => {
       .from("placed_parts")
       .update({
         metadata: nextMeta,
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
       })
       .eq("id", body.placed_part_id);
     if (updErr) return json({ error: updErr.message }, 500);
