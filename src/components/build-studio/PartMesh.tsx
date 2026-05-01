@@ -69,10 +69,10 @@ export function PartMesh({ libraryItem, selected, locked, placedMetadata }: Prop
   const url = autofitUrl ?? libraryItem?.asset_url ?? null;
   const kind: "glb" | "stl" = autofitUrl ? "glb" : (detectMeshKind(libraryItem ?? null) ?? "stl");
   const metadata = (libraryItem?.metadata ?? {}) as Record<string, unknown>;
-  // Live Fit bakes are already written in the placed part's local frame.
-  // Autofit uses the uploaded part URL, so render it through the same local
-  // normalisation path as ordinary library parts and keep the user's placement.
-  const preservesLocalFrame = metadata.source === "live-fit";
+  // Both Live Fit AND Autofit return meshes already baked in the car's world
+  // frame — render them as-is without re-centering or re-scaling. The parent
+  // group is forced to identity for autofit parts (see BuildStudioViewport).
+  const preservesLocalFrame = !!autofitUrl || metadata.source === "live-fit";
 
   useEffect(() => {
     let cancelled = false;
