@@ -737,13 +737,26 @@ function PlacedPartGroup({
 
   if (part.hidden) return null;
 
+  const original = part.metadata?.autofit_original_transform as
+    | { position?: Vec3; rotation?: Vec3; scale?: Vec3 }
+    | undefined;
+  const wasResetByLegacyAutofit =
+    !!part.metadata?.autofit_glb_url &&
+    !!original &&
+    part.position.x === 0 && part.position.y === 0 && part.position.z === 0 &&
+    part.rotation.x === 0 && part.rotation.y === 0 && part.rotation.z === 0 &&
+    part.scale.x === 1 && part.scale.y === 1 && part.scale.z === 1;
+  const position = wasResetByLegacyAutofit && original.position ? original.position : part.position;
+  const rotation = wasResetByLegacyAutofit && original.rotation ? original.rotation : part.rotation;
+  const scale = wasResetByLegacyAutofit && original.scale ? original.scale : part.scale;
+
   const inner = (
     <group
       ref={groupRef}
       name={`placed-${part.id}`}
-      position={[part.position.x, part.position.y, part.position.z]}
-      rotation={[part.rotation.x, part.rotation.y, part.rotation.z]}
-      scale={[part.scale.x, part.scale.y, part.scale.z]}
+      position={[position.x, position.y, position.z]}
+      rotation={[rotation.x, rotation.y, rotation.z]}
+      scale={[scale.x, scale.y, scale.z]}
       onClick={(e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
         onSelect();
