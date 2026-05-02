@@ -5,10 +5,14 @@
  * Disabled until both a donor car and a Shell Fit body shell are loaded.
  * On success the new trimmed shell is added to the user's body_skins library
  * and selected as the active overlay so the result is visible immediately.
+ *
+ * When the active shell IS itself a swap result (it has a `source_skin_id`
+ * set), a sibling "Restore original" button appears so the user can revert
+ * the active overlay back to the untrimmed source shell.
  */
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Loader2, Replace } from "lucide-react";
+import { Loader2, Replace, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { useBodySwap } from "@/lib/build-studio/body-swap";
 import type { BodySkin } from "@/lib/body-skins";
@@ -22,7 +26,7 @@ interface Props {
   donorCarTemplateId?: string | null;
   /** Donor car display name (e.g. "Porsche 986 Boxster"). */
   donorCarLabel?: string | null;
-  /** Called with the new body skin id once the swap completes. */
+  /** Called with a body skin id to switch the active overlay. */
   onSwapComplete?: (newSkinId: string) => void;
 }
 
@@ -37,6 +41,8 @@ export function BodySwapButton({
   const [running, setRunning] = useState(false);
 
   const disabled = !activeSkin || !userId || running || swap.isPending;
+  const sourceId = (activeSkin as any)?.source_skin_id as string | null | undefined;
+  const canRestore = !!sourceId && !running && !swap.isPending;
 
   const handleClick = async () => {
     if (!activeSkin || !userId) {
@@ -64,25 +70,46 @@ export function BodySwapButton({
     }
   };
 
+  const handleRestore = () => {
+    if (!sourceId) return;
+    onSwapComplete?.(sourceId);
+    toast.success("Restored original body shell");
+  };
+
   return (
-    <Button
-      size="sm"
-      variant="outline"
-      className="h-9 px-3 text-xs"
-      onClick={handleClick}
-      disabled={disabled}
-      title={
-        !activeSkin
-          ? "Select a body shell in the Shell Fit menu to enable Body Swap"
-          : "Trim the body shell to sit flush on the donor car"
-      }
-    >
-      {running || swap.isPending ? (
-        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <Replace className="mr-1.5 h-3.5 w-3.5" />
+    <div className="flex items-center gap-1">
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-9 px-3 text-xs"
+        onClick={handleClick}
+        disabled={disabled}
+        title={
+          !activeSkin
+            ? "Select a body shell in the Shell Fit menu to enable Body Swap"
+            : "Trim the body shell to sit flush on the donor car"
+        }
+      >
+        {running || swap.isPending ? (
+          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Replace className="mr-1.5 h-3.5 w-3.5" />
+        )}
+        Body Swap
+      </Button>
+
+      {canRestore && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-9 px-2.5 text-xs"
+          onClick={handleRestore}
+          title="Switch the active overlay back to the original (untrimmed) body shell"
+        >
+          <Undo2 className="mr-1.5 h-3.5 w-3.5" />
+          Restore original
+        </Button>
       )}
-      Body Swap
-    </Button>
+    </div>
   );
 }
