@@ -3,15 +3,12 @@ import * as THREE from "three";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { MeshBVH, acceleratedRaycast } from "three-mesh-bvh";
 import { supabase } from "@/integrations/supabase/client";
 import type { PlacedPart } from "@/lib/build-studio/placed-parts";
 import {
   getCarObject,
   getPlacedPartObject,
 } from "@/lib/build-studio/scene-registry";
-
-THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 export type AutofitPartKind =
   | "wing" | "bumper" | "spoiler" | "lip" | "skirt" | "diffuser";
@@ -105,13 +102,16 @@ function getEvaluator(): Evaluator {
   return ev;
 }
 
-function keepLargestComponents(inputGeom: THREE.BufferGeometry): THREE.BufferGeometry {
+function keepLargestComponents(
+  inputGeom: THREE.BufferGeometry,
+  originalVertCount: number,
+): THREE.BufferGeometry {
   const welded = mergeVertices(inputGeom, 1e-5);
   if (!welded.index) return inputGeom;
-  const indexAttr = welded.index;
-  const indexArr = indexAttr.array as ArrayLike<number>;
+  const indexArr = welded.index.array as ArrayLike<number>;
   const triCount = indexArr.length / 3;
   const vertCount = welded.attributes.position.count;
+
   const vertToTris: number[][] = new Array(vertCount);
   for (let i = 0; i < vertCount; i++) vertToTris[i] = [];
   for (let t = 0; t < triCount; t++) {
@@ -119,6 +119,7 @@ function keepLargestComponents(inputGeom: THREE.BufferGeometry): THREE.BufferGeo
     vertToTris[indexArr[t * 3 + 1] as number].push(t);
     vertToTris[indexArr[t * 3 + 2] as number].push(t);
   }
+
   const compOf = new Int32Array(triCount).fill(-1);
   const components: number[][] = [];
   const stack: number[] = [];
@@ -133,23 +134,38 @@ function keepLargestComponents(inputGeom: THREE.BufferGeometry): THREE.BufferGeo
       const t = stack.pop() as number;
       tris.push(t);
       for (const k of [0, 1, 2]) {
-        const vi = indexArr[t * 3 + k] as number;
-        for (const nt of vertToTris[vi]) {
+        for (const nt of vertToTris[indexArr[t * 3 + k] as number]) {
           if (compOf[nt] === -1) { compOf[nt] = compId; stack.push(nt); }
         }
       }
     }
     components.push(tris);
   }
+
   components.sort((a, b) => b.length - a.length);
-  const kept = components.slice(0, 1);
+  const largestTriCount = components[0]?.length ?? 0;
+
+  // Safety check: if the largest component is less than 10% of the original
+  // vertex count, the boolean probably ate the part — return input as-is
+  // so the upload step gets something visible rather than a sliver.
+  const minExpectedTris = Math.max(10, originalVertCount * 0.1);
+  if (largestTriCount < minExpectedTris) {
+    console.warn("[autofit] component cleanup: largest component too small, keeping full result", {
+      largestTriCount,
+      minExpectedTris,
+      totalTris: triCount,
+    });
+    welded.dispose();
+    return inputGeom;
+  }
+
   const posAttr = welded.attributes.position;
   const normAttr = welded.attributes.normal;
-  const keptTriCount = kept[0].length;
-  const positions = new Float32Array(keptTriCount * 9);
-  const normals = normAttr ? new Float32Array(keptTriCount * 9) : null;
+  const kept = components[0];
+  const positions = new Float32Array(kept.length * 9);
+  const normals = normAttr ? new Float32Array(kept.length * 9) : null;
   let w = 0;
-  for (const t of kept[0]) {
+  for (const t of kept) {
     for (let k = 0; k < 3; k++) {
       const vi = indexArr[t * 3 + k] as number;
       positions[w] = posAttr.getX(vi);
@@ -179,10 +195,10 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   if (!partMesh) throw new Error(`Autofit: no live scene object for placed_part_id=${input.placed_part_id}`);
   if (!carMesh) throw new Error("Autofit: no live car mesh registered in scene");
 
-  partMesh.updateWorldMatrix(true, true);
-  const partWorldToLocal = partMesh.matrixWorld.clone().invert();
   const partGeom = bakeLiveWorldGeometry(partMesh);
   const carGeom = bakeLiveWorldGeometry(carMesh);
+
+  const originalVertCount = partGeom.attributes.position.count;
 
   const partBrush = new Brush(partGeom);
   partBrush.updateMatrixWorld();
@@ -193,35 +209,11 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const result = evaluator.evaluate(partBrush, carBrush, SUBTRACTION) as Brush;
 
   const rawResultGeom = result.geometry.clone();
+  const cleanedGeom = keepLargestComponents(rawResultGeom, originalVertCount);
+  if (cleanedGeom !== rawResultGeom) rawResultGeom.dispose();
 
-  // Sanity check: if CSG returned nearly nothing (or vastly less than the
-  // input part), the car mesh is non-manifold and the inside/outside test
-  // flipped — fall back to a per-triangle inside-test trim that only drops
-  // part triangles whose centroid lies inside the car volume.
-  const inputTris = partGeom.attributes.position.count / 3;
-  const outputTris = rawResultGeom.attributes.position.count / 3;
-  const survivalRatio = inputTris > 0 ? outputTris / inputTris : 0;
-  // eslint-disable-next-line no-console
-  console.log("[autofit] CSG survival", { inputTris, outputTris, survivalRatio });
-
-  let trimmedGeom: THREE.BufferGeometry;
-  if (survivalRatio < 0.3) {
-    // eslint-disable-next-line no-console
-    console.warn("[autofit] CSG result too small — falling back to per-triangle inside-test trim");
-    rawResultGeom.dispose();
-    trimmedGeom = trimTrianglesInsideCar(partGeom, carGeom);
-  } else {
-    trimmedGeom = keepLargestComponents(rawResultGeom);
-    rawResultGeom.dispose();
-  }
-
-  const welded = mergeVertices(trimmedGeom, 1e-4);
-  if (welded !== trimmedGeom) trimmedGeom.dispose();
-  // The boolean is solved in world space, but the exported GLB must live in the
-  // placed-part's local frame so the existing DB transform stays authoritative.
-  // Otherwise the viewport has to zero the wrapper transform, making the part
-  // appear to jump back to the scene origin/pivot after autofit.
-  welded.applyMatrix4(partWorldToLocal);
+  const welded = mergeVertices(cleanedGeom, 1e-4);
+  if (welded !== cleanedGeom) cleanedGeom.dispose();
   welded.computeVertexNormals();
   welded.computeBoundingBox();
   welded.computeBoundingSphere();
@@ -235,62 +227,6 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   partGeom.dispose();
   carGeom.dispose();
   return blob;
-}
-
-/**
- * Per-triangle trim using BVH raycast parity. Drops part triangles whose
- * centroid lies inside the car volume; keeps everything else untouched.
- * Robust against non-manifold car meshes that break CSG SUBTRACTION.
- */
-function trimTrianglesInsideCar(
-  partGeom: THREE.BufferGeometry,
-  carGeom: THREE.BufferGeometry,
-): THREE.BufferGeometry {
-  const carMesh = new THREE.Mesh(carGeom);
-  carMesh.geometry.boundsTree = new MeshBVH(carGeom);
-
-  const pos = partGeom.attributes.position;
-  const triCount = pos.count / 3;
-
-  const ray = new THREE.Raycaster();
-  ray.firstHitOnly = false as unknown as boolean; // we want all hits for parity
-  const dir = new THREE.Vector3(1, 0.0001, 0.0001).normalize();
-
-  const a = new THREE.Vector3();
-  const b = new THREE.Vector3();
-  const c = new THREE.Vector3();
-  const centroid = new THREE.Vector3();
-
-  const keptPositions: number[] = [];
-  let dropped = 0;
-
-  for (let t = 0; t < triCount; t++) {
-    a.fromBufferAttribute(pos, t * 3);
-    b.fromBufferAttribute(pos, t * 3 + 1);
-    c.fromBufferAttribute(pos, t * 3 + 2);
-    centroid.copy(a).add(b).add(c).multiplyScalar(1 / 3);
-
-    ray.set(centroid, dir);
-    const hits = ray.intersectObject(carMesh, false);
-    // Odd number of hits along outward ray => point is inside the car volume.
-    const inside = hits.length % 2 === 1;
-
-    if (inside) {
-      dropped++;
-      continue;
-    }
-    keptPositions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-  }
-
-  // eslint-disable-next-line no-console
-  console.log("[autofit] per-triangle trim", { triCount, dropped, kept: triCount - dropped });
-
-  const out = new THREE.BufferGeometry();
-  out.setAttribute("position", new THREE.BufferAttribute(new Float32Array(keptPositions), 3));
-  out.computeVertexNormals();
-  out.computeBoundingBox();
-  out.computeBoundingSphere();
-  return out;
 }
 
 async function uploadResultGlb(input: AutofitPlacedPartInput, blob: Blob): Promise<string> {
@@ -320,7 +256,7 @@ export function useAutofitPlacedPart() {
         autofit_part_kind: input.part_kind,
         autofit_processing_ms: processing_ms,
         autofit_at: new Date().toISOString(),
-        autofit_frame: "local",
+        autofit_frame: "world",
         autofit_source: "client-bvh-csg",
       };
       const { error: dbErr } = await (supabase as any)
@@ -344,7 +280,7 @@ export function useAutofitPlacedPart() {
               autofit_part_kind: data.part_kind ?? vars.part_kind,
               autofit_processing_ms: data.processing_ms ?? null,
               autofit_at: new Date().toISOString(),
-              autofit_frame: "local",
+              autofit_frame: "world",
               autofit_source: "client-bvh-csg",
             },
           };
