@@ -89,6 +89,7 @@ import { DEFAULT_PAINT_FINISH, parsePaintFinish, type PaintFinish } from "@/lib/
 import { BuildStudioViewport, type CameraPreset, type TransformMode, type ShellTransform } from "@/components/build-studio/BuildStudioViewport";
 import { PartLibraryRail } from "@/components/build-studio/PartLibraryRail";
 import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
+import { ShellPropertiesPanel } from "@/components/build-studio/ShellPropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
 import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
 import { BackdropPicker } from "@/components/build-studio/BackdropPicker";
