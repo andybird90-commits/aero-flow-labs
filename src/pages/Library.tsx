@@ -82,6 +82,84 @@ export default function LibraryPage() {
   const [filter, setFilter] = useState<LibraryItemKind | "all">("all");
   const [publishing, setPublishing] = useState<LibraryItem | null>(null);
   const [sculpting, setSculpting] = useState<LibraryItem | null>(null);
+  const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const qc = useQueryClient();
+
+  const handleUploadFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !user) return;
+    const list = Array.from(files);
+    const valid = list.filter((f) => /\.(stl|glb|gltf)$/i.test(f.name));
+    const skipped = list.length - valid.length;
+    if (valid.length === 0) {
+      toast({
+        title: "No supported files",
+        description: "Upload .stl, .glb, or .gltf files.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setUploading({ done: 0, total: valid.length });
+    let ok = 0;
+    let failed = 0;
+    for (const file of valid) {
+      try {
+        const ts = Date.now();
+        const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-");
+        // Folder must start with the user's id — that's how the bucket RLS keys.
+        const path = `${user.id}/parts/${ts}-${safe}`;
+        const mime = inferMime(file.name);
+        const { error: upErr } = await supabase.storage
+          .from("library-uploads")
+          .upload(path, file, { contentType: mime, upsert: false });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from("library-uploads").getPublicUrl(path);
+        const publicUrl = pub?.publicUrl;
+        if (!publicUrl) throw new Error("Could not resolve public URL");
+
+        const titleBase = file.name.replace(/\.(stl|glb|gltf)$/i, "");
+        const { error: insErr } = await (supabase as any).from("library_items").insert({
+          user_id: user.id,
+          kind: "uploaded_part_mesh",
+          title: titleBase || "Uploaded part",
+          asset_url: publicUrl,
+          asset_mime: mime,
+          visibility: "private",
+          metadata: {
+            source: "user_upload",
+            original_filename: file.name,
+            size_bytes: file.size,
+          },
+        });
+        if (insErr) throw insErr;
+        ok++;
+      } catch (e: any) {
+        console.error("Upload failed for", file.name, e);
+        failed++;
+      } finally {
+        setUploading((prev) => prev ? { done: prev.done + 1, total: prev.total } : prev);
+      }
+    }
+    setUploading(null);
+    qc.invalidateQueries({ queryKey: ["library_items"] });
+    if (ok > 0) {
+      toast({
+        title: `Uploaded ${ok} part${ok === 1 ? "" : "s"}`,
+        description: failed
+          ? `${failed} failed${skipped ? `, ${skipped} skipped (unsupported)` : ""}.`
+          : skipped
+          ? `${skipped} skipped (unsupported file types).`
+          : "Available in your library.",
+      });
+    } else {
+      toast({
+        title: "Upload failed",
+        description: "None of the files could be uploaded.",
+        variant: "destructive",
+      });
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const filtered = useMemo(
     () => filter === "all" ? items : items.filter(i => i.kind === filter),
