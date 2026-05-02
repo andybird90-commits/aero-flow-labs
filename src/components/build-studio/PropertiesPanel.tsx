@@ -100,6 +100,49 @@ function VecRow({
   );
 }
 
+/**
+ * Apply a world-space 90° rotation around `axis` to the part's current Euler.
+ * We pre-multiply (worldQ * partQ) so the rotation is around the WORLD axis,
+ * not the part's local axis. This means "yaw" always spins the part around
+ * world-up regardless of how the part has been tilted or rolled.
+ */
+function rotate90Worldspace(rotation: Vec3, axis: "x" | "y" | "z", sign: 1 | -1): Vec3 {
+  const current = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(rotation.x, rotation.y, rotation.z, "XYZ"),
+  );
+  const axisV = axis === "x" ? new THREE.Vector3(1, 0, 0)
+              : axis === "y" ? new THREE.Vector3(0, 1, 0)
+              :                new THREE.Vector3(0, 0, 1);
+  const step = new THREE.Quaternion().setFromAxisAngle(axisV, sign * Math.PI / 2);
+  const next = step.multiply(current); // pre-multiply = world-space
+  const e = new THREE.Euler().setFromQuaternion(next, "XYZ");
+  return { x: e.x, y: e.y, z: e.z };
+}
+
+function RotButton({
+  label, axis, sign, icon: Icon, rotation, disabled, onChange,
+}: {
+  label: string;
+  axis: "x" | "y" | "z";
+  sign: 1 | -1;
+  icon: React.ComponentType<{ className?: string }>;
+  rotation: Vec3;
+  disabled?: boolean;
+  onChange: (r: Vec3) => void;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={disabled}
+      title={label}
+      onClick={() => onChange(rotate90Worldspace(rotation, axis, sign))}
+      className="h-7 px-1 text-[10px]"
+    >
+      <Icon className="h-3 w-3" />
+    </Button>
+  );
+
 export function PropertiesPanel({
   part, onPatch, onDuplicate, onDelete, onMirror,
   snapZones = [], onSnapToZone, onMirrorToZone,
