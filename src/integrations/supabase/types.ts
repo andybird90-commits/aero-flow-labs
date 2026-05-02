@@ -2305,6 +2305,7 @@ export type Database = {
         | "geometry_part_mesh"
         | "cad_part_mesh"
         | "generated_part_mesh"
+        | "uploaded_part_mesh"
       library_visibility: "private" | "public"
       marketplace_listing_status: "draft" | "active" | "paused"
       meshy_generation_status: "queued" | "running" | "complete" | "failed"
@@ -2546,6 +2547,7 @@ export const Constants = {
         "geometry_part_mesh",
         "cad_part_mesh",
         "generated_part_mesh",
+        "uploaded_part_mesh",
       ],
       library_visibility: ["private", "public"],
       marketplace_listing_status: ["draft", "active", "paused"],
