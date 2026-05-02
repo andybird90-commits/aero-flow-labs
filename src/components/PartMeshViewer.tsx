@@ -194,12 +194,15 @@ export function PartMeshViewer({
       cancelled = true;
       cleanup?.();
     };
-  }, [url, background, meshColor, autoRotate]);
+  }, [url, background, meshColor, autoRotate, visible]);
 
   return (
-    <div className={className} style={{ position: "relative" }}>
-      <div ref={mountRef} className="absolute inset-0" />
-      {loading && !error && (
+    <div ref={wrapRef} className={className} style={{ position: "relative" }}>
+      {visible && <div ref={mountRef} className="absolute inset-0" />}
+      {!visible && poster && (
+        <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      )}
+      {visible && loading && !error && (
         <div className="absolute inset-0 grid place-items-center text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
         </div>
