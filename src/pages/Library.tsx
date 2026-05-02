@@ -351,13 +351,12 @@ function ItemCard({
   return (
     <div className="group glass rounded-xl overflow-hidden flex flex-col">
       <div className="relative aspect-square bg-surface-0">
-        {item.thumbnail_url ? (
-          <img src={item.thumbnail_url} alt={item.title} className="absolute inset-0 h-full w-full object-cover" />
-        ) : (
-          <div className="absolute inset-0 grid place-items-center text-muted-foreground">
-            <ImageOff className="h-6 w-6" />
-          </div>
-        )}
+        <LiveMeshTile
+          meshUrl={item.asset_url}
+          meshMime={item.asset_mime}
+          thumbnailUrl={item.thumbnail_url}
+          alt={item.title}
+        />
         <div className="absolute top-2 left-2 flex gap-1">
           <Badge variant="outline" className={cn("bg-background/70 backdrop-blur", meta.tone)}>
             <Icon className="mr-1 h-3 w-3" />
