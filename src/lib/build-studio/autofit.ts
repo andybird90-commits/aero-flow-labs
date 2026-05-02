@@ -344,12 +344,23 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const scene = new THREE.Scene();
   scene.add(mesh);
 
+  // Capture the world-space bbox center BEFORE export so the viewport can
+  // reposition the wrapper group there (keeps the transform gizmo on the
+  // part instead of stranding it at world origin).
+  resultGeom.computeBoundingBox();
+  const bb = resultGeom.boundingBox!;
+  const center = {
+    x: (bb.min.x + bb.max.x) / 2,
+    y: (bb.min.y + bb.max.y) / 2,
+    z: (bb.min.z + bb.max.z) / 2,
+  };
+
   const blob = await exportGlb(scene);
 
   // Free CSG-side allocations.
   partGeom.dispose();
   carGeom.dispose();
-  return blob;
+  return { blob, center };
 }
 
 async function uploadResultGlb(input: AutofitPlacedPartInput, blob: Blob): Promise<string> {
