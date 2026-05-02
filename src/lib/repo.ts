@@ -1567,6 +1567,26 @@ export function useUploadLibraryPart() {
       const { data: pub } = supabase.storage.from("library-uploads").getPublicUrl(path);
       const publicUrl = pub.publicUrl;
 
+      // Render an off-screen thumbnail of the mesh so the library tile shows a
+      // real preview instead of a blank placeholder. Failure here is non-fatal.
+      let thumbnailUrl: string | null = null;
+      try {
+        const { renderMeshThumbnail } = await import("./library-thumbnail");
+        const thumbBlob = await renderMeshThumbnail(input.file, 512);
+        if (thumbBlob) {
+          const thumbPath = `${input.userId}/thumbs/${Date.now()}-${safeName.replace(/\.[^.]+$/, "")}.png`;
+          const { error: tErr } = await supabase.storage
+            .from("library-uploads")
+            .upload(thumbPath, thumbBlob, { contentType: "image/png", upsert: true });
+          if (!tErr) {
+            const { data: tpub } = supabase.storage.from("library-uploads").getPublicUrl(thumbPath);
+            thumbnailUrl = tpub.publicUrl;
+          }
+        }
+      } catch (e) {
+        console.warn("[useUploadLibraryPart] thumbnail generation failed", e);
+      }
+
       const { data, error } = await (supabase as any)
         .from("library_items")
         .insert({
@@ -1576,7 +1596,7 @@ export function useUploadLibraryPart() {
           description: input.description ?? null,
           asset_url: publicUrl,
           asset_mime: contentType,
-          thumbnail_url: null,
+          thumbnail_url: thumbnailUrl,
           visibility: "private" as LibraryVisibility,
           metadata: {
             source: "user_upload",
