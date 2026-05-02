@@ -69,6 +69,7 @@ function DeformScene({
   const pendingRef = useRef<{ geom: THREE.BufferGeometry; handles: DeformHandle[]; mat: THREE.Matrix4 } | null>(null);
   useEffect(() => {
     if (!originalGeom) return;
+    if (isDragging) return;
     pendingRef.current = { geom: originalGeom, handles, mat: meshWorldMatrix };
     if (rafRef.current != null) return;
     rafRef.current = requestAnimationFrame(() => {
@@ -87,7 +88,7 @@ function DeformScene({
         rafRef.current = null;
       }
     };
-  }, [originalGeom, handles, meshWorldMatrix]);
+  }, [originalGeom, handles, meshWorldMatrix, isDragging]);
 
   const getPixelToWorld = useCallback((handlePos: THREE.Vector3) => {
     const dist = camera.position.distanceTo(handlePos);
@@ -432,7 +433,11 @@ export function DeformDialog({ open, onOpenChange, libraryItem, userId, onSaved 
         <div className="flex-1 grid grid-cols-[1fr_280px] min-h-0">
           {/* 3D viewport */}
           <div className="relative bg-black">
-            <Canvas camera={{ position: [0.6, 0.5, 0.8], fov: 45 }}>
+            <Canvas
+              camera={{ position: [0.6, 0.5, 0.8], fov: 45 }}
+              dpr={[1, 1.5]}
+              gl={{ antialias: false, powerPreference: "high-performance" }}
+            >
               <DeformScene
                 originalGeom={originalGeom}
                 handles={handles}
