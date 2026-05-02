@@ -462,6 +462,107 @@ function PublishDialog({
   );
 }
 
+function UploadPartDialog({
+  open, onOpenChange, busy, onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  busy: boolean;
+  onSubmit: (input: { file: File; title: string; description: string }) => Promise<void>;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+
+  // Reset when dialog closes
+  useMemo(() => {
+    if (!open) {
+      setFile(null);
+      setTitle("");
+      setDesc("");
+      setDragOver(false);
+    }
+  }, [open]);
+
+  const acceptFile = (f: File | null | undefined) => {
+    if (!f) return;
+    const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!["stl", "obj", "glb", "gltf"].includes(ext)) return;
+    setFile(f);
+    if (!title) setTitle(f.name.replace(/\.[^.]+$/, ""));
+  };
+
+  const sizeMb = file ? (file.size / 1024 / 1024).toFixed(1) : null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Upload a part</DialogTitle>
+          <DialogDescription>
+            Add an STL, OBJ or GLB mesh to your library. It stays private until you list it on the Marketplace.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <label
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              acceptFile(e.dataTransfer.files?.[0]);
+            }}
+            className={cn(
+              "flex flex-col items-center justify-center gap-2 rounded-md border border-dashed px-4 py-8 cursor-pointer transition-colors",
+              dragOver ? "border-primary/60 bg-primary/5" : "border-border hover:border-primary/40",
+            )}
+          >
+            <Upload className="h-6 w-6 text-muted-foreground" />
+            <div className="text-sm">
+              {file ? (
+                <span className="font-medium">{file.name}</span>
+              ) : (
+                <>Drop a file or <span className="text-primary underline-offset-4 hover:underline">browse</span></>
+              )}
+            </div>
+            <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              {file ? `${sizeMb} MB` : "STL · OBJ · GLB · GLTF"}
+            </div>
+            <input
+              type="file"
+              accept=".stl,.obj,.glb,.gltf,model/stl,model/obj,model/gltf-binary"
+              className="hidden"
+              onChange={(e) => acceptFile(e.target.files?.[0])}
+            />
+          </label>
+
+          <div>
+            <Label htmlFor="up-title">Title</Label>
+            <Input id="up-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Custom front splitter v3" />
+          </div>
+          <div>
+            <Label htmlFor="up-desc">Description (optional)</Label>
+            <Textarea id="up-desc" value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
+          <Button
+            variant="hero"
+            disabled={!file || busy}
+            onClick={() => file && onSubmit({ file, title, description: desc })}
+          >
+            {busy ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Uploading…</> : <><Upload className="mr-1.5 h-3.5 w-3.5" /> Upload</>}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function EmptyLibrary() {
   return (
     <div className="glass rounded-xl p-12 text-center">
