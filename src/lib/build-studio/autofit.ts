@@ -163,6 +163,131 @@ function getEvaluator(): Evaluator {
 }
 
 /**
+ * Keep only the largest connected component of `geom` (by triangle count),
+ * plus any other components with >= `minRatio` of that triangle count.
+ * This drops floating splinters left behind by CSG without removing
+ * legitimate disjoint pieces (e.g. a multi-shell kit).
+ *
+ * Algorithm:
+ *   1. mergeVertices() to weld coincident verts so faces share indices.
+ *   2. Build adjacency: vertex -> triangles using it.
+ *   3. Flood-fill triangles into components via shared vertices.
+ *   4. Sort components by triangle count, keep those above threshold.
+ *   5. Rebuild a non-indexed BufferGeometry from kept triangles.
+ */
+function keepLargestComponents(
+  inputGeom: THREE.BufferGeometry,
+  minRatio = 0.05,
+): THREE.BufferGeometry {
+  // Weld so connectivity reflects topology, not duplicated verts at seams.
+  const welded = mergeVertices(inputGeom, 1e-5);
+  if (!welded.index) {
+    // mergeVertices should always produce an index; guard anyway.
+    return inputGeom;
+  }
+  const indexAttr = welded.index;
+  const indexArr = indexAttr.array as ArrayLike<number>;
+  const triCount = indexArr.length / 3;
+  const vertCount = welded.attributes.position.count;
+
+  // vertex -> list of triangle indices
+  const vertToTris: number[][] = new Array(vertCount);
+  for (let i = 0; i < vertCount; i++) vertToTris[i] = [];
+  for (let t = 0; t < triCount; t++) {
+    const a = indexArr[t * 3] as number;
+    const b = indexArr[t * 3 + 1] as number;
+    const c = indexArr[t * 3 + 2] as number;
+    vertToTris[a].push(t);
+    vertToTris[b].push(t);
+    vertToTris[c].push(t);
+  }
+
+  const compOf = new Int32Array(triCount).fill(-1);
+  const components: number[][] = [];
+  const stack: number[] = [];
+  for (let seed = 0; seed < triCount; seed++) {
+    if (compOf[seed] !== -1) continue;
+    const compId = components.length;
+    const tris: number[] = [];
+    stack.length = 0;
+    stack.push(seed);
+    compOf[seed] = compId;
+    while (stack.length > 0) {
+      const t = stack.pop() as number;
+      tris.push(t);
+      const a = indexArr[t * 3] as number;
+      const b = indexArr[t * 3 + 1] as number;
+      const c = indexArr[t * 3 + 2] as number;
+      const neigh = [vertToTris[a], vertToTris[b], vertToTris[c]];
+      for (const list of neigh) {
+        for (let i = 0; i < list.length; i++) {
+          const nt = list[i];
+          if (compOf[nt] === -1) {
+            compOf[nt] = compId;
+            stack.push(nt);
+          }
+        }
+      }
+    }
+    components.push(tris);
+  }
+
+  components.sort((a, b) => b.length - a.length);
+  const largest = components[0]?.length ?? 0;
+  if (largest === 0) return inputGeom;
+  const threshold = Math.max(1, Math.floor(largest * minRatio));
+  const kept = components.filter((c) => c.length >= threshold);
+
+  const droppedTris = triCount - kept.reduce((s, c) => s + c.length, 0);
+  // eslint-disable-next-line no-console
+  console.log("[autofit] component cleanup", {
+    components: components.length,
+    kept: kept.length,
+    largestTris: largest,
+    threshold,
+    droppedTris,
+    totalTris: triCount,
+  });
+
+  if (kept.length === components.length && components.length === 1) {
+    // Nothing to drop — return welded geom as-is (still cheaper downstream).
+    return welded;
+  }
+
+  // Rebuild as non-indexed for the exporter / downstream simplicity.
+  const posAttr = welded.attributes.position;
+  const normAttr = welded.attributes.normal;
+  const keptTriCount = kept.reduce((s, c) => s + c.length, 0);
+  const positions = new Float32Array(keptTriCount * 9);
+  const normals = normAttr ? new Float32Array(keptTriCount * 9) : null;
+  let w = 0;
+  for (const comp of kept) {
+    for (const t of comp) {
+      for (let k = 0; k < 3; k++) {
+        const vi = indexArr[t * 3 + k] as number;
+        positions[w] = posAttr.getX(vi);
+        positions[w + 1] = posAttr.getY(vi);
+        positions[w + 2] = posAttr.getZ(vi);
+        if (normals && normAttr) {
+          normals[w] = normAttr.getX(vi);
+          normals[w + 1] = normAttr.getY(vi);
+          normals[w + 2] = normAttr.getZ(vi);
+        }
+        w += 3;
+      }
+    }
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  if (normals) out.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  else out.computeVertexNormals();
+  out.computeBoundingBox();
+  out.computeBoundingSphere();
+  welded.dispose();
+  return out;
+}
+
+/**
  * Run the part − car boolean entirely client-side.
  * Returns a binary GLB blob whose vertices are in world coordinates.
  */
