@@ -52,20 +52,33 @@ interface Props {
 
 export function PartLibraryRail({ items, isLoading, onAdd, onAddBlank }: Props) {
   const meshes = (items ?? []).filter((i) => MESH_KINDS.has(i.kind) && hasUsableMesh(i));
+  const [specOpen, setSpecOpen] = useState(false);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <div>
+      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div className="min-w-0">
           <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             Part library
           </div>
           <div className="text-sm font-medium">{meshes.length} parts</div>
         </div>
-        <Button size="sm" variant="outline" onClick={onAddBlank} className="h-7 gap-1 text-xs">
-          <Plus className="h-3 w-3" /> Blank
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            size="sm"
+            onClick={() => setSpecOpen(true)}
+            className="h-7 gap-1 text-xs"
+            title="Generate a 3D part from a description"
+          >
+            <Sparkles className="h-3 w-3" /> Spec
+          </Button>
+          <Button size="sm" variant="outline" onClick={onAddBlank} className="h-7 gap-1 text-xs">
+            <Plus className="h-3 w-3" /> Blank
+          </Button>
+        </div>
       </div>
+
+      <SpecPartDialog open={specOpen} onOpenChange={setSpecOpen} />
 
       <ScrollArea className="flex-1 px-2 py-2">
         {isLoading ? (
