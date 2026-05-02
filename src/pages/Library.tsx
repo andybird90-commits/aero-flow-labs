@@ -213,16 +213,12 @@ export default function LibraryPage() {
       <UploadPartDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
-        busy={upload.isPending}
-        onSubmit={async ({ file, title, description }) => {
-          if (!user) return;
-          try {
-            await upload.mutateAsync({ userId: user.id, file, title, description });
-            toast({ title: "Part uploaded", description: title || file.name });
-            setUploadOpen(false);
-          } catch (e: any) {
-            toast({ title: "Upload failed", description: String(e.message ?? e), variant: "destructive" });
-          }
+        uploadOne={async ({ file, title, description }) => {
+          if (!user) throw new Error("Not signed in");
+          await upload.mutateAsync({ userId: user.id, file, title, description });
+        }}
+        onAllDone={(count) => {
+          if (count > 0) toast({ title: `${count} part${count === 1 ? "" : "s"} uploaded` });
         }}
       />
     </AppLayout>
