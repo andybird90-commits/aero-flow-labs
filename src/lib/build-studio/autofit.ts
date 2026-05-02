@@ -287,6 +287,91 @@ function keepLargestComponents(
 }
 
 /**
+ * Sliver / degenerate-triangle cleanup.
+ *
+ * After CSG, the cut boundary often has a fringe of needle-thin triangles
+ * (where the part skin runs nearly coplanar to the car body). They render
+ * as a jagged "fur" along the trim line.
+ *
+ * Approach:
+ *   1. mergeVertices(epsilon) — collapse vertices closer than `epsilon`,
+ *      which welds together both ends of every sliver edge.
+ *   2. Walk the index buffer; drop any triangle whose two indices are
+ *      equal (collapsed) or whose area is below `epsilon^2 * 0.5`.
+ *   3. Recompute smooth vertex normals across the surviving topology.
+ */
+function cleanSlivers(
+  inputGeom: THREE.BufferGeometry,
+  epsilon: number,
+): THREE.BufferGeometry {
+  const welded = mergeVertices(inputGeom, epsilon);
+  if (!welded.index) {
+    welded.computeVertexNormals();
+    return welded;
+  }
+  const indexArr = welded.index.array as ArrayLike<number>;
+  const posAttr = welded.attributes.position;
+  const triCount = indexArr.length / 3;
+  const minArea = epsilon * epsilon * 0.5;
+
+  const ax = new THREE.Vector3();
+  const bx = new THREE.Vector3();
+  const cx = new THREE.Vector3();
+  const e1 = new THREE.Vector3();
+  const e2 = new THREE.Vector3();
+  const cross = new THREE.Vector3();
+
+  const kept: number[] = [];
+  let dropCollapsed = 0;
+  let dropDegenerate = 0;
+  for (let t = 0; t < triCount; t++) {
+    const a = indexArr[t * 3] as number;
+    const b = indexArr[t * 3 + 1] as number;
+    const c = indexArr[t * 3 + 2] as number;
+    if (a === b || b === c || a === c) {
+      dropCollapsed++;
+      continue;
+    }
+    ax.fromBufferAttribute(posAttr as THREE.BufferAttribute, a);
+    bx.fromBufferAttribute(posAttr as THREE.BufferAttribute, b);
+    cx.fromBufferAttribute(posAttr as THREE.BufferAttribute, c);
+    e1.subVectors(bx, ax);
+    e2.subVectors(cx, ax);
+    cross.crossVectors(e1, e2);
+    const area = cross.length() * 0.5;
+    if (area < minArea) {
+      dropDegenerate++;
+      continue;
+    }
+    kept.push(a, b, c);
+  }
+
+  // eslint-disable-next-line no-console
+  console.log("[autofit] sliver cleanup", {
+    epsilonM: epsilon,
+    triCount,
+    keptTris: kept.length / 3,
+    dropCollapsed,
+    dropDegenerate,
+  });
+
+  if (kept.length === indexArr.length) {
+    welded.computeVertexNormals();
+    return welded;
+  }
+
+  const Ctor = posAttr.count > 65535 ? Uint32Array : Uint16Array;
+  const newIndex = new Ctor(kept.length);
+  for (let i = 0; i < kept.length; i++) newIndex[i] = kept[i];
+
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", posAttr.clone());
+  out.setIndex(new THREE.BufferAttribute(newIndex, 1));
+  out.computeVertexNormals();
+  return out;
+}
+
+/**
  * Run the part − car boolean entirely client-side.
  * Returns a binary GLB blob whose vertices are in world coordinates.
  */
