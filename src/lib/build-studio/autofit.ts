@@ -179,6 +179,8 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   if (!partMesh) throw new Error(`Autofit: no live scene object for placed_part_id=${input.placed_part_id}`);
   if (!carMesh) throw new Error("Autofit: no live car mesh registered in scene");
 
+  partMesh.updateWorldMatrix(true, true);
+  const partWorldToLocal = partMesh.matrixWorld.clone().invert();
   const partGeom = bakeLiveWorldGeometry(partMesh);
   const carGeom = bakeLiveWorldGeometry(carMesh);
 
@@ -215,6 +217,11 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
 
   const welded = mergeVertices(trimmedGeom, 1e-4);
   if (welded !== trimmedGeom) trimmedGeom.dispose();
+  // The boolean is solved in world space, but the exported GLB must live in the
+  // placed-part's local frame so the existing DB transform stays authoritative.
+  // Otherwise the viewport has to zero the wrapper transform, making the part
+  // appear to jump back to the scene origin/pivot after autofit.
+  welded.applyMatrix4(partWorldToLocal);
   welded.computeVertexNormals();
   welded.computeBoundingBox();
   welded.computeBoundingSphere();
@@ -313,7 +320,7 @@ export function useAutofitPlacedPart() {
         autofit_part_kind: input.part_kind,
         autofit_processing_ms: processing_ms,
         autofit_at: new Date().toISOString(),
-        autofit_frame: "world",
+        autofit_frame: "local",
         autofit_source: "client-bvh-csg",
       };
       const { error: dbErr } = await (supabase as any)
@@ -337,7 +344,7 @@ export function useAutofitPlacedPart() {
               autofit_part_kind: data.part_kind ?? vars.part_kind,
               autofit_processing_ms: data.processing_ms ?? null,
               autofit_at: new Date().toISOString(),
-              autofit_frame: "world",
+              autofit_frame: "local",
               autofit_source: "client-bvh-csg",
             },
           };
