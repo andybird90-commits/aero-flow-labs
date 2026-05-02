@@ -173,7 +173,7 @@ function DeformScene({
       <ambientLight intensity={0.6} />
       <directionalLight position={[3, 4, 2]} intensity={1.0} />
       <Environment preset="studio" />
-      <OrbitControls makeDefault enabled={!draggingRef.current} />
+      <OrbitControls makeDefault enabled={!isDragging} />
     </>
   );
 }
