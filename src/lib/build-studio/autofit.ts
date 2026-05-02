@@ -133,23 +133,11 @@ function firstVertices(root: THREE.Object3D, n = 3): Array<{ x: number; y: numbe
   return out;
 }
 
-async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promise<Blob> {
-  const partRoot = await loadGlb(partUrl);
-
-  // Build the placed-part world matrix from its TRS (mirrored = flip Z).
-  const placedMatrix = new THREE.Matrix4().compose(
-    new THREE.Vector3(part.position.x, part.position.y, part.position.z),
-    new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(part.rotation.x, part.rotation.y, part.rotation.z),
-    ),
-    new THREE.Vector3(
-      part.scale.x,
-      part.scale.y,
-      part.mirrored ? -part.scale.z : part.scale.z,
-    ),
-  );
-
-  const baked = bakeWorldTransformIntoGeometry(partRoot, placedMatrix);
+async function buildPositionedPartBlob(
+  partMesh: THREE.Object3D,
+  part: PlacedPart,
+): Promise<Blob> {
+  const baked = bakeLiveWorldGeometry(partMesh);
 
   // Diagnostic: bbox of the baked root. Vertices are now in world space, so
   // bounds should match where the part visually sits in the viewport.
@@ -159,7 +147,7 @@ async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promi
   bbox.getSize(size);
   bbox.getCenter(center);
   // eslint-disable-next-line no-console
-  console.log("[autofit] exporting part GLB — baked world bbox", {
+  console.log("[autofit] exporting part GLB — baked world bbox (live mesh)", {
     placed_part_id: part.id,
     transform: {
       position: part.position,
@@ -167,6 +155,7 @@ async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promi
       scale: part.scale,
       mirrored: part.mirrored,
     },
+    liveMatrixWorld: partMesh.matrixWorld.toArray(),
     bbox: {
       min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
       max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
@@ -179,18 +168,15 @@ async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promi
   return exportGlb(baked);
 }
 
-async function buildCarBlob(carUrl: string): Promise<Blob> {
-  const carRoot = await loadGlb(carUrl);
-  // Car GLB is already authored in world frame, but bake identity anyway so
-  // any nested transforms inside the GLB are flattened into the vertices —
-  // this guarantees the worker sees identical coordinates to the viewport.
-  const baked = bakeWorldTransformIntoGeometry(carRoot, new THREE.Matrix4());
+async function buildCarBlob(carMesh: THREE.Object3D): Promise<Blob> {
+  const baked = bakeLiveWorldGeometry(carMesh);
 
   const bbox = new THREE.Box3().setFromObject(baked);
   const size = new THREE.Vector3();
   bbox.getSize(size);
   // eslint-disable-next-line no-console
-  console.log("[autofit] exporting car GLB — baked world bbox", {
+  console.log("[autofit] exporting car GLB — baked world bbox (live mesh)", {
+    liveMatrixWorld: carMesh.matrixWorld.toArray(),
     bbox: {
       min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
       max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
@@ -206,10 +192,23 @@ export function useAutofitPlacedPart() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: AutofitPlacedPartInput): Promise<AutofitPlacedPartResult> => {
-      // 1. Build car + part GLB blobs client-side.
+      // Pull the *live* scene objects so we capture the exact world transform
+      // currently in the viewport — including any unsaved drag offsets.
+      const partMesh = getPlacedPartObject(input.placed_part_id);
+      const carMesh = getCarObject();
+      if (!partMesh) {
+        throw new Error(
+          `Autofit: no live scene object registered for placed_part_id=${input.placed_part_id}`,
+        );
+      }
+      if (!carMesh) {
+        throw new Error("Autofit: no live car mesh registered in the scene");
+      }
+
+      // 1. Build car + part GLB blobs client-side from the live scene nodes.
       const [carBlob, partBlob] = await Promise.all([
-        buildCarBlob(input.car_url),
-        buildPositionedPartBlob(input.part_url, input.part),
+        buildCarBlob(carMesh),
+        buildPositionedPartBlob(partMesh, input.part),
       ]);
 
       // 2. Send to edge function as multipart/form-data.
