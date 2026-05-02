@@ -762,11 +762,16 @@ function PlacedPartGroup({
 
   if (part.hidden) return null;
 
-  // Autofit results bake world-space vertices into the returned GLB, so the
-  // wrapper group must be at identity — applying the placed TRS again would
-  // double-transform the mesh. Non-autofit parts use their stored TRS.
-  const hasAutofit = !!(part.metadata as Record<string, unknown> | null)?.autofit_glb_url;
-  const position = hasAutofit ? { x: 0, y: 0, z: 0 } : part.position;
+  // Autofit results bake world-space vertices into the returned GLB. To keep
+  // the transform gizmo on the part (instead of stranded at world origin) we
+  // place the wrapper group at the autofit bbox center and let PartMesh shift
+  // the loaded geometry by -center so the visual position is preserved.
+  const meta = (part.metadata as Record<string, unknown> | null) ?? {};
+  const hasAutofit = !!meta.autofit_glb_url;
+  const autofitCenter = (meta.autofit_center as { x: number; y: number; z: number } | undefined) ?? null;
+  const position = hasAutofit
+    ? (autofitCenter ?? { x: 0, y: 0, z: 0 })
+    : part.position;
   const rotation = hasAutofit ? { x: 0, y: 0, z: 0 } : part.rotation;
   const scale = hasAutofit ? { x: 1, y: 1, z: 1 } : part.scale;
 
