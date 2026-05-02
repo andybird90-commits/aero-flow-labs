@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Store, Download, ImageOff, Image as ImageIcon, Layers, Wrench,
-  Search, ShoppingCart, Tag, Beaker, Wand2, Upload,
+  Search, ShoppingCart, Tag, Beaker, Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "./Library";
@@ -31,7 +31,6 @@ const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: strin
   prototype_part_mesh: { label: "Prototype",   icon: Beaker,    tone: "text-fuchsia-400" },
   geometry_part_mesh:  { label: "Fitted part", icon: Wand2,     tone: "text-violet-400"  },
   cad_part_mesh:       { label: "CAD part",    icon: Wrench,    tone: "text-sky-400"     },
-  uploaded_part_mesh:  { label: "Uploaded",    icon: Upload,    tone: "text-blue-400"    },
 };
 
 const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [

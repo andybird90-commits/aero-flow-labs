@@ -81,7 +81,6 @@ import { useBodySkins, useSignedBodySkinUrl, type BodySkin } from "@/lib/body-sk
 import { useShellAlignment, useUpsertShellAlignment, type LockedHardpointPair } from "@/lib/build-studio/shell-alignments";
 import { useCarHardpoints } from "@/lib/build-studio/hardpoints";
 import { ShellFitPanel } from "@/components/build-studio/ShellFitPanel";
-import { BodySwapButton } from "@/components/build-studio/BodySwapButton";
 // BakeBodyKitButton retired — autofit is now a per-placed-part action in PropertiesPanel.
 import type * as THREE from "three";
 import { DEFAULT_PAINT_FINISH, parsePaintFinish, type PaintFinish } from "@/lib/build-studio/paint-finish";
@@ -89,7 +88,6 @@ import { DEFAULT_PAINT_FINISH, parsePaintFinish, type PaintFinish } from "@/lib/
 import { BuildStudioViewport, type CameraPreset, type TransformMode, type ShellTransform } from "@/components/build-studio/BuildStudioViewport";
 import { PartLibraryRail } from "@/components/build-studio/PartLibraryRail";
 import { PropertiesPanel } from "@/components/build-studio/PropertiesPanel";
-import { ShellPropertiesPanel } from "@/components/build-studio/ShellPropertiesPanel";
 import { PlacedPartsStrip } from "@/components/build-studio/PlacedPartsStrip";
 import { PaintStudioPopover } from "@/components/build-studio/PaintStudioPopover";
 import { BackdropPicker } from "@/components/build-studio/BackdropPicker";
@@ -947,20 +945,6 @@ export default function BuildStudio() {
                   onStretchChange={handleStretchChange}
                 />
 
-                <BodySwapButton
-                  activeSkin={activeSkin}
-                  userId={user?.id ?? null}
-                  donorCarTemplateId={carTemplateId}
-                  donorCarLabel={(() => {
-                    const tpl = templates.find((t) => t.id === carTemplateId);
-                    return tpl ? `${tpl.make} ${tpl.model}` : null;
-                  })()}
-                  onSwapComplete={(newSkinId) => {
-                    setShellSkinId(newSkinId);
-                    setShellEditMode(false);
-                  }}
-                />
-
                 {/* Autofit moved to PropertiesPanel — per placed-part action. */}
 
 
@@ -1087,29 +1071,20 @@ export default function BuildStudio() {
                       />
                     </div>
                     <div className="min-h-0 flex-1 overflow-hidden">
-                      {!selected && activeSkin ? (
-                        <ShellPropertiesPanel
-                          activeSkin={activeSkin}
-                          transform={shellTransform}
-                          onCommit={handleShellCommit}
-                          onSelectSkin={(id) => setShellSkinId(id)}
-                        />
-                      ) : (
-                        <PropertiesPanel
-                          part={selected}
-                          onPatch={handlePatch}
-                          onDuplicate={handleDuplicate}
-                          onDelete={handleDelete}
-                          onMirror={handleMirror}
-                          snapZones={snapZones}
-                          onSnapToZone={handleSnapToZone}
-                          onMirrorToZone={handleMirrorToZone}
-                          selectedLibraryItem={selectedLibraryItem}
-                          baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
-                          userId={user?.id ?? null}
-                          onLiveFitBaked={handleLiveFitBaked}
-                        />
-                      )}
+                      <PropertiesPanel
+                        part={selected}
+                        onPatch={handlePatch}
+                        onDuplicate={handleDuplicate}
+                        onDelete={handleDelete}
+                        onMirror={handleMirror}
+                        snapZones={snapZones}
+                        onSnapToZone={handleSnapToZone}
+                        onMirrorToZone={handleMirrorToZone}
+                        selectedLibraryItem={selectedLibraryItem}
+                        baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
+                        userId={user?.id ?? null}
+                        onLiveFitBaked={handleLiveFitBaked}
+                      />
                     </div>
                   </aside>
                 )}
@@ -1156,29 +1131,20 @@ export default function BuildStudio() {
                         />
                       </div>
                       <div className="min-h-0 flex-1 overflow-auto">
-                        {!selected && activeSkin ? (
-                          <ShellPropertiesPanel
-                            activeSkin={activeSkin}
-                            transform={shellTransform}
-                            onCommit={handleShellCommit}
-                            onSelectSkin={(id) => setShellSkinId(id)}
-                          />
-                        ) : (
-                          <PropertiesPanel
-                            part={selected}
-                            onPatch={handlePatch}
-                            onDuplicate={handleDuplicate}
-                            onDelete={handleDelete}
-                            onMirror={handleMirror}
-                            snapZones={snapZones}
-                            onSnapToZone={handleSnapToZone}
-                            onMirrorToZone={handleMirrorToZone}
-                            selectedLibraryItem={selectedLibraryItem}
-                            baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
-                            userId={user?.id ?? null}
-                            onLiveFitBaked={handleLiveFitBaked}
-                          />
-                        )}
+                        <PropertiesPanel
+                          part={selected}
+                          onPatch={handlePatch}
+                          onDuplicate={handleDuplicate}
+                          onDelete={handleDelete}
+                          onMirror={handleMirror}
+                          snapZones={snapZones}
+                          onSnapToZone={handleSnapToZone}
+                          onMirrorToZone={handleMirrorToZone}
+                          selectedLibraryItem={selectedLibraryItem}
+                          baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
+                          userId={user?.id ?? null}
+                          onLiveFitBaked={handleLiveFitBaked}
+                        />
                       </div>
                     </SheetContent>
                   </Sheet>
