@@ -19,6 +19,8 @@ interface Props {
   meshColor?: number;
   /** Auto-rotate the model. Default true. */
   autoRotate?: boolean;
+  /** Optional poster image shown until the viewer scrolls into view. */
+  poster?: string | null;
 }
 
 export function PartMeshViewer({
@@ -27,16 +29,37 @@ export function PartMeshViewer({
   background = 0x0b0d10,
   meshColor = 0xb8c2cc,
   autoRotate = true,
+  poster = null,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [visible, setVisible] = useState(false);
+
+  // Lazy-mount: only spin up a WebGL context when the card scrolls near view.
+  // Mobile browsers cap concurrent WebGL contexts (~8) — without this, large
+  // libraries blow the limit and every card renders blank.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") { setVisible(true); return; }
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) { setVisible(true); io.disconnect(); break; }
+      }
+    }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
+    if (!visible) return;
     let cancelled = false;
     let cleanup: (() => void) | null = null;
     setError(null);
     setLoading(true);
+
 
     const init = (mount: HTMLDivElement, w: number, h: number) => {
       const scene = new THREE.Scene();
