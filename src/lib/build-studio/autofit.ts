@@ -319,11 +319,17 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const evaluator = getEvaluator();
   const result = evaluator.evaluate(partBrush, carBrush, SUBTRACTION) as Brush;
 
-  const resultGeom = result.geometry.clone();
+  const rawResultGeom = result.geometry.clone();
+  rawResultGeom.computeBoundingBox();
+  logBbox("[autofit] CSG raw result (world)", rawResultGeom);
+
+  // Strip floating splinters left by the boolean.
+  const resultGeom = keepLargestComponents(rawResultGeom, 0.05);
+  rawResultGeom.dispose();
   resultGeom.computeVertexNormals();
   resultGeom.computeBoundingBox();
   resultGeom.computeBoundingSphere();
-  logBbox("[autofit] CSG result (world)", resultGeom);
+  logBbox("[autofit] CSG cleaned result (world)", resultGeom);
 
   // Wrap in a fresh Mesh + Scene for the exporter — vertices already encode
   // world position, so identity TRS is correct.
