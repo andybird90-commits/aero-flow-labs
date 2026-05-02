@@ -55,6 +55,7 @@ export interface AutofitPlacedPartResult {
   result_url: string;
   part_kind?: string;
   processing_ms: number | null;
+  center?: { x: number; y: number; z: number };
 }
 
 /**
