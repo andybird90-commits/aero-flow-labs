@@ -64,11 +64,13 @@ export default function LibraryPage() {
   const del = useDeleteLibraryItem();
   const publish = usePublishListing();
   const unpublish = useUnpublishListing();
+  const upload = useUploadLibraryPart();
   const { toast } = useToast();
 
   const [filter, setFilter] = useState<LibraryItemKind | "all">("all");
   const [publishing, setPublishing] = useState<LibraryItem | null>(null);
   const [sculpting, setSculpting] = useState<LibraryItem | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const filtered = useMemo(
     () => filter === "all" ? items : items.filter(i => i.kind === filter),
