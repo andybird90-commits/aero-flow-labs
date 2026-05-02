@@ -762,11 +762,18 @@ function PlacedPartGroup({
 
   if (part.hidden) return null;
 
-  // Autofit results bake world-space vertices into the returned GLB. The
-  // wrapper still uses the user's normal part.position/rotation/scale so the
-  // gizmo stays in sync with the DB after drags. PartMesh shifts the inner
-  // mesh by -autofit_center so the part lands at the dragged location
-  // instead of teleporting to autofit_center on every commit.
+  // Autofit results bake world-space vertices into the returned GLB. To
+  // keep the transform gizmo on the part (instead of stranded at world
+  // origin), the wrapper is offset to the baked world-space center, and
+  // PartMesh shifts the inner mesh by -autofit_center to cancel that out
+  // visually. part.position then represents user drag offsets relative to
+  // the autofit center, exactly like a normal placed part.
+  const autofitCenter = (part.metadata as Record<string, unknown> | null)?.autofit_center as
+    | { x: number; y: number; z: number }
+    | undefined;
+  const cx = autofitCenter?.x ?? 0;
+  const cy = autofitCenter?.y ?? 0;
+  const cz = autofitCenter?.z ?? 0;
   const position = part.position;
   const rotation = part.rotation;
   const scale = part.scale;
@@ -775,7 +782,7 @@ function PlacedPartGroup({
     <group
       ref={groupRef}
       name={`placed-${part.id}`}
-      position={[position.x, position.y, position.z]}
+      position={[position.x + cx, position.y + cy, position.z + cz]}
       rotation={[rotation.x, rotation.y, rotation.z]}
       scale={[scale.x, scale.y, scale.z]}
       onClick={(e: ThreeEvent<MouseEvent>) => {
