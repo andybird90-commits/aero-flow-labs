@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2 } from "lucide-react";
+import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2, RotateCcw, Crosshair } from "lucide-react";
 import { useState } from "react";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import {
@@ -94,6 +94,197 @@ function VecRow({
         <NumField label="Z" value={value.z} step={step} disabled={disabled}
           onChange={(z) => onChange({ ...value, z })} />
       </div>
+    </div>
+  );
+}
+
+/* ─── Rotation editor ───
+ * Displays + edits rotation in degrees (most users think in degrees, not
+ * radians). Includes:
+ *   • Per-axis nudges: ±1°, ±5°, ±90°
+ *   • Quick presets: 0°, 90°, 180°, -90°
+ *   • "Snap all to nearest 90°" — kills off the tiny misalignments left
+ *     behind by drag-rotating with the gizmo.
+ * The persisted value stays in radians so nothing else has to change.
+ */
+const RAD = Math.PI / 180;
+const DEG = 180 / Math.PI;
+const SNAP_DEG_PRESETS = [0, 45, 90, 135, 180, -135, -90, -45];
+
+function snapTo(deg: number, step: number): number {
+  return Math.round(deg / step) * step;
+}
+
+function RotationAxisRow({
+  axis, valueRad, disabled, onChange,
+}: {
+  axis: "x" | "y" | "z";
+  valueRad: number;
+  disabled?: boolean;
+  onChange: (newRad: number) => void;
+}) {
+  const deg = valueRad * DEG;
+  // Normalise display to (-180, 180] so values stay readable after many nudges.
+  const normalisedDeg = (((deg + 180) % 360) + 360) % 360 - 180;
+
+  const setDeg = (d: number) => onChange(d * RAD);
+  const nudge = (d: number) => setDeg(normalisedDeg + d);
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <Label className="text-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          {axis.toUpperCase()}
+        </Label>
+        <div className="flex items-center gap-0.5">
+          <Button
+            type="button" size="sm" variant="ghost" disabled={disabled}
+            className="h-5 px-1 text-[10px] font-mono text-muted-foreground hover:text-foreground"
+            onClick={() => nudge(-90)} title="−90°"
+          >−90</Button>
+          <Button
+            type="button" size="sm" variant="ghost" disabled={disabled}
+            className="h-5 px-1 text-[10px] font-mono text-muted-foreground hover:text-foreground"
+            onClick={() => nudge(-5)} title="−5°"
+          >−5</Button>
+          <Button
+            type="button" size="sm" variant="ghost" disabled={disabled}
+            className="h-5 px-1 text-[10px] font-mono text-muted-foreground hover:text-foreground"
+            onClick={() => nudge(-1)} title="−1°"
+          >−1</Button>
+          <Button
+            type="button" size="sm" variant="ghost" disabled={disabled}
+            className="h-5 px-1 text-[10px] font-mono text-muted-foreground hover:text-foreground"
+            onClick={() => nudge(1)} title="+1°"
+          >+1</Button>
+          <Button
+            type="button" size="sm" variant="ghost" disabled={disabled}
+            className="h-5 px-1 text-[10px] font-mono text-muted-foreground hover:text-foreground"
+            onClick={() => nudge(5)} title="+5°"
+          >+5</Button>
+          <Button
+            type="button" size="sm" variant="ghost" disabled={disabled}
+            className="h-5 px-1 text-[10px] font-mono text-muted-foreground hover:text-foreground"
+            onClick={() => nudge(90)} title="+90°"
+          >+90</Button>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <Input
+          type="number"
+          step={0.1}
+          value={Number.isFinite(deg) ? deg.toFixed(2) : "0"}
+          disabled={disabled}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            if (Number.isFinite(n)) setDeg(n);
+          }}
+          onBlur={(e) => {
+            // On blur, snap to nearest 0.01° to clean up gizmo-drift residue.
+            const n = Number(e.target.value);
+            if (Number.isFinite(n)) setDeg(Math.round(n * 100) / 100);
+          }}
+          className="h-7 flex-1 text-xs font-mono tabular-nums"
+        />
+        <span className="text-mono text-[10px] text-muted-foreground/60">°</span>
+        <div className="flex items-center gap-0.5">
+          {SNAP_DEG_PRESETS.map((p) => (
+            <Button
+              key={p}
+              type="button"
+              size="sm"
+              variant={Math.abs(normalisedDeg - p) < 0.01 ? "default" : "outline"}
+              disabled={disabled}
+              className="h-6 w-7 px-0 text-[9px] font-mono tabular-nums"
+              onClick={() => setDeg(p)}
+              title={`Set to ${p}°`}
+            >
+              {p}
+            </Button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RotationEditor({
+  value, disabled, onChange,
+}: {
+  value: Vec3;
+  disabled?: boolean;
+  onChange: (v: Vec3) => void;
+}) {
+  const snapAllTo90 = () => {
+    onChange({
+      x: snapTo(value.x * DEG, 90) * RAD,
+      y: snapTo(value.y * DEG, 90) * RAD,
+      z: snapTo(value.z * DEG, 90) * RAD,
+    });
+  };
+  const snapAllTo45 = () => {
+    onChange({
+      x: snapTo(value.x * DEG, 45) * RAD,
+      y: snapTo(value.y * DEG, 45) * RAD,
+      z: snapTo(value.z * DEG, 45) * RAD,
+    });
+  };
+  const snapAllTo1 = () => {
+    onChange({
+      x: snapTo(value.x * DEG, 1) * RAD,
+      y: snapTo(value.y * DEG, 1) * RAD,
+      z: snapTo(value.z * DEG, 1) * RAD,
+    });
+  };
+  const reset = () => onChange({ x: 0, y: 0, z: 0 });
+
+  return (
+    <div className="space-y-2 rounded-md border border-border/60 bg-surface-0/40 p-2">
+      <div className="flex items-center justify-between">
+        <div className="text-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          Rotation (°)
+        </div>
+        <div className="flex items-center gap-0.5">
+          <Button
+            type="button" size="sm" variant="outline" disabled={disabled}
+            className="h-6 px-1.5 text-[10px]"
+            onClick={snapAllTo1}
+            title="Round all axes to nearest 1°"
+          >
+            <Crosshair className="mr-0.5 h-2.5 w-2.5" />1°
+          </Button>
+          <Button
+            type="button" size="sm" variant="outline" disabled={disabled}
+            className="h-6 px-1.5 text-[10px]"
+            onClick={snapAllTo45}
+            title="Snap all axes to nearest 45°"
+          >
+            45°
+          </Button>
+          <Button
+            type="button" size="sm" variant="outline" disabled={disabled}
+            className="h-6 px-1.5 text-[10px]"
+            onClick={snapAllTo90}
+            title="Snap all axes to nearest 90° — kills tiny misalignments"
+          >
+            90°
+          </Button>
+          <Button
+            type="button" size="sm" variant="ghost" disabled={disabled}
+            className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+            onClick={reset}
+            title="Reset to 0,0,0"
+          >
+            <RotateCcw className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+      <RotationAxisRow axis="x" valueRad={value.x} disabled={disabled}
+        onChange={(x) => onChange({ ...value, x })} />
+      <RotationAxisRow axis="y" valueRad={value.y} disabled={disabled}
+        onChange={(y) => onChange({ ...value, y })} />
+      <RotationAxisRow axis="z" valueRad={value.z} disabled={disabled}
+        onChange={(z) => onChange({ ...value, z })} />
     </div>
   );
 }
@@ -289,10 +480,8 @@ export function PropertiesPanel({
           disabled={part.locked}
           onChange={(position) => onPatch({ position })}
         />
-        <VecRow
-          label="Rotation (rad)"
+        <RotationEditor
           value={part.rotation}
-          step={0.05}
           disabled={part.locked}
           onChange={(rotation) => onPatch({ rotation })}
         />
