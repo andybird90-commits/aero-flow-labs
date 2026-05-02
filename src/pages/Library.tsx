@@ -227,6 +227,13 @@ export default function LibraryPage() {
               <Button
                 variant="hero"
                 size="sm"
+                onClick={() => setSpecOpen(true)}
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Spec part
+              </Button>
+              <Button
+                variant="hero"
+                size="sm"
                 disabled={!!uploading}
                 onClick={() => fileInputRef.current?.click()}
               >
