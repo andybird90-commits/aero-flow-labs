@@ -26,6 +26,10 @@ import { nearestSnapZone } from "@/lib/build-studio/snap-zones";
 import { PartMesh } from "@/components/build-studio/PartMesh";
 import { SnapZoneViz } from "@/components/build-studio/SnapZoneViz";
 import {
+  registerPlacedPartObject,
+  registerCarObject,
+} from "@/lib/build-studio/scene-registry";
+import {
   DEFAULT_PAINT_FINISH,
   DEFAULT_GLASS_FINISH,
   DEFAULT_TYRE_FINISH,
@@ -396,6 +400,13 @@ function HeroStlCar({
     apply(matRefs.current.glass, paintFinish.glass, paintFinish.env_intensity);
   }, [paintFinish]);
 
+  // Expose the live wrapper to the autofit hook so it can read the *current*
+  // world matrix rather than reloading the GLB and reconstructing a transform.
+  useEffect(() => {
+    registerCarObject(object);
+    return () => registerCarObject(null);
+  }, [object]);
+
   if (!object) return null;
   return <primitive object={object} />;
 }
@@ -509,6 +520,12 @@ function HeroGlbCar({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, template?.wheelbase_mm]);
+
+  // Expose the live car wrapper to the autofit hook (see scene-registry).
+  useEffect(() => {
+    registerCarObject(object);
+    return () => registerCarObject(null);
+  }, [object]);
 
   if (!object) return null;
   return <primitive object={object} />;
@@ -734,6 +751,14 @@ function PlacedPartGroup({
   onFrame: (object: THREE.Object3D) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+
+  // Register the live group with the autofit scene-registry so the autofit
+  // hook can read this part's *current* matrixWorld (including any unsaved
+  // drag offsets) instead of reloading from URL + part.position.
+  useEffect(() => {
+    registerPlacedPartObject(part.id, groupRef.current);
+    return () => registerPlacedPartObject(part.id, null);
+  }, [part.id]);
 
   if (part.hidden) return null;
 

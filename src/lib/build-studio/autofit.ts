@@ -20,10 +20,13 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as THREE from "three";
-import { GLTFLoader } from "three-stdlib";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { supabase } from "@/integrations/supabase/client";
 import type { PlacedPart } from "@/lib/build-studio/placed-parts";
+import {
+  getCarObject,
+  getPlacedPartObject,
+} from "@/lib/build-studio/scene-registry";
 
 export type AutofitPartKind =
   | "wing" | "bumper" | "spoiler" | "lip" | "skirt" | "diffuser";
@@ -47,18 +50,6 @@ export interface AutofitPlacedPartResult {
   result_url: string;
   part_kind?: string;
   processing_ms: number | null;
-}
-
-function loadGlb(url: string): Promise<THREE.Object3D> {
-  return new Promise((resolve, reject) => {
-    const loader = new GLTFLoader();
-    loader.load(
-      url,
-      (gltf) => resolve(gltf.scene),
-      undefined,
-      (err) => reject(new Error(`Failed to load GLB ${url}: ${(err as any)?.message ?? String(err)}`)),
-    );
-  });
 }
 
 function exportGlb(root: THREE.Object3D): Promise<Blob> {
@@ -86,35 +77,28 @@ function exportGlb(root: THREE.Object3D): Promise<Blob> {
  * GLB is in the same world frame as the car GLB.
  */
 /**
- * Bake a transform into mesh geometry vertices.
+ * Bake the live world matrix of every mesh under `liveRoot` into cloned
+ * geometries. The returned root contains meshes whose vertices are already
+ * in **world coordinates of the scene** — exactly where they appear in the
+ * viewport at this instant, including any unsaved drag/transform changes.
  *
- * Walks the loaded scene, clones each mesh + its geometry, applies the
- * computed world matrix to the cloned geometry, then resets the clone's
- * local TRS to identity. The returned root contains meshes whose vertices
- * are already in world space — GLTFExporter will write those exact
- * coordinates regardless of any parent transform.
+ * Pass the actual live Three.js Object3D from the scene (not a freshly
+ * loaded GLB), so `child.matrixWorld` reflects the current viewport state.
  */
-function bakeWorldTransformIntoGeometry(
-  source: THREE.Object3D,
-  worldMatrix: THREE.Matrix4,
-): THREE.Object3D {
+function bakeLiveWorldGeometry(liveRoot: THREE.Object3D): THREE.Object3D {
   const root = new THREE.Group();
 
-  // Make sure children's matrixWorld is current relative to `source`.
-  source.updateMatrixWorld(true);
+  // Force the entire ancestor chain → children to recompute matrices so
+  // matrixWorld is exact at this instant.
+  liveRoot.updateWorldMatrix(true, true);
 
-  source.traverse((child) => {
+  liveRoot.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!(mesh as any).isMesh || !mesh.geometry) return;
 
     const cloned = mesh.clone();
     cloned.geometry = mesh.geometry.clone();
-
-    // Combined matrix = outer placed transform * mesh's own world matrix
-    // inside the loaded scene (handles nested mesh hierarchies in the GLB).
-    const combined = new THREE.Matrix4()
-      .multiplyMatrices(worldMatrix, mesh.matrixWorld);
-    cloned.geometry.applyMatrix4(combined);
+    cloned.geometry.applyMatrix4(mesh.matrixWorld);
 
     cloned.position.set(0, 0, 0);
     cloned.rotation.set(0, 0, 0);
@@ -149,23 +133,11 @@ function firstVertices(root: THREE.Object3D, n = 3): Array<{ x: number; y: numbe
   return out;
 }
 
-async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promise<Blob> {
-  const partRoot = await loadGlb(partUrl);
-
-  // Build the placed-part world matrix from its TRS (mirrored = flip Z).
-  const placedMatrix = new THREE.Matrix4().compose(
-    new THREE.Vector3(part.position.x, part.position.y, part.position.z),
-    new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(part.rotation.x, part.rotation.y, part.rotation.z),
-    ),
-    new THREE.Vector3(
-      part.scale.x,
-      part.scale.y,
-      part.mirrored ? -part.scale.z : part.scale.z,
-    ),
-  );
-
-  const baked = bakeWorldTransformIntoGeometry(partRoot, placedMatrix);
+async function buildPositionedPartBlob(
+  partMesh: THREE.Object3D,
+  part: PlacedPart,
+): Promise<Blob> {
+  const baked = bakeLiveWorldGeometry(partMesh);
 
   // Diagnostic: bbox of the baked root. Vertices are now in world space, so
   // bounds should match where the part visually sits in the viewport.
@@ -175,7 +147,7 @@ async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promi
   bbox.getSize(size);
   bbox.getCenter(center);
   // eslint-disable-next-line no-console
-  console.log("[autofit] exporting part GLB — baked world bbox", {
+  console.log("[autofit] exporting part GLB — baked world bbox (live mesh)", {
     placed_part_id: part.id,
     transform: {
       position: part.position,
@@ -183,6 +155,7 @@ async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promi
       scale: part.scale,
       mirrored: part.mirrored,
     },
+    liveMatrixWorld: partMesh.matrixWorld.toArray(),
     bbox: {
       min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
       max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
@@ -195,18 +168,15 @@ async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promi
   return exportGlb(baked);
 }
 
-async function buildCarBlob(carUrl: string): Promise<Blob> {
-  const carRoot = await loadGlb(carUrl);
-  // Car GLB is already authored in world frame, but bake identity anyway so
-  // any nested transforms inside the GLB are flattened into the vertices —
-  // this guarantees the worker sees identical coordinates to the viewport.
-  const baked = bakeWorldTransformIntoGeometry(carRoot, new THREE.Matrix4());
+async function buildCarBlob(carMesh: THREE.Object3D): Promise<Blob> {
+  const baked = bakeLiveWorldGeometry(carMesh);
 
   const bbox = new THREE.Box3().setFromObject(baked);
   const size = new THREE.Vector3();
   bbox.getSize(size);
   // eslint-disable-next-line no-console
-  console.log("[autofit] exporting car GLB — baked world bbox", {
+  console.log("[autofit] exporting car GLB — baked world bbox (live mesh)", {
+    liveMatrixWorld: carMesh.matrixWorld.toArray(),
     bbox: {
       min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
       max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
@@ -222,10 +192,23 @@ export function useAutofitPlacedPart() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: AutofitPlacedPartInput): Promise<AutofitPlacedPartResult> => {
-      // 1. Build car + part GLB blobs client-side.
+      // Pull the *live* scene objects so we capture the exact world transform
+      // currently in the viewport — including any unsaved drag offsets.
+      const partMesh = getPlacedPartObject(input.placed_part_id);
+      const carMesh = getCarObject();
+      if (!partMesh) {
+        throw new Error(
+          `Autofit: no live scene object registered for placed_part_id=${input.placed_part_id}`,
+        );
+      }
+      if (!carMesh) {
+        throw new Error("Autofit: no live car mesh registered in the scene");
+      }
+
+      // 1. Build car + part GLB blobs client-side from the live scene nodes.
       const [carBlob, partBlob] = await Promise.all([
-        buildCarBlob(input.car_url),
-        buildPositionedPartBlob(input.part_url, input.part),
+        buildCarBlob(carMesh),
+        buildPositionedPartBlob(partMesh, input.part),
       ]);
 
       // 2. Send to edge function as multipart/form-data.
