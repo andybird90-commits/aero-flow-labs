@@ -330,6 +330,7 @@ export default function LibraryPage() {
         open={!!sculpting}
         onOpenChange={(o) => { if (!o) setSculpting(null); }}
       />
+      <SpecPartDialog open={specOpen} onOpenChange={setSpecOpen} />
     </AppLayout>
   );
 }
