@@ -322,11 +322,19 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   logBbox("[autofit] CSG raw result (world)", rawResultGeom);
 
   // Strip floating splinters left by the boolean.
-  const resultGeom = keepLargestComponents(rawResultGeom);
+  const cleanedGeom = keepLargestComponents(rawResultGeom);
   rawResultGeom.dispose();
-  resultGeom.computeVertexNormals();
-  resultGeom.computeBoundingBox();
-  resultGeom.computeBoundingSphere();
+  // Weld coincident vertices so smooth-shading normals can be averaged across
+  // shared edges. Without this, every triangle has its own vertex copy and
+  // computeVertexNormals() produces flat (per-face) normals — which renders
+  // as a shredded / faceted look on thin parts (e.g. wing wings, spoiler
+  // blades) seen from certain angles.
+  const welded = mergeVertices(cleanedGeom, 1e-4);
+  if (welded !== cleanedGeom) cleanedGeom.dispose();
+  welded.computeVertexNormals();
+  welded.computeBoundingBox();
+  welded.computeBoundingSphere();
+  const resultGeom = welded;
   logBbox("[autofit] CSG cleaned result (world)", resultGeom);
 
   // Wrap in a fresh Mesh + Scene for the exporter — vertices already encode
