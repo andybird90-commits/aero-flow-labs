@@ -322,7 +322,7 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   logBbox("[autofit] CSG raw result (world)", rawResultGeom);
 
   // Strip floating splinters left by the boolean.
-  const resultGeom = keepLargestComponents(rawResultGeom, 0.05);
+  const resultGeom = keepLargestComponents(rawResultGeom);
   rawResultGeom.dispose();
   resultGeom.computeVertexNormals();
   resultGeom.computeBoundingBox();
