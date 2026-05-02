@@ -120,7 +120,7 @@ export default function LibraryPage() {
 
   const stats = useMemo(() => ({
     total: items.length,
-    images: items.filter(i => i.kind === "concept_image").length,
+    uploaded: items.filter(i => i.kind === "uploaded_part_mesh").length,
     kits: items.filter(i => i.kind === "aero_kit_mesh").length,
     parts: items.filter(i => i.kind === "concept_part_mesh").length,
     listed: items.filter(i => i.marketplace_listings?.some(l => l.status === "active")).length,
