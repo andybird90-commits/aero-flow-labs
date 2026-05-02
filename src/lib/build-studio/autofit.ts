@@ -3,12 +3,15 @@ import * as THREE from "three";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { MeshBVH, acceleratedRaycast } from "three-mesh-bvh";
 import { supabase } from "@/integrations/supabase/client";
 import type { PlacedPart } from "@/lib/build-studio/placed-parts";
 import {
   getCarObject,
   getPlacedPartObject,
 } from "@/lib/build-studio/scene-registry";
+
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 export type AutofitPartKind =
   | "wing" | "bumper" | "spoiler" | "lip" | "skirt" | "diffuser";
@@ -188,11 +191,30 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const result = evaluator.evaluate(partBrush, carBrush, SUBTRACTION) as Brush;
 
   const rawResultGeom = result.geometry.clone();
-  const cleanedGeom = keepLargestComponents(rawResultGeom);
-  rawResultGeom.dispose();
 
-  const welded = mergeVertices(cleanedGeom, 1e-4);
-  if (welded !== cleanedGeom) cleanedGeom.dispose();
+  // Sanity check: if CSG returned nearly nothing (or vastly less than the
+  // input part), the car mesh is non-manifold and the inside/outside test
+  // flipped — fall back to a per-triangle inside-test trim that only drops
+  // part triangles whose centroid lies inside the car volume.
+  const inputTris = partGeom.attributes.position.count / 3;
+  const outputTris = rawResultGeom.attributes.position.count / 3;
+  const survivalRatio = inputTris > 0 ? outputTris / inputTris : 0;
+  // eslint-disable-next-line no-console
+  console.log("[autofit] CSG survival", { inputTris, outputTris, survivalRatio });
+
+  let trimmedGeom: THREE.BufferGeometry;
+  if (survivalRatio < 0.3) {
+    // eslint-disable-next-line no-console
+    console.warn("[autofit] CSG result too small — falling back to per-triangle inside-test trim");
+    rawResultGeom.dispose();
+    trimmedGeom = trimTrianglesInsideCar(partGeom, carGeom);
+  } else {
+    trimmedGeom = keepLargestComponents(rawResultGeom);
+    rawResultGeom.dispose();
+  }
+
+  const welded = mergeVertices(trimmedGeom, 1e-4);
+  if (welded !== trimmedGeom) trimmedGeom.dispose();
   welded.computeVertexNormals();
   welded.computeBoundingBox();
   welded.computeBoundingSphere();
@@ -206,6 +228,62 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   partGeom.dispose();
   carGeom.dispose();
   return blob;
+}
+
+/**
+ * Per-triangle trim using BVH raycast parity. Drops part triangles whose
+ * centroid lies inside the car volume; keeps everything else untouched.
+ * Robust against non-manifold car meshes that break CSG SUBTRACTION.
+ */
+function trimTrianglesInsideCar(
+  partGeom: THREE.BufferGeometry,
+  carGeom: THREE.BufferGeometry,
+): THREE.BufferGeometry {
+  const carMesh = new THREE.Mesh(carGeom);
+  carMesh.geometry.boundsTree = new MeshBVH(carGeom);
+
+  const pos = partGeom.attributes.position;
+  const triCount = pos.count / 3;
+
+  const ray = new THREE.Raycaster();
+  ray.firstHitOnly = false as unknown as boolean; // we want all hits for parity
+  const dir = new THREE.Vector3(1, 0.0001, 0.0001).normalize();
+
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const centroid = new THREE.Vector3();
+
+  const keptPositions: number[] = [];
+  let dropped = 0;
+
+  for (let t = 0; t < triCount; t++) {
+    a.fromBufferAttribute(pos, t * 3);
+    b.fromBufferAttribute(pos, t * 3 + 1);
+    c.fromBufferAttribute(pos, t * 3 + 2);
+    centroid.copy(a).add(b).add(c).multiplyScalar(1 / 3);
+
+    ray.set(centroid, dir);
+    const hits = ray.intersectObject(carMesh, false);
+    // Odd number of hits along outward ray => point is inside the car volume.
+    const inside = hits.length % 2 === 1;
+
+    if (inside) {
+      dropped++;
+      continue;
+    }
+    keptPositions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  }
+
+  // eslint-disable-next-line no-console
+  console.log("[autofit] per-triangle trim", { triCount, dropped, kept: triCount - dropped });
+
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.BufferAttribute(new Float32Array(keptPositions), 3));
+  out.computeVertexNormals();
+  out.computeBoundingBox();
+  out.computeBoundingSphere();
+  return out;
 }
 
 async function uploadResultGlb(input: AutofitPlacedPartInput, blob: Blob): Promise<string> {
