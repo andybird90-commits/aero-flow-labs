@@ -171,7 +171,7 @@ export function PartMeshViewer({
       cancelled = true;
       cleanup?.();
     };
-  }, [url]);
+  }, [url, background, meshColor, autoRotate]);
 
   return (
     <div className={className} style={{ position: "relative" }}>
