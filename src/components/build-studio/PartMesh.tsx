@@ -182,6 +182,21 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
               clearcoatRoughness: 0.25,
             });
           }
+          // Autofit results from CSG can have inconsistent triangle winding,
+          // which renders as holes/shredded geometry from certain angles.
+          // Force double-sided rendering so the part looks solid from any view.
+          if (autofitUrl) {
+            const applySide = (mat: any) => {
+              if (mat && "side" in mat) {
+                mat.side = THREE.DoubleSide;
+                mat.shadowSide = THREE.DoubleSide;
+                mat.needsUpdate = true;
+              }
+            };
+            const mat = m.material as any;
+            if (Array.isArray(mat)) mat.forEach(applySide);
+            else applySide(mat);
+          }
         }
       });
 
