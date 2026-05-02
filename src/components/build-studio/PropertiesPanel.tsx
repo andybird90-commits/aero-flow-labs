@@ -208,7 +208,7 @@ function RotationAxisRow({
   );
 }
 
-function RotationEditor({
+export function RotationEditor({
   value, disabled, onChange,
 }: {
   value: Vec3;
