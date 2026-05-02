@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as THREE from "three";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
-import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+
 import { supabase } from "@/integrations/supabase/client";
 import type { PlacedPart } from "@/lib/build-studio/placed-parts";
 import {
@@ -102,83 +102,6 @@ function getEvaluator(): Evaluator {
   return ev;
 }
 
-function keepLargestComponents(
-  inputGeom: THREE.BufferGeometry,
-  originalVertCount: number,
-): THREE.BufferGeometry {
-  const welded = mergeVertices(inputGeom, 1e-5);
-  if (!welded.index) return inputGeom;
-  const indexArr = welded.index.array as ArrayLike<number>;
-  const triCount = indexArr.length / 3;
-  const vertCount = welded.attributes.position.count;
-  const vertToTris: number[][] = new Array(vertCount);
-  for (let i = 0; i < vertCount; i++) vertToTris[i] = [];
-  for (let t = 0; t < triCount; t++) {
-    vertToTris[indexArr[t * 3] as number].push(t);
-    vertToTris[indexArr[t * 3 + 1] as number].push(t);
-    vertToTris[indexArr[t * 3 + 2] as number].push(t);
-  }
-  const compOf = new Int32Array(triCount).fill(-1);
-  const components: number[][] = [];
-  const stack: number[] = [];
-  for (let seed = 0; seed < triCount; seed++) {
-    if (compOf[seed] !== -1) continue;
-    const compId = components.length;
-    const tris: number[] = [];
-    stack.length = 0;
-    stack.push(seed);
-    compOf[seed] = compId;
-    while (stack.length > 0) {
-      const t = stack.pop() as number;
-      tris.push(t);
-      for (const k of [0, 1, 2]) {
-        for (const nt of vertToTris[indexArr[t * 3 + k] as number]) {
-          if (compOf[nt] === -1) { compOf[nt] = compId; stack.push(nt); }
-        }
-      }
-    }
-    components.push(tris);
-  }
-  components.sort((a, b) => b.length - a.length);
-  const largestTriCount = components[0]?.length ?? 0;
-  const minExpectedTris = Math.max(10, originalVertCount * 0.1);
-  if (largestTriCount < minExpectedTris) {
-    console.warn("[autofit] largest component too small, keeping full result", {
-      largestTriCount, minExpectedTris, totalTris: triCount,
-    });
-    welded.dispose();
-    return inputGeom;
-  }
-  const posAttr = welded.attributes.position;
-  const normAttr = welded.attributes.normal;
-  const kept = components[0];
-  const positions = new Float32Array(kept.length * 9);
-  const normals = normAttr ? new Float32Array(kept.length * 9) : null;
-  let w = 0;
-  for (const t of kept) {
-    for (let k = 0; k < 3; k++) {
-      const vi = indexArr[t * 3 + k] as number;
-      positions[w] = posAttr.getX(vi);
-      positions[w + 1] = posAttr.getY(vi);
-      positions[w + 2] = posAttr.getZ(vi);
-      if (normals && normAttr) {
-        normals[w] = normAttr.getX(vi);
-        normals[w + 1] = normAttr.getY(vi);
-        normals[w + 2] = normAttr.getZ(vi);
-      }
-      w += 3;
-    }
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  if (normals) out.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
-  else out.computeVertexNormals();
-  out.computeBoundingBox();
-  out.computeBoundingSphere();
-  welded.dispose();
-  return out;
-}
-
 async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const partMesh = getPlacedPartObject(input.placed_part_id);
   const carMesh = getCarObject();
@@ -187,7 +110,6 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
 
   const partGeom = bakeLiveWorldGeometry(partMesh);
   const carGeom = bakeLiveWorldGeometry(carMesh);
-  const originalVertCount = partGeom.attributes.position.count;
 
   const partBrush = new Brush(partGeom);
   partBrush.updateMatrixWorld();
@@ -197,21 +119,13 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const evaluator = getEvaluator();
   const result = evaluator.evaluate(partBrush, carBrush, SUBTRACTION) as Brush;
 
-  const rawResultGeom = result.geometry.clone();
-  console.log("[autofit] CSG result vertex count:", rawResultGeom.attributes.position?.count ?? 0);
-  console.log("[autofit] part input vertex count:", partGeom.attributes.position.count);
-  console.log("[autofit] car input vertex count:", carGeom.attributes.position.count);
-  rawResultGeom.computeBoundingBox();
-  console.log("[autofit] CSG result bbox:", JSON.stringify(rawResultGeom.boundingBox));
-
-  const welded = mergeVertices(rawResultGeom, 1e-4);
-  if (welded !== rawResultGeom) rawResultGeom.dispose();
-  welded.computeVertexNormals();
-  welded.computeBoundingBox();
-  welded.computeBoundingSphere();
+  const resultGeom = result.geometry.clone();
+  resultGeom.computeVertexNormals();
+  resultGeom.computeBoundingBox();
+  resultGeom.computeBoundingSphere();
 
   const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-  const mesh = new THREE.Mesh(welded, mat);
+  const mesh = new THREE.Mesh(resultGeom, mat);
   const scene = new THREE.Scene();
   scene.add(mesh);
 
