@@ -26,6 +26,10 @@ import { nearestSnapZone } from "@/lib/build-studio/snap-zones";
 import { PartMesh } from "@/components/build-studio/PartMesh";
 import { SnapZoneViz } from "@/components/build-studio/SnapZoneViz";
 import {
+  registerPlacedPartObject,
+  registerCarObject,
+} from "@/lib/build-studio/scene-registry";
+import {
   DEFAULT_PAINT_FINISH,
   DEFAULT_GLASS_FINISH,
   DEFAULT_TYRE_FINISH,
