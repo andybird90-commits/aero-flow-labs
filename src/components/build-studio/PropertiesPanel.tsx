@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2, Move3d } from "lucide-react";
+import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2, Move3d, RotateCcw, RotateCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from "lucide-react";
+import * as THREE from "three";
 import { useState } from "react";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import {
@@ -291,6 +292,35 @@ export function PropertiesPanel({
           disabled={part.locked}
           onChange={(position) => onPatch({ position })}
         />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              Rotate 90°
+            </Label>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+              disabled={part.locked}
+              onClick={() => onPatch({ rotation: { x: 0, y: 0, z: 0 } })}
+              title="Reset rotation"
+            >
+              Reset
+            </Button>
+          </div>
+          {/* World-space 90° rotations. We pre-multiply a world-axis quaternion onto
+              the part's current orientation so that "up" stays world-up no matter
+              how the part has already been rolled. */}
+          <div className="grid grid-cols-3 gap-1">
+            <RotButton label="Tilt back"   axis="x" sign={-1} icon={ArrowUp}    rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+            <RotButton label="Yaw left"    axis="y" sign={ 1} icon={ArrowLeft}  rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+            <RotButton label="Roll left"   axis="z" sign={ 1} icon={RotateCcw}  rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+            <RotButton label="Tilt fwd"    axis="x" sign={ 1} icon={ArrowDown}  rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+            <RotButton label="Yaw right"   axis="y" sign={-1} icon={ArrowRight} rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+            <RotButton label="Roll right"  axis="z" sign={-1} icon={RotateCw}   rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+          </div>
+        </div>
+
         <VecRow
           label="Rotation (rad)"
           value={part.rotation}
