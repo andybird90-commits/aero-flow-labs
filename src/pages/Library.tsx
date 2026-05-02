@@ -168,6 +168,27 @@ export default function LibraryPage() {
               <Button variant="hero" size="sm" onClick={() => setUploadOpen(true)}>
                 <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload STL
               </Button>
+              {missingThumbs.length > 0 && (
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={backfillThumbnails}
+                  disabled={!!backfilling}
+                  title="Render missing previews for uploaded parts"
+                >
+                  {backfilling ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      Generating {backfilling.done}/{backfilling.total}
+                    </>
+                  ) : (
+                    <>
+                      <ImageIcon className="mr-1.5 h-3.5 w-3.5" />
+                      Generate {missingThumbs.length} preview{missingThumbs.length === 1 ? "" : "s"}
+                    </>
+                  )}
+                </Button>
+              )}
               <Button variant="glass" size="sm" asChild>
                 <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
               </Button>
