@@ -198,11 +198,9 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const result = evaluator.evaluate(partBrush, carBrush, SUBTRACTION) as Brush;
 
   const rawResultGeom = result.geometry.clone();
-  const cleanedGeom = keepLargestComponents(rawResultGeom, originalVertCount);
-  if (cleanedGeom !== rawResultGeom) rawResultGeom.dispose();
 
-  const welded = mergeVertices(cleanedGeom, 1e-4);
-  if (welded !== cleanedGeom) cleanedGeom.dispose();
+  const welded = mergeVertices(rawResultGeom, 1e-4);
+  if (welded !== rawResultGeom) rawResultGeom.dispose();
   welded.computeVertexNormals();
   welded.computeBoundingBox();
   welded.computeBoundingSphere();
