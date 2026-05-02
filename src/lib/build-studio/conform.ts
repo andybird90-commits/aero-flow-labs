@@ -151,13 +151,12 @@ export function conformKitToBody(
       );
 
       // Proximity check — skip outer surface vertices.
-      const closest = new THREE.Vector3();
-      bvhMesh.geometry.boundsTree!.closestPointToPoint(
-        bvhMesh,
-        vWorld,
-        closest,
-      );
-      const dist = vWorld.distanceTo(closest);
+      const hitInfo = bvhMesh.geometry.boundsTree!.closestPointToPoint(vWorld);
+      if (!hitInfo) {
+        skippedProximity++;
+        continue;
+      }
+      const dist = hitInfo.distance;
       if (dist > proximityThreshold) {
         skippedProximity++;
         continue;
