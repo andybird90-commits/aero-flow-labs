@@ -20,10 +20,13 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as THREE from "three";
-import { GLTFLoader } from "three-stdlib";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { supabase } from "@/integrations/supabase/client";
 import type { PlacedPart } from "@/lib/build-studio/placed-parts";
+import {
+  getCarObject,
+  getPlacedPartObject,
+} from "@/lib/build-studio/scene-registry";
 
 export type AutofitPartKind =
   | "wing" | "bumper" | "spoiler" | "lip" | "skirt" | "diffuser";
