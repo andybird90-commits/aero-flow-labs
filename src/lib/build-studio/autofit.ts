@@ -325,17 +325,21 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<{ blob: Bl
   // Strip floating splinters left by the boolean.
   const cleanedGeom = keepLargestComponents(rawResultGeom);
   rawResultGeom.dispose();
-  // Weld coincident vertices so smooth-shading normals can be averaged across
-  // shared edges. Without this, every triangle has its own vertex copy and
-  // computeVertexNormals() produces flat (per-face) normals — which renders
-  // as a shredded / faceted look on thin parts (e.g. wing wings, spoiler
-  // blades) seen from certain angles.
-  const welded = mergeVertices(cleanedGeom, 1e-4);
-  if (welded !== cleanedGeom) cleanedGeom.dispose();
-  welded.computeVertexNormals();
-  welded.computeBoundingBox();
-  welded.computeBoundingSphere();
-  const resultGeom = welded;
+
+  // Compute a scale-aware tolerance for sliver cleanup. CSG seams along
+  // near-coplanar surfaces (e.g. side skirt against door panel) generate
+  // tiny near-degenerate triangles that render as a fringed / jagged cut
+  // edge. Welding at ~0.5–2mm collapses those slivers without eroding
+  // legitimate features.
+  cleanedGeom.computeBoundingBox();
+  const cbb = cleanedGeom.boundingBox!;
+  const diag = cbb.min.distanceTo(cbb.max);
+  const eps = Math.min(2e-3, Math.max(5e-4, diag * 1e-4));
+
+  const resultGeom = cleanSlivers(cleanedGeom, eps);
+  if (resultGeom !== cleanedGeom) cleanedGeom.dispose();
+  resultGeom.computeBoundingBox();
+  resultGeom.computeBoundingSphere();
   logBbox("[autofit] CSG cleaned result (world)", resultGeom);
 
   // Wrap in a fresh Mesh + Scene for the exporter — vertices already encode
