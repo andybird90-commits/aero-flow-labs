@@ -58,7 +58,9 @@ const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
 
 export default function LibraryPage() {
   const { user } = useAuth();
-  const { data: items = [], isLoading } = useMyLibrary(user?.id);
+  const { data: rawItems = [], isLoading } = useMyLibrary(user?.id);
+  // Concept images live in the Concept Studio — exclude them from Part Library.
+  const items = useMemo(() => rawItems.filter(i => i.kind !== "concept_image"), [rawItems]);
   const update = useUpdateLibraryItem();
   const del = useDeleteLibraryItem();
   const publish = usePublishListing();
