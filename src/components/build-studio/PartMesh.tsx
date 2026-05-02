@@ -166,12 +166,14 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
         const center = new THREE.Vector3();
         fitted.getCenter(center);
         wrapper.position.sub(center);
+      } else if (autofitUrl) {
+        // Autofit GLBs have world-space vertices baked in. The parent group
+        // is offset to autofit_center so the gizmo sits on the part — we
+        // cancel that offset here so the mesh renders at its true baked
+        // world location.
+        const c = (placedMetadata?.autofit_center as { x: number; y: number; z: number } | undefined);
+        if (c) wrapper.position.set(-c.x, -c.y, -c.z);
       }
-      // Note: when autofitUrl is set, the GLB vertices are already in world
-      // coordinates and the parent group's TRS has been reset to identity
-      // (see useAutofitPlacedPart). So we render the wrapper as-is — no
-      // additional offset is needed. Applying -autofit_center here would
-      // double-shift the part away from its baked location.
 
       wrapper.traverse((c) => {
         const m = c as THREE.Mesh;
