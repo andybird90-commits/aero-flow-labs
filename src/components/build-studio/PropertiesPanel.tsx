@@ -298,6 +298,7 @@ export function PropertiesPanel({
   onLiveFitBaked, onSendForPrint,
 }: Props) {
   const [sculptOpen, setSculptOpen] = useState(false);
+  const qc = useQueryClient();
   const [isConforming, setIsConforming] = useState(false);
   const autofitMeta = (part?.metadata ?? {}) as Record<string, unknown>;
   const initialKind = (autofitMeta.autofit_part_kind as AutofitPartKind | undefined)
