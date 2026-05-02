@@ -1420,7 +1420,8 @@ export type LibraryItemKind =
   | "concept_part_mesh"
   | "prototype_part_mesh"
   | "geometry_part_mesh"
-  | "cad_part_mesh";
+  | "cad_part_mesh"
+  | "uploaded_part_mesh";
 export type LibraryVisibility = "private" | "public";
 export type MarketplaceListingStatus = "draft" | "active" | "paused";
 
