@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { MeshStructureChip } from "@/components/build-studio/MeshStructureChip";
 import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
+import { SpecPartDialog } from "@/components/build-studio/SpecPartDialog";
 import { PartMeshViewer } from "@/components/PartMeshViewer";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -83,6 +84,7 @@ export default function LibraryPage() {
   const [publishing, setPublishing] = useState<LibraryItem | null>(null);
   const [sculpting, setSculpting] = useState<LibraryItem | null>(null);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const [specOpen, setSpecOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
@@ -225,6 +227,13 @@ export default function LibraryPage() {
               <Button
                 variant="hero"
                 size="sm"
+                onClick={() => setSpecOpen(true)}
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Spec part
+              </Button>
+              <Button
+                variant="hero"
+                size="sm"
                 disabled={!!uploading}
                 onClick={() => fileInputRef.current?.click()}
               >
@@ -321,6 +330,7 @@ export default function LibraryPage() {
         open={!!sculpting}
         onOpenChange={(o) => { if (!o) setSculpting(null); }}
       />
+      <SpecPartDialog open={specOpen} onOpenChange={setSpecOpen} />
     </AppLayout>
   );
 }
