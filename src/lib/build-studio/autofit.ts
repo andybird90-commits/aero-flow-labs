@@ -74,7 +74,17 @@ function bakeLiveWorldGeometry(liveRoot: THREE.Object3D): THREE.BufferGeometry {
     for (const name of Object.keys(g.attributes)) {
       if (name !== "position" && name !== "normal") g.deleteAttribute(name);
     }
-    if (g.index) g.deleteIndex();
+    if (g.index) {
+      // Convert to non-indexed so all geometries can be concatenated uniformly.
+      const nonIndexed = g.toNonIndexed();
+      g.dispose();
+      // re-bind onto `g`'s slot via reassignment below
+      const gn = nonIndexed;
+      gn.applyMatrix4(mesh.matrixWorld);
+      if (!gn.attributes.normal) gn.computeVertexNormals();
+      geometries.push(gn);
+      return;
+    }
     g.applyMatrix4(mesh.matrixWorld);
     if (!g.attributes.normal) g.computeVertexNormals();
     geometries.push(g);
