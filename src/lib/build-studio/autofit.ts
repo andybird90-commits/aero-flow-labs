@@ -437,6 +437,7 @@ export function useAutofitPlacedPart() {
               autofit_at: new Date().toISOString(),
               autofit_frame: "world",
               autofit_source: "client-bvh-csg",
+              autofit_center: data.center,
             },
           };
         });
