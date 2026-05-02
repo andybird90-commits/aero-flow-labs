@@ -1,15 +1,3 @@
-/**
- * conformKitToBody — surface projection conforming.
- *
- * For each vertex on the kit mesh that is within `proximityThreshold` metres
- * of the donor car surface, cast a ray inward toward the kit bounding-box
- * centre. If the ray hits the car, move that vertex to the hit point plus a
- * small standoff gap. Vertices further away than the threshold (outer styling
- * surface detail) are left untouched so the kit's design is preserved.
- *
- * This runs entirely client-side using three-mesh-bvh — same dependency
- * already used by three-bvh-csg, so no new packages are needed.
- */
 import * as THREE from "three";
 import { MeshBVH, acceleratedRaycast } from "three-mesh-bvh";
 import {
@@ -17,20 +5,17 @@ import {
   getPlacedPartObject,
 } from "@/lib/build-studio/scene-registry";
 
-// Patch Three.js Mesh.raycast so BVH acceleration is used automatically.
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 export interface ConformOptions {
-  /** Vertices closer than this (metres) to the car surface will be projected. Default 0.05 (5 cm). */
+  /** Only project vertices within this distance of the car surface (metres). Default 0.02. */
   proximityThreshold?: number;
-  /** Standoff gap between projected vertex and car surface (metres). Default 0.002 (2 mm). */
+  /** Standoff gap from car surface (metres). Default 0.002. */
   gapM?: number;
+  /** Skip projection if the hit point is further than this from the vertex (metres). Default 0.04. */
+  maxProjectionM?: number;
 }
 
-/**
- * Bake world matrix into a single merged non-indexed BufferGeometry.
- * Strips all attributes except position so the BVH is lean.
- */
 function bakeWorldPositions(root: THREE.Object3D): THREE.BufferGeometry {
   root.updateWorldMatrix(true, true);
   const geometries: THREE.BufferGeometry[] = [];
@@ -39,7 +24,6 @@ function bakeWorldPositions(root: THREE.Object3D): THREE.BufferGeometry {
     const mesh = child as THREE.Mesh;
     if (!(mesh as any).isMesh || !mesh.geometry) return;
     let g = mesh.geometry.clone();
-    // Keep only position for the BVH donor mesh.
     for (const name of Object.keys(g.attributes)) {
       if (name !== "position") g.deleteAttribute(name);
     }
@@ -69,89 +53,172 @@ function bakeWorldPositions(root: THREE.Object3D): THREE.BufferGeometry {
   return out;
 }
 
-/**
- * Main conform function. Mutates the kit mesh geometry in place.
- * Returns the number of vertices that were projected.
- */
+function bakeWorldGeometryFull(root: THREE.Object3D): THREE.BufferGeometry {
+  // Same as above but also preserves normals — needed for ray direction.
+  root.updateWorldMatrix(true, true);
+  const geometries: THREE.BufferGeometry[] = [];
+
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!(mesh as any).isMesh || !mesh.geometry) return;
+    let g = mesh.geometry.clone();
+    for (const name of Object.keys(g.attributes)) {
+      if (name !== "position" && name !== "normal") g.deleteAttribute(name);
+    }
+    if (g.index) {
+      const ni = g.toNonIndexed();
+      g.dispose();
+      g = ni;
+    }
+    g.applyMatrix4(mesh.matrixWorld);
+    if (!g.attributes.normal) g.computeVertexNormals();
+    geometries.push(g);
+  });
+
+  if (geometries.length === 0) throw new Error("conform: no meshes under root");
+
+  let totalVerts = 0;
+  for (const g of geometries) totalVerts += g.attributes.position.count;
+  const positions = new Float32Array(totalVerts * 3);
+  const normals = new Float32Array(totalVerts * 3);
+  let offset = 0;
+  for (const g of geometries) {
+    positions.set(g.attributes.position.array as Float32Array, offset * 3);
+    normals.set(g.attributes.normal.array as Float32Array, offset * 3);
+    offset += g.attributes.position.count;
+    g.dispose();
+  }
+
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  out.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  return out;
+}
+
 export function conformKitToBody(
   kitRoot: THREE.Object3D,
   carRoot: THREE.Object3D,
   options: ConformOptions = {},
 ): number {
-  const { proximityThreshold = 0.05, gapM = 0.002 } = options;
+  const {
+    proximityThreshold = 0.02,
+    gapM = 0.002,
+    maxProjectionM = 0.04,
+  } = options;
 
-  // Build a BVH over the donor car in world space.
+  // Build BVH over donor car in world space.
   const carGeo = bakeWorldPositions(carRoot);
   carGeo.computeBoundingBox();
   const bvhMesh = new THREE.Mesh(carGeo);
-  (bvhMesh.geometry as any).boundsTree = new MeshBVH(carGeo);
+  bvhMesh.geometry.boundsTree = new MeshBVH(carGeo);
 
-  // Kit bounding box centre — used as the inward ray target.
-  kitRoot.updateWorldMatrix(true, true);
-  const kitBox = new THREE.Box3().setFromObject(kitRoot);
-  const kitCentre = kitBox.getCenter(new THREE.Vector3());
+  // Bake kit geometry including normals for ray direction.
+  const kitGeoWorld = bakeWorldGeometryFull(kitRoot);
+  const kitPosAttr = kitGeoWorld.attributes.position as THREE.BufferAttribute;
+  const kitNormAttr = kitGeoWorld.attributes.normal as THREE.BufferAttribute;
 
   let projectedCount = 0;
-  const raycaster = new THREE.Raycaster();
-  // Extend ray range well beyond any car dimension.
-  raycaster.far = 20;
+  let skippedProximity = 0;
+  let skippedDistance = 0;
+  let skippedNoHit = 0;
 
-  // Walk every mesh under the kit root and deform matching vertices.
+  const raycaster = new THREE.Raycaster();
+  raycaster.far = maxProjectionM * 3;
+
+  // We operate on the baked world-space geometry vertex by vertex,
+  // then write back into the kit's local geometry.
+  // Since kitRoot may have child meshes, we need to track vertex offset.
+  let vertexOffset = 0;
+
   kitRoot.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!(mesh as any).isMesh || !mesh.geometry) return;
 
     mesh.updateWorldMatrix(true, false);
-    const worldInv = mesh.matrixWorld.clone().invert();
+    const meshWorldInv = mesh.matrixWorld.clone().invert();
     const geo = mesh.geometry;
     const posAttr = geo.attributes.position as THREE.BufferAttribute;
+    const normAttr = geo.attributes.normal as THREE.BufferAttribute;
+    const vertCount = posAttr.count;
 
-    for (let i = 0; i < posAttr.count; i++) {
-      // Vertex in world space.
-      const vWorld = new THREE.Vector3()
-        .fromBufferAttribute(posAttr, i)
-        .applyMatrix4(mesh.matrixWorld);
+    for (let i = 0; i < vertCount; i++) {
+      const wi = vertexOffset + i;
 
-      // Quick proximity pre-check using BVH's closestPointToPoint.
-      const closest = new THREE.Vector3();
-      const closestResult = (bvhMesh.geometry as any).boundsTree.closestPointToPoint(
-        vWorld,
-        { point: closest },
+      const vWorld = new THREE.Vector3(
+        kitPosAttr.getX(wi),
+        kitPosAttr.getY(wi),
+        kitPosAttr.getZ(wi),
       );
-      const dist = closestResult ? closestResult.distance : vWorld.distanceTo(closest);
-      if (dist > proximityThreshold) continue; // outer surface — leave it
 
-      // Ray from vertex toward kit centre (inward).
-      const dir = kitCentre.clone().sub(vWorld).normalize();
-      raycaster.set(vWorld, dir);
+      // Proximity check — skip outer surface vertices.
+      const closest = new THREE.Vector3();
+      bvhMesh.geometry.boundsTree!.closestPointToPoint(
+        bvhMesh,
+        vWorld,
+        closest,
+      );
+      const dist = vWorld.distanceTo(closest);
+      if (dist > proximityThreshold) {
+        skippedProximity++;
+        continue;
+      }
+
+      // Ray direction: flip the world-space vertex normal to point inward.
+      const nWorld = new THREE.Vector3(
+        kitNormAttr.getX(wi),
+        kitNormAttr.getY(wi),
+        kitNormAttr.getZ(wi),
+      ).normalize();
+      // Inward = negative normal direction (toward car body).
+      const dir = nWorld.clone().negate();
+
+      // Offset ray origin slightly outward so it doesn't self-intersect.
+      const origin = vWorld.clone().addScaledVector(nWorld, 0.005);
+      raycaster.set(origin, dir);
+
       const hits = raycaster.intersectObject(bvhMesh);
-      if (hits.length === 0) continue;
+      if (hits.length === 0) {
+        skippedNoHit++;
+        continue;
+      }
 
-      // Project vertex to hit point + standoff gap (away from car surface).
-      const newWorld = hits[0].point.clone().addScaledVector(dir, -gapM);
+      const hitDist = hits[0].distance;
+      if (hitDist > maxProjectionM) {
+        skippedDistance++;
+        continue;
+      }
 
-      // Convert back to mesh local space.
-      const newLocal = newWorld.applyMatrix4(worldInv);
+      // Project to hit point + standoff gap outward along normal.
+      const newWorld = hits[0].point.clone().addScaledVector(nWorld, gapM);
+
+      // Write back into mesh local space.
+      const newLocal = newWorld.applyMatrix4(meshWorldInv);
       posAttr.setXYZ(i, newLocal.x, newLocal.y, newLocal.z);
       projectedCount++;
     }
 
     posAttr.needsUpdate = true;
+    if (normAttr) normAttr.needsUpdate = true;
     geo.computeVertexNormals();
     geo.computeBoundingBox();
     geo.computeBoundingSphere();
+
+    vertexOffset += vertCount;
   });
 
   carGeo.dispose();
-  console.log(`[conform] projected ${projectedCount} vertices`);
+  kitGeoWorld.dispose();
+
+  console.log("[conform] done", {
+    projected: projectedCount,
+    skippedProximity,
+    skippedDistance,
+    skippedNoHit,
+  });
+
   return projectedCount;
 }
 
-/**
- * Hook-friendly wrapper that resolves the live scene objects by ID,
- * runs conform, then returns the mutated kitRoot ready for autofit.
- * Throws if either object is not registered.
- */
 export function conformPlacedPartToBody(
   placedPartId: string,
   options: ConformOptions = {},
