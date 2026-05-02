@@ -367,6 +367,11 @@ export function useBodySwap() {
       // it shows up in the Shell Fit picker for re-use.
       const baseName = input.sourceSkin.name ?? "Body shell";
       const donorLabel = input.donorCarLabel ? ` on ${input.donorCarLabel}` : "";
+      // Track which original shell this swap came from so the user can
+      // restore the untrimmed source at any time. If the source itself was
+      // a swap, walk back to its own source so we always point at the root.
+      const rootSourceId =
+        (input.sourceSkin as any).source_skin_id ?? input.sourceSkin.id;
       const insert = {
         user_id: input.userId,
         name: `${baseName} (swapped${donorLabel})`,
@@ -375,6 +380,7 @@ export function useBodySwap() {
         style_tags: [...((input.sourceSkin as any).style_tags ?? []), "body-swap"],
         preview_url: input.sourceSkin.preview_url ?? null,
         file_url_glb: path,
+        source_skin_id: rootSourceId,
       };
       const { data: row, error: insErr } = await (supabase as any)
         .from("body_skins")
