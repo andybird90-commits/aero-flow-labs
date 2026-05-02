@@ -189,6 +189,7 @@ async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promi
       size: { x: size.x, y: size.y, z: size.z },
       center: { x: center.x, y: center.y, z: center.z },
     },
+    firstVertices: firstVertices(baked, 3),
   });
 
   return exportGlb(baked);
