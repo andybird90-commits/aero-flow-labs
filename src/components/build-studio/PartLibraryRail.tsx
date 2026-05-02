@@ -3,12 +3,14 @@
  * mesh-bearing kinds (CAD / geometry / concept-part / aero-kit) and lets them
  * add one to the scene with a click.
  */
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Box, ImageIcon } from "lucide-react";
+import { Plus, Box, ImageIcon, Sparkles } from "lucide-react";
 import type { LibraryItem } from "@/lib/repo";
 import { MeshStructureChip } from "@/components/build-studio/MeshStructureChip";
+import { SpecPartDialog } from "@/components/build-studio/SpecPartDialog";
 
 const MESH_KINDS = new Set([
   "aero_kit_mesh",
