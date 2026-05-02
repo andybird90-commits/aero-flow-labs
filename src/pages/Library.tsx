@@ -48,6 +48,7 @@ const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: strin
 
 const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
   { id: "all",                 label: "All" },
+  { id: "uploaded_part_mesh",  label: "Uploaded" },
   { id: "concept_image",       label: "Images" },
   { id: "aero_kit_mesh",       label: "Aero kits" },
   { id: "concept_part_mesh",   label: "Parts" },
