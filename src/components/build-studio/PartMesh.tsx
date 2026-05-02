@@ -166,6 +166,17 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
         const center = new THREE.Vector3();
         fitted.getCenter(center);
         wrapper.position.sub(center);
+      } else if (autofitUrl) {
+        // Autofit GLB vertices are in world coordinates. The parent group is
+        // positioned at the autofit bbox center so the transform gizmo lands
+        // on the part — so shift the loaded geometry by -center to cancel
+        // the parent's offset and keep the visual world position correct.
+        const autofitCenter = placedMetadata?.autofit_center as
+          | { x: number; y: number; z: number }
+          | undefined;
+        if (autofitCenter) {
+          wrapper.position.set(-autofitCenter.x, -autofitCenter.y, -autofitCenter.z);
+        }
       }
 
       wrapper.traverse((c) => {
