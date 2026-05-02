@@ -234,16 +234,15 @@ function keepLargestComponents(
   components.sort((a, b) => b.length - a.length);
   const largest = components[0]?.length ?? 0;
   if (largest === 0) return inputGeom;
-  const threshold = Math.max(1, Math.floor(largest * minRatio));
-  const kept = components.filter((c) => c.length >= threshold);
+  // Keep only the single largest connected component, regardless of size.
+  const kept = components.slice(0, 1);
 
-  const droppedTris = triCount - kept.reduce((s, c) => s + c.length, 0);
+  const droppedTris = triCount - kept[0].length;
   // eslint-disable-next-line no-console
   console.log("[autofit] component cleanup", {
     components: components.length,
-    kept: kept.length,
+    kept: 1,
     largestTris: largest,
-    threshold,
     droppedTris,
     totalTris: triCount,
   });
