@@ -20,6 +20,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { createImageTo3dTask, getImageTo3dTask } from "../_shared/meshy.ts";
 import { lovableGenerateImage } from "../_shared/lovable-image.ts";
+import { perplexityResearch, formatResearchBlock } from "../_shared/perplexity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,12 +67,13 @@ async function uploadImageToBucket(
   return admin.storage.from("library-uploads").getPublicUrl(path).data.publicUrl;
 }
 
-function enrichPrompt(prompt: string, comment?: string): string {
+function enrichPrompt(prompt: string, comment?: string, research?: string): string {
   const base =
     `${prompt}\n\nIndustrial spec part. Single solid object, watertight mesh, ` +
     `clean engineering surfaces, ~3mm wall thickness, neutral matte material, ` +
     `studio lighting, plain white background, centered isometric 3/4 view.`;
-  return comment?.trim() ? `${base}\n\nRevision notes: ${comment.trim()}` : base;
+  const withComment = comment?.trim() ? `${base}\n\nRevision notes: ${comment.trim()}` : base;
+  return research ? `${withComment}${research}` : withComment;
 }
 
 Deno.serve(async (req) => {
@@ -109,7 +111,16 @@ Deno.serve(async (req) => {
           : await uploadImageToBucket(admin, userId, body.image_data_url);
       } else {
         if (!LOVABLE_API_KEY) return json({ error: "LOVABLE_API_KEY not configured" }, 500);
-        const img = await lovableGenerateImage({ apiKey: LOVABLE_API_KEY, prompt: enrichPrompt(prompt) });
+        // Web-grounded research first — pulls real-world part naming / shapes
+        // so e.g. "front splitter for porsche cayman 987" actually looks the part.
+        const research = await perplexityResearch(
+          `Automotive aero / body part: ${prompt}. Describe typical shape, ` +
+          `proportions, mounting, materials and any well-known products that match.`,
+        );
+        const img = await lovableGenerateImage({
+          apiKey: LOVABLE_API_KEY,
+          prompt: enrichPrompt(prompt, undefined, formatResearchBlock(research)),
+        });
         if (!img.ok || !img.dataUrl) {
           return json({ error: `Reference generation failed: ${img.error ?? "unknown"}` }, 502);
         }

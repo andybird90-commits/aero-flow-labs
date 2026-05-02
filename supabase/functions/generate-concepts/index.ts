@@ -22,6 +22,7 @@
  *   { count, concept_ids, variation_index } for an internal single run
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { perplexityResearch, formatResearchBlock } from "../_shared/perplexity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -401,6 +402,20 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
       `reference car. Treat this as a precise edit, not a re-design.`
     : "";
 
+  // Web-grounded styling research — only for free-form briefs (not surgical
+  // edits, not preset-locked). Helps the model nail real-world tuner / aero
+  // language ("Vorsteiner GTS", "RWB fender flares", "TCR-style splitter").
+  let researchBlock = "";
+  if (!surgicalMode && !presetMode && briefText.trim().length > 6) {
+    const research = await perplexityResearch(
+      `Car build / aero design reference for: "${briefText}". ` +
+      (vehicleLabel ? `Subject vehicle: ${vehicleLabel}. ` : "") +
+      `Describe defining visual cues, signature parts, brand/kit names, ` +
+      `proportions and stance commonly associated with this style.`,
+    );
+    researchBlock = formatResearchBlock(research, "REAL-WORLD STYLE REFERENCE");
+  }
+
   const stylePrompt = [
     surgicalHeader,
     disciplineLine,
@@ -417,6 +432,7 @@ async function loadGenerationContext(admin: any, body: Body, userId: string): Pr
     vehicleLabel
       ? `SUBJECT VEHICLE (lowest styling priority; only identity/proportions): ${vehicleLabel}.`
       : "",
+    researchBlock,
   ].filter(Boolean).join(" ");
 
   // If a per-tile seed was supplied (regenerate flow), use just that single
