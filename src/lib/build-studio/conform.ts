@@ -1,231 +1,253 @@
+/**
+ * conformKitToBody — surface projection conforming.
+ *
+ * Works entirely on deep-cloned geometry. Never touches the live scene mesh.
+ * Returns a new THREE.BufferGeometry in world space that has been conformed
+ * to the donor car surface. This geometry is passed directly into the CSG
+ * evaluator, bypassing bakeLiveWorldGeometry.
+ */
 import * as THREE from "three";
 import { MeshBVH, acceleratedRaycast } from "three-mesh-bvh";
+import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
+import { supabase } from "@/integrations/supabase/client";
 import {
   getCarObject,
   getPlacedPartObject,
 } from "@/lib/build-studio/scene-registry";
+import type { AutofitPlacedPartInput, AutofitPlacedPartResult } from "@/lib/build-studio/autofit";
 
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 export interface ConformOptions {
-  /** Only project vertices within this distance of the car surface (metres). Default 0.02. */
-  proximityThreshold?: number;
-  /** Standoff gap from car surface (metres). Default 0.002. */
-  gapM?: number;
-  /** Skip projection if the hit point is further than this from the vertex (metres). Default 0.04. */
-  maxProjectionM?: number;
+  proximityThreshold?: number; // metres, default 0.02
+  gapM?: number;               // metres, default 0.008
+  maxProjectionM?: number;     // metres, default 0.04
 }
 
-function bakeWorldPositions(root: THREE.Object3D): THREE.BufferGeometry {
+/** Bake world-space positions only (for BVH donor). */
+function bakePositionsWorld(root: THREE.Object3D): THREE.BufferGeometry {
   root.updateWorldMatrix(true, true);
-  const geometries: THREE.BufferGeometry[] = [];
-
+  const parts: THREE.BufferGeometry[] = [];
   root.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!(mesh as any).isMesh || !mesh.geometry) return;
     let g = mesh.geometry.clone();
-    for (const name of Object.keys(g.attributes)) {
-      if (name !== "position") g.deleteAttribute(name);
+    for (const k of Object.keys(g.attributes)) {
+      if (k !== "position") g.deleteAttribute(k);
     }
-    if (g.index) {
-      const ni = g.toNonIndexed();
-      g.dispose();
-      g = ni;
-    }
+    if (g.index) { const ni = g.toNonIndexed(); g.dispose(); g = ni; }
     g.applyMatrix4(mesh.matrixWorld);
-    geometries.push(g);
+    parts.push(g);
   });
-
-  if (geometries.length === 0) throw new Error("conform: no meshes under root");
-
-  let totalVerts = 0;
-  for (const g of geometries) totalVerts += g.attributes.position.count;
-  const positions = new Float32Array(totalVerts * 3);
-  let offset = 0;
-  for (const g of geometries) {
-    positions.set(g.attributes.position.array as Float32Array, offset * 3);
-    offset += g.attributes.position.count;
+  let n = 0;
+  for (const g of parts) n += g.attributes.position.count;
+  const pos = new Float32Array(n * 3);
+  let off = 0;
+  for (const g of parts) {
+    pos.set(g.attributes.position.array as Float32Array, off * 3);
+    off += g.attributes.position.count;
     g.dispose();
   }
-
   const out = new THREE.BufferGeometry();
-  out.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  out.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   return out;
 }
 
-function bakeWorldGeometryFull(root: THREE.Object3D): THREE.BufferGeometry {
-  // Same as above but also preserves normals — needed for ray direction.
+/** Bake world-space positions + normals (for kit conform). */
+function bakeFullWorld(root: THREE.Object3D): THREE.BufferGeometry {
   root.updateWorldMatrix(true, true);
-  const geometries: THREE.BufferGeometry[] = [];
-
+  const parts: THREE.BufferGeometry[] = [];
   root.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!(mesh as any).isMesh || !mesh.geometry) return;
     let g = mesh.geometry.clone();
-    for (const name of Object.keys(g.attributes)) {
-      if (name !== "position" && name !== "normal") g.deleteAttribute(name);
+    for (const k of Object.keys(g.attributes)) {
+      if (k !== "position" && k !== "normal") g.deleteAttribute(k);
     }
-    if (g.index) {
-      const ni = g.toNonIndexed();
-      g.dispose();
-      g = ni;
-    }
+    if (g.index) { const ni = g.toNonIndexed(); g.dispose(); g = ni; }
     g.applyMatrix4(mesh.matrixWorld);
     if (!g.attributes.normal) g.computeVertexNormals();
-    geometries.push(g);
+    parts.push(g);
   });
-
-  if (geometries.length === 0) throw new Error("conform: no meshes under root");
-
-  let totalVerts = 0;
-  for (const g of geometries) totalVerts += g.attributes.position.count;
-  const positions = new Float32Array(totalVerts * 3);
-  const normals = new Float32Array(totalVerts * 3);
-  let offset = 0;
-  for (const g of geometries) {
-    positions.set(g.attributes.position.array as Float32Array, offset * 3);
-    normals.set(g.attributes.normal.array as Float32Array, offset * 3);
-    offset += g.attributes.position.count;
+  let n = 0;
+  for (const g of parts) n += g.attributes.position.count;
+  const pos = new Float32Array(n * 3);
+  const nor = new Float32Array(n * 3);
+  let off = 0;
+  for (const g of parts) {
+    pos.set(g.attributes.position.array as Float32Array, off * 3);
+    nor.set(g.attributes.normal.array as Float32Array, off * 3);
+    off += g.attributes.position.count;
     g.dispose();
   }
-
   const out = new THREE.BufferGeometry();
-  out.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  out.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  out.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  out.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
   return out;
 }
 
-export function conformKitToBody(
+/**
+ * Returns a new world-space BufferGeometry of the kit with inner vertices
+ * projected onto the car surface. The live scene is never touched.
+ */
+function buildConformedGeometry(
   kitRoot: THREE.Object3D,
   carRoot: THREE.Object3D,
-  options: ConformOptions = {},
-): number {
-  const {
-    proximityThreshold = 0.02,
-    gapM = 0.002,
-    maxProjectionM = 0.04,
-  } = options;
+  options: ConformOptions,
+): THREE.BufferGeometry {
+  const { proximityThreshold = 0.02, gapM = 0.008, maxProjectionM = 0.04 } = options;
 
-  // Build BVH over donor car in world space.
-  const carGeo = bakeWorldPositions(carRoot);
-  carGeo.computeBoundingBox();
+  const carGeo = bakePositionsWorld(carRoot);
   const bvhMesh = new THREE.Mesh(carGeo);
   bvhMesh.geometry.boundsTree = new MeshBVH(carGeo);
 
-  // Bake kit geometry including normals for ray direction.
-  const kitGeoWorld = bakeWorldGeometryFull(kitRoot);
-  const kitPosAttr = kitGeoWorld.attributes.position as THREE.BufferAttribute;
-  const kitNormAttr = kitGeoWorld.attributes.normal as THREE.BufferAttribute;
-
-  let projectedCount = 0;
-  let skippedProximity = 0;
-  let skippedDistance = 0;
-  let skippedNoHit = 0;
+  const kitGeo = bakeFullWorld(kitRoot);
+  const posAttr = kitGeo.attributes.position as THREE.BufferAttribute;
+  const normAttr = kitGeo.attributes.normal as THREE.BufferAttribute;
+  const count = posAttr.count;
 
   const raycaster = new THREE.Raycaster();
   raycaster.far = maxProjectionM * 3;
 
-  // We operate on the baked world-space geometry vertex by vertex,
-  // then write back into the kit's local geometry.
-  // Since kitRoot may have child meshes, we need to track vertex offset.
-  let vertexOffset = 0;
+  let projected = 0, skippedProx = 0, skippedDist = 0, skippedHit = 0;
 
-  kitRoot.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (!(mesh as any).isMesh || !mesh.geometry) return;
+  for (let i = 0; i < count; i++) {
+    const vWorld = new THREE.Vector3().fromBufferAttribute(posAttr, i);
+    const nWorld = new THREE.Vector3().fromBufferAttribute(normAttr, i).normalize();
 
-    mesh.updateWorldMatrix(true, false);
-    const meshWorldInv = mesh.matrixWorld.clone().invert();
-    const geo = mesh.geometry;
-    const posAttr = geo.attributes.position as THREE.BufferAttribute;
-    const normAttr = geo.attributes.normal as THREE.BufferAttribute;
-    const vertCount = posAttr.count;
+    // Proximity check.
+    const closest = new THREE.Vector3();
+    bvhMesh.geometry.boundsTree!.closestPointToPoint(bvhMesh, vWorld, closest);
+    if (vWorld.distanceTo(closest) > proximityThreshold) { skippedProx++; continue; }
 
-    for (let i = 0; i < vertCount; i++) {
-      const wi = vertexOffset + i;
+    // Cast inward along flipped normal.
+    const origin = vWorld.clone().addScaledVector(nWorld, 0.005);
+    raycaster.set(origin, nWorld.clone().negate());
+    const hits = raycaster.intersectObject(bvhMesh);
+    if (!hits.length) { skippedHit++; continue; }
+    if (hits[0].distance > maxProjectionM) { skippedDist++; continue; }
 
-      const vWorld = new THREE.Vector3(
-        kitPosAttr.getX(wi),
-        kitPosAttr.getY(wi),
-        kitPosAttr.getZ(wi),
-      );
+    // Project to hit point + standoff outward along normal.
+    const newPos = hits[0].point.clone().addScaledVector(nWorld, gapM);
+    posAttr.setXYZ(i, newPos.x, newPos.y, newPos.z);
+    projected++;
+  }
 
-      // Proximity check — skip outer surface vertices.
-      const hitInfo = bvhMesh.geometry.boundsTree!.closestPointToPoint(vWorld);
-      if (!hitInfo) {
-        skippedProximity++;
-        continue;
-      }
-      const dist = hitInfo.distance;
-      if (dist > proximityThreshold) {
-        skippedProximity++;
-        continue;
-      }
-
-      // Ray direction: flip the world-space vertex normal to point inward.
-      const nWorld = new THREE.Vector3(
-        kitNormAttr.getX(wi),
-        kitNormAttr.getY(wi),
-        kitNormAttr.getZ(wi),
-      ).normalize();
-      // Inward = negative normal direction (toward car body).
-      const dir = nWorld.clone().negate();
-
-      // Offset ray origin slightly outward so it doesn't self-intersect.
-      const origin = vWorld.clone().addScaledVector(nWorld, 0.005);
-      raycaster.set(origin, dir);
-
-      const hits = raycaster.intersectObject(bvhMesh);
-      if (hits.length === 0) {
-        skippedNoHit++;
-        continue;
-      }
-
-      const hitDist = hits[0].distance;
-      if (hitDist > maxProjectionM) {
-        skippedDistance++;
-        continue;
-      }
-
-      // Project to hit point + standoff gap outward along normal.
-      const newWorld = hits[0].point.clone().addScaledVector(nWorld, gapM);
-
-      // Write back into mesh local space.
-      const newLocal = newWorld.applyMatrix4(meshWorldInv);
-      posAttr.setXYZ(i, newLocal.x, newLocal.y, newLocal.z);
-      projectedCount++;
-    }
-
-    posAttr.needsUpdate = true;
-    if (normAttr) normAttr.needsUpdate = true;
-    geo.computeVertexNormals();
-    geo.computeBoundingBox();
-    geo.computeBoundingSphere();
-
-    vertexOffset += vertCount;
-  });
-
+  posAttr.needsUpdate = true;
+  kitGeo.computeVertexNormals();
+  kitGeo.computeBoundingBox();
+  kitGeo.computeBoundingSphere();
   carGeo.dispose();
-  kitGeoWorld.dispose();
 
-  console.log("[conform] done", {
-    projected: projectedCount,
-    skippedProximity,
-    skippedDistance,
-    skippedNoHit,
-  });
-
-  return projectedCount;
+  console.log("[conform]", { projected, skippedProx, skippedDist, skippedHit });
+  return kitGeo; // world-space, ready for CSG
 }
 
-export function conformPlacedPartToBody(
-  placedPartId: string,
+function exportGlb(root: THREE.Object3D): Promise<Blob> {
+  const exporter = new GLTFExporter();
+  return new Promise((resolve, reject) => {
+    exporter.parse(
+      root,
+      (result) => {
+        if (result instanceof ArrayBuffer) {
+          resolve(new Blob([result], { type: "model/gltf-binary" }));
+        } else {
+          resolve(new Blob([JSON.stringify(result)], { type: "model/gltf+json" }));
+        }
+      },
+      (err) => reject(new Error(`GLTFExporter: ${(err as any)?.message ?? err}`)),
+      { binary: true, embedImages: false, onlyVisible: true } as Record<string, unknown>,
+    );
+  });
+}
+
+/**
+ * Full conform + CSG pipeline. Completely self-contained.
+ * Does NOT use bakeLiveWorldGeometry or touch the live scene.
+ */
+export async function conformAndFit(
+  input: AutofitPlacedPartInput,
   options: ConformOptions = {},
-): THREE.Object3D {
-  const kitRoot = getPlacedPartObject(placedPartId);
+): Promise<AutofitPlacedPartResult> {
+  const start = performance.now();
+
+  const kitRoot = getPlacedPartObject(input.placed_part_id);
   const carRoot = getCarObject();
-  if (!kitRoot) throw new Error(`conform: no scene object for placed_part_id=${placedPartId}`);
-  if (!carRoot) throw new Error("conform: no car mesh registered in scene");
-  conformKitToBody(kitRoot, carRoot, options);
-  return kitRoot;
+  if (!kitRoot) throw new Error(`conform: no scene object for ${input.placed_part_id}`);
+  if (!carRoot) throw new Error("conform: no car mesh in scene");
+
+  // 1. Build conformed kit geometry in world space (clone — live mesh untouched).
+  const kitGeo = buildConformedGeometry(kitRoot, carRoot, options);
+
+  // 2. Build car geometry in world space.
+  const carGeoForCsg = bakePositionsWorld(carRoot);
+  carGeoForCsg.computeBoundingBox();
+  if (!carGeoForCsg.attributes.normal) carGeoForCsg.computeVertexNormals();
+
+  // 3. CSG: conformed kit minus car.
+  const kitBrush = new Brush(kitGeo);
+  kitBrush.updateMatrixWorld();
+  const carBrush = new Brush(carGeoForCsg);
+  carBrush.updateMatrixWorld();
+
+  const evaluator = new Evaluator();
+  evaluator.attributes = ["position", "normal"];
+  evaluator.useGroups = false;
+  const result = evaluator.evaluate(kitBrush, carBrush, SUBTRACTION) as Brush;
+
+  // 4. Weld + clean normals.
+  let resultGeo = result.geometry.clone();
+  const welded = mergeVertices(resultGeo, 1e-4);
+  if (welded !== resultGeo) resultGeo.dispose();
+  welded.computeVertexNormals();
+  welded.computeBoundingBox();
+  welded.computeBoundingSphere();
+
+  kitGeo.dispose();
+  carGeoForCsg.dispose();
+
+  // 5. Export GLB.
+  const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+  const mesh = new THREE.Mesh(welded, mat);
+  const scene = new THREE.Scene();
+  scene.add(mesh);
+  const blob = await exportGlb(scene);
+
+  // 6. Upload to Supabase.
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData?.user?.id ?? "anon";
+  const path = `${userId}/${input.project_id}/autofit/${input.placed_part_id}-conform-${Date.now()}.glb`;
+  const { error: upErr } = await supabase.storage
+    .from("frozen-parts")
+    .upload(path, blob, { contentType: "model/gltf-binary", upsert: false });
+  if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+  const { data: urlData } = supabase.storage.from("frozen-parts").getPublicUrl(path);
+  if (!urlData?.publicUrl) throw new Error("Failed to get public URL");
+
+  // 7. Persist metadata.
+  const processing_ms = Math.round(performance.now() - start);
+  const nextMetadata = {
+    ...((input.part.metadata as Record<string, unknown> | null) ?? {}),
+    autofit_glb_url: urlData.publicUrl,
+    autofit_part_kind: input.part_kind,
+    autofit_processing_ms: processing_ms,
+    autofit_at: new Date().toISOString(),
+    autofit_frame: "world",
+    autofit_source: "client-conform-csg",
+  };
+  const { error: dbErr } = await (supabase as any)
+    .from("placed_parts")
+    .update({ metadata: nextMetadata })
+    .eq("id", input.placed_part_id);
+  if (dbErr) throw new Error(`Failed to save metadata: ${dbErr.message}`);
+
+  return {
+    ok: true,
+    placed_part_id: input.placed_part_id,
+    result_url: urlData.publicUrl,
+    part_kind: input.part_kind,
+    processing_ms,
+  };
 }
