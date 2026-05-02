@@ -1086,20 +1086,29 @@ export default function BuildStudio() {
                       />
                     </div>
                     <div className="min-h-0 flex-1 overflow-hidden">
-                      <PropertiesPanel
-                        part={selected}
-                        onPatch={handlePatch}
-                        onDuplicate={handleDuplicate}
-                        onDelete={handleDelete}
-                        onMirror={handleMirror}
-                        snapZones={snapZones}
-                        onSnapToZone={handleSnapToZone}
-                        onMirrorToZone={handleMirrorToZone}
-                        selectedLibraryItem={selectedLibraryItem}
-                        baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
-                        userId={user?.id ?? null}
-                        onLiveFitBaked={handleLiveFitBaked}
-                      />
+                      {!selected && activeSkin ? (
+                        <ShellPropertiesPanel
+                          activeSkin={activeSkin}
+                          transform={shellTransform}
+                          onCommit={handleShellCommit}
+                          onSelectSkin={(id) => setShellSkinId(id)}
+                        />
+                      ) : (
+                        <PropertiesPanel
+                          part={selected}
+                          onPatch={handlePatch}
+                          onDuplicate={handleDuplicate}
+                          onDelete={handleDelete}
+                          onMirror={handleMirror}
+                          snapZones={snapZones}
+                          onSnapToZone={handleSnapToZone}
+                          onMirrorToZone={handleMirrorToZone}
+                          selectedLibraryItem={selectedLibraryItem}
+                          baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
+                          userId={user?.id ?? null}
+                          onLiveFitBaked={handleLiveFitBaked}
+                        />
+                      )}
                     </div>
                   </aside>
                 )}
