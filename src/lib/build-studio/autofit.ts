@@ -52,18 +52,6 @@ export interface AutofitPlacedPartResult {
   processing_ms: number | null;
 }
 
-function loadGlb(url: string): Promise<THREE.Object3D> {
-  return new Promise((resolve, reject) => {
-    const loader = new GLTFLoader();
-    loader.load(
-      url,
-      (gltf) => resolve(gltf.scene),
-      undefined,
-      (err) => reject(new Error(`Failed to load GLB ${url}: ${(err as any)?.message ?? String(err)}`)),
-    );
-  });
-}
-
 function exportGlb(root: THREE.Object3D): Promise<Blob> {
   const exporter = new GLTFExporter();
   return new Promise((resolve, reject) => {
