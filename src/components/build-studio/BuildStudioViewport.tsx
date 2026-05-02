@@ -752,6 +752,14 @@ function PlacedPartGroup({
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
+  // Register the live group with the autofit scene-registry so the autofit
+  // hook can read this part's *current* matrixWorld (including any unsaved
+  // drag offsets) instead of reloading from URL + part.position.
+  useEffect(() => {
+    registerPlacedPartObject(part.id, groupRef.current);
+    return () => registerPlacedPartObject(part.id, null);
+  }, [part.id]);
+
   if (part.hidden) return null;
 
   // Autofit results bake world-space vertices into the returned GLB, so the
