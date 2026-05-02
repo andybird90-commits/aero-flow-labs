@@ -1,26 +1,3 @@
-/**
- * useAutofitPlacedPart — client-side CSG re-fit for a placed part.
- *
- * Previously this called the `bake-bodykit-from-shell` edge function, which
- * exported the live car + part as GLBs and ran a server-side boolean. That
- * round-trip is gone: the boolean now runs in the browser using
- * `three-bvh-csg`, which is purpose-built for Three.js meshes.
- *
- * Flow:
- *   1. Pull the *live* part + car Object3D from the scene registry.
- *   2. Bake their world transforms into geometry (so both sit in the same
- *      world frame as the viewport — exactly where the user dragged them).
- *   3. Run `Evaluator.evaluate(partBrush, carBrush, SUBTRACTION)` to trim
- *      the part where it intersects the car body.
- *   4. Export the result as a binary GLB.
- *   5. Upload to the public `frozen-parts` storage bucket.
- *   6. Persist the public URL onto `placed_parts.metadata.autofit_glb_url`
- *      so PartMesh swaps the rendered mesh on the next render.
- *
- * The viewport already strips the parent group's TRS when an autofit URL is
- * present (see PartMesh + BuildStudioViewport), so vertices baked into world
- * space land in the correct visual position with no further transform.
- */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as THREE from "three";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
@@ -39,13 +16,9 @@ export type AutofitPartKind =
 export interface AutofitPlacedPartInput {
   placed_part_id: string;
   part_kind: AutofitPartKind;
-  /** project_id is used to invalidate the placed_parts query cache. */
   project_id: string;
-  /** Donor car mesh URL — kept for API compatibility, no longer used. */
   car_url?: string;
-  /** Library part GLB URL — kept for API compatibility, no longer used. */
   part_url?: string;
-  /** Current placed part — read for transform/metadata logging. */
   part: PlacedPart;
 }
 
@@ -57,49 +30,31 @@ export interface AutofitPlacedPartResult {
   processing_ms: number | null;
 }
 
-/**
- * Bake the live world matrix of every mesh under `liveRoot` into a single
- * merged BufferGeometry expressed in world coordinates. We merge so the CSG
- * evaluator sees one closed brush per side (it operates per-Mesh).
- */
 function bakeLiveWorldGeometry(liveRoot: THREE.Object3D): THREE.BufferGeometry {
   liveRoot.updateWorldMatrix(true, true);
-
   const geometries: THREE.BufferGeometry[] = [];
   liveRoot.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!(mesh as any).isMesh || !mesh.geometry) return;
     const g = mesh.geometry.clone();
-    // three-bvh-csg only needs position + normal; strip everything else so
-    // attribute lists between brushes line up.
     for (const name of Object.keys(g.attributes)) {
       if (name !== "position" && name !== "normal") g.deleteAttribute(name);
     }
     if (g.index) {
-      // Convert to non-indexed so all geometries can be concatenated uniformly.
       const nonIndexed = g.toNonIndexed();
       g.dispose();
-      // re-bind onto `g`'s slot via reassignment below
-      const gn = nonIndexed;
-      gn.applyMatrix4(mesh.matrixWorld);
-      if (!gn.attributes.normal) gn.computeVertexNormals();
-      geometries.push(gn);
+      nonIndexed.applyMatrix4(mesh.matrixWorld);
+      if (!nonIndexed.attributes.normal) nonIndexed.computeVertexNormals();
+      geometries.push(nonIndexed);
       return;
     }
     g.applyMatrix4(mesh.matrixWorld);
     if (!g.attributes.normal) g.computeVertexNormals();
     geometries.push(g);
   });
-
-  if (geometries.length === 0) {
-    throw new Error("No meshes found under live root");
-  }
-
-  // Manual concat (avoid pulling in BufferGeometryUtils): all geometries
-  // are non-indexed with matching position + normal attributes.
+  if (geometries.length === 0) throw new Error("No meshes found under live root");
   let totalVerts = 0;
   for (const g of geometries) totalVerts += g.attributes.position.count;
-
   const positions = new Float32Array(totalVerts * 3);
   const normals = new Float32Array(totalVerts * 3);
   let offset = 0;
@@ -111,7 +66,6 @@ function bakeLiveWorldGeometry(liveRoot: THREE.Object3D): THREE.BufferGeometry {
     offset += g.attributes.position.count;
     g.dispose();
   }
-
   const out = new THREE.BufferGeometry();
   out.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   out.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
@@ -138,20 +92,6 @@ function exportGlb(root: THREE.Object3D): Promise<Blob> {
   });
 }
 
-function logBbox(label: string, geom: THREE.BufferGeometry, extra: Record<string, unknown> = {}) {
-  geom.computeBoundingBox();
-  const bb = geom.boundingBox!;
-  // eslint-disable-next-line no-console
-  console.log(label, {
-    ...extra,
-    vertexCount: geom.attributes.position.count,
-    bbox: {
-      min: { x: bb.min.x, y: bb.min.y, z: bb.min.z },
-      max: { x: bb.max.x, y: bb.max.y, z: bb.max.z },
-    },
-  });
-}
-
 let cachedEvaluator: Evaluator | null = null;
 function getEvaluator(): Evaluator {
   if (cachedEvaluator) return cachedEvaluator;
@@ -162,45 +102,20 @@ function getEvaluator(): Evaluator {
   return ev;
 }
 
-/**
- * Keep only the largest connected component of `geom` (by triangle count),
- * plus any other components with >= `minRatio` of that triangle count.
- * This drops floating splinters left behind by CSG without removing
- * legitimate disjoint pieces (e.g. a multi-shell kit).
- *
- * Algorithm:
- *   1. mergeVertices() to weld coincident verts so faces share indices.
- *   2. Build adjacency: vertex -> triangles using it.
- *   3. Flood-fill triangles into components via shared vertices.
- *   4. Sort components by triangle count, keep those above threshold.
- *   5. Rebuild a non-indexed BufferGeometry from kept triangles.
- */
-function keepLargestComponents(
-  inputGeom: THREE.BufferGeometry,
-): THREE.BufferGeometry {
-  // Weld so connectivity reflects topology, not duplicated verts at seams.
+function keepLargestComponents(inputGeom: THREE.BufferGeometry): THREE.BufferGeometry {
   const welded = mergeVertices(inputGeom, 1e-5);
-  if (!welded.index) {
-    // mergeVertices should always produce an index; guard anyway.
-    return inputGeom;
-  }
+  if (!welded.index) return inputGeom;
   const indexAttr = welded.index;
   const indexArr = indexAttr.array as ArrayLike<number>;
   const triCount = indexArr.length / 3;
   const vertCount = welded.attributes.position.count;
-
-  // vertex -> list of triangle indices
   const vertToTris: number[][] = new Array(vertCount);
   for (let i = 0; i < vertCount; i++) vertToTris[i] = [];
   for (let t = 0; t < triCount; t++) {
-    const a = indexArr[t * 3] as number;
-    const b = indexArr[t * 3 + 1] as number;
-    const c = indexArr[t * 3 + 2] as number;
-    vertToTris[a].push(t);
-    vertToTris[b].push(t);
-    vertToTris[c].push(t);
+    vertToTris[indexArr[t * 3] as number].push(t);
+    vertToTris[indexArr[t * 3 + 1] as number].push(t);
+    vertToTris[indexArr[t * 3 + 2] as number].push(t);
   }
-
   const compOf = new Int32Array(triCount).fill(-1);
   const components: number[][] = [];
   const stack: number[] = [];
@@ -214,65 +129,35 @@ function keepLargestComponents(
     while (stack.length > 0) {
       const t = stack.pop() as number;
       tris.push(t);
-      const a = indexArr[t * 3] as number;
-      const b = indexArr[t * 3 + 1] as number;
-      const c = indexArr[t * 3 + 2] as number;
-      const neigh = [vertToTris[a], vertToTris[b], vertToTris[c]];
-      for (const list of neigh) {
-        for (let i = 0; i < list.length; i++) {
-          const nt = list[i];
-          if (compOf[nt] === -1) {
-            compOf[nt] = compId;
-            stack.push(nt);
-          }
+      for (const k of [0, 1, 2]) {
+        const vi = indexArr[t * 3 + k] as number;
+        for (const nt of vertToTris[vi]) {
+          if (compOf[nt] === -1) { compOf[nt] = compId; stack.push(nt); }
         }
       }
     }
     components.push(tris);
   }
-
   components.sort((a, b) => b.length - a.length);
-  const largest = components[0]?.length ?? 0;
-  if (largest === 0) return inputGeom;
-  // Keep only the single largest connected component, regardless of size.
   const kept = components.slice(0, 1);
-
-  const droppedTris = triCount - kept[0].length;
-  // eslint-disable-next-line no-console
-  console.log("[autofit] component cleanup", {
-    components: components.length,
-    kept: 1,
-    largestTris: largest,
-    droppedTris,
-    totalTris: triCount,
-  });
-
-  if (kept.length === components.length && components.length === 1) {
-    // Nothing to drop — return welded geom as-is (still cheaper downstream).
-    return welded;
-  }
-
-  // Rebuild as non-indexed for the exporter / downstream simplicity.
   const posAttr = welded.attributes.position;
   const normAttr = welded.attributes.normal;
-  const keptTriCount = kept.reduce((s, c) => s + c.length, 0);
+  const keptTriCount = kept[0].length;
   const positions = new Float32Array(keptTriCount * 9);
   const normals = normAttr ? new Float32Array(keptTriCount * 9) : null;
   let w = 0;
-  for (const comp of kept) {
-    for (const t of comp) {
-      for (let k = 0; k < 3; k++) {
-        const vi = indexArr[t * 3 + k] as number;
-        positions[w] = posAttr.getX(vi);
-        positions[w + 1] = posAttr.getY(vi);
-        positions[w + 2] = posAttr.getZ(vi);
-        if (normals && normAttr) {
-          normals[w] = normAttr.getX(vi);
-          normals[w + 1] = normAttr.getY(vi);
-          normals[w + 2] = normAttr.getZ(vi);
-        }
-        w += 3;
+  for (const t of kept[0]) {
+    for (let k = 0; k < 3; k++) {
+      const vi = indexArr[t * 3 + k] as number;
+      positions[w] = posAttr.getX(vi);
+      positions[w + 1] = posAttr.getY(vi);
+      positions[w + 2] = posAttr.getZ(vi);
+      if (normals && normAttr) {
+        normals[w] = normAttr.getX(vi);
+        normals[w + 1] = normAttr.getY(vi);
+        normals[w + 2] = normAttr.getZ(vi);
       }
+      w += 3;
     }
   }
   const out = new THREE.BufferGeometry();
@@ -285,30 +170,15 @@ function keepLargestComponents(
   return out;
 }
 
-/**
- * Run the part − car boolean entirely client-side.
- * Returns a binary GLB blob whose vertices are in world coordinates.
- */
 async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const partMesh = getPlacedPartObject(input.placed_part_id);
   const carMesh = getCarObject();
-  if (!partMesh) {
-    throw new Error(
-      `Autofit: no live scene object registered for placed_part_id=${input.placed_part_id}`,
-    );
-  }
-  if (!carMesh) {
-    throw new Error("Autofit: no live car mesh registered in the scene");
-  }
+  if (!partMesh) throw new Error(`Autofit: no live scene object for placed_part_id=${input.placed_part_id}`);
+  if (!carMesh) throw new Error("Autofit: no live car mesh registered in scene");
 
   const partGeom = bakeLiveWorldGeometry(partMesh);
   const carGeom = bakeLiveWorldGeometry(carMesh);
 
-  logBbox("[autofit] part baked (world)", partGeom, { placed_part_id: input.placed_part_id });
-  logBbox("[autofit] car baked (world)", carGeom);
-
-  // three-bvh-csg expects Brushes built from BufferGeometry. They share the
-  // same world frame, so both brushes use identity matrices.
   const partBrush = new Brush(partGeom);
   partBrush.updateMatrixWorld();
   const carBrush = new Brush(carGeom);
@@ -318,35 +188,21 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const result = evaluator.evaluate(partBrush, carBrush, SUBTRACTION) as Brush;
 
   const rawResultGeom = result.geometry.clone();
-  rawResultGeom.computeBoundingBox();
-  logBbox("[autofit] CSG raw result (world)", rawResultGeom);
-
-  // Strip floating splinters left by the boolean.
   const cleanedGeom = keepLargestComponents(rawResultGeom);
   rawResultGeom.dispose();
-  // Weld coincident vertices so smooth-shading normals can be averaged across
-  // shared edges. Without this, every triangle has its own vertex copy and
-  // computeVertexNormals() produces flat (per-face) normals — which renders
-  // as a shredded / faceted look on thin parts (e.g. wing wings, spoiler
-  // blades) seen from certain angles.
+
   const welded = mergeVertices(cleanedGeom, 1e-4);
   if (welded !== cleanedGeom) cleanedGeom.dispose();
   welded.computeVertexNormals();
   welded.computeBoundingBox();
   welded.computeBoundingSphere();
-  const resultGeom = welded;
-  logBbox("[autofit] CSG cleaned result (world)", resultGeom);
 
-  // Wrap in a fresh Mesh + Scene for the exporter — vertices already encode
-  // world position, so identity TRS is correct.
   const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-  const mesh = new THREE.Mesh(resultGeom, mat);
+  const mesh = new THREE.Mesh(welded, mat);
   const scene = new THREE.Scene();
   scene.add(mesh);
 
   const blob = await exportGlb(scene);
-
-  // Free CSG-side allocations.
   partGeom.dispose();
   carGeom.dispose();
   return blob;
@@ -356,17 +212,10 @@ async function uploadResultGlb(input: AutofitPlacedPartInput, blob: Blob): Promi
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData?.user?.id ?? "anon";
   const path = `${userId}/${input.project_id}/autofit/${input.placed_part_id}-${Date.now()}.glb`;
-
-  // `frozen-parts` is a public bucket, so the returned URL is directly
-  // loadable by GLTFLoader without re-signing.
   const { error: upErr } = await supabase.storage
     .from("frozen-parts")
-    .upload(path, blob, {
-      contentType: "model/gltf-binary",
-      upsert: false,
-    });
+    .upload(path, blob, { contentType: "model/gltf-binary", upsert: false });
   if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
-
   const { data } = supabase.storage.from("frozen-parts").getPublicUrl(path);
   if (!data?.publicUrl) throw new Error("Failed to resolve public URL for autofit result");
   return data.publicUrl;
@@ -380,8 +229,6 @@ export function useAutofitPlacedPart() {
       const blob = await clientCsgRefit(input);
       const result_url = await uploadResultGlb(input, blob);
       const processing_ms = Math.round(performance.now() - start);
-
-      // Persist on the placed_parts row so the metadata survives a reload.
       const nextMetadata = {
         ...((input.part.metadata as Record<string, unknown> | null) ?? {}),
         autofit_glb_url: result_url,
@@ -396,19 +243,10 @@ export function useAutofitPlacedPart() {
         .update({ metadata: nextMetadata })
         .eq("id", input.placed_part_id);
       if (dbErr) throw new Error(`Failed to save autofit metadata: ${dbErr.message}`);
-
-      return {
-        ok: true,
-        placed_part_id: input.placed_part_id,
-        result_url,
-        part_kind: input.part_kind,
-        processing_ms,
-      };
+      return { ok: true, placed_part_id: input.placed_part_id, result_url, part_kind: input.part_kind, processing_ms };
     },
     onSuccess: async (data, vars) => {
       const queryKey = ["placed_parts", vars.project_id];
-
-      // Optimistic cache patch so the viewport sees the new GLB immediately.
       qc.setQueryData<PlacedPart[]>(queryKey, (current) => {
         if (!current) return current;
         return current.map((part) => {
@@ -427,7 +265,6 @@ export function useAutofitPlacedPart() {
           };
         });
       });
-
       await qc.invalidateQueries({ queryKey });
       await qc.refetchQueries({ queryKey, type: "active" });
     },
