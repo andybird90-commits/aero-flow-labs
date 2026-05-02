@@ -22,6 +22,7 @@
  *   { count, concept_ids, variation_index } for an internal single run
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { perplexityResearch, formatResearchBlock } from "../_shared/perplexity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
