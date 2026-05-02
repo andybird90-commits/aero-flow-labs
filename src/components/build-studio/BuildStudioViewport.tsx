@@ -400,6 +400,13 @@ function HeroStlCar({
     apply(matRefs.current.glass, paintFinish.glass, paintFinish.env_intensity);
   }, [paintFinish]);
 
+  // Expose the live wrapper to the autofit hook so it can read the *current*
+  // world matrix rather than reloading the GLB and reconstructing a transform.
+  useEffect(() => {
+    registerCarObject(object);
+    return () => registerCarObject(null);
+  }, [object]);
+
   if (!object) return null;
   return <primitive object={object} />;
 }
