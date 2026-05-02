@@ -388,8 +388,16 @@ function ItemCard({
 
   return (
     <div className="group glass rounded-xl overflow-hidden flex flex-col">
-      <div className="relative aspect-square bg-surface-0">
-        {item.thumbnail_url ? (
+      <div className="relative aspect-square bg-black">
+        {item.kind === "uploaded_part_mesh" && item.asset_url && isMesh ? (
+          // Live STL/GLB preview for uploaded parts: white mesh on black bg.
+          <PartMeshViewer
+            url={item.asset_url}
+            className="absolute inset-0 h-full w-full"
+            background={0x000000}
+            meshColor={0xffffff}
+          />
+        ) : item.thumbnail_url ? (
           <img src={item.thumbnail_url} alt={item.title} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <div className="absolute inset-0 grid place-items-center text-muted-foreground">
