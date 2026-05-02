@@ -71,6 +71,46 @@ export default function LibraryPage() {
   const [publishing, setPublishing] = useState<LibraryItem | null>(null);
   const [sculpting, setSculpting] = useState<LibraryItem | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [backfilling, setBackfilling] = useState<{ done: number; total: number } | null>(null);
+
+  const missingThumbs = useMemo(
+    () => items.filter(i => i.kind === "uploaded_part_mesh" && !i.thumbnail_url && i.asset_url),
+    [items],
+  );
+
+  const backfillThumbnails = async () => {
+    if (!user?.id || missingThumbs.length === 0) return;
+    const { renderMeshThumbnailFromUrl } = await import("@/lib/library-thumbnail");
+    const { supabase } = await import("@/integrations/supabase/client");
+    setBackfilling({ done: 0, total: missingThumbs.length });
+    let ok = 0;
+    let fail = 0;
+    for (let i = 0; i < missingThumbs.length; i++) {
+      const item = missingThumbs[i];
+      try {
+        const blob = await renderMeshThumbnailFromUrl(item.asset_url!, 512);
+        if (!blob) { fail++; setBackfilling({ done: i + 1, total: missingThumbs.length }); continue; }
+        const safe = (item.title || item.id).replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = `${user.id}/thumbs/${item.id}-${safe}.png`;
+        const { error: upErr } = await supabase.storage
+          .from("library-uploads")
+          .upload(path, blob, { contentType: "image/png", upsert: true });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from("library-uploads").getPublicUrl(path);
+        await update.mutateAsync({ id: item.id, thumbnail_url: pub.publicUrl } as any);
+        ok++;
+      } catch (e) {
+        console.warn("[backfill] failed for", item.id, e);
+        fail++;
+      }
+      setBackfilling({ done: i + 1, total: missingThumbs.length });
+    }
+    setBackfilling(null);
+    toast({
+      title: "Thumbnails generated",
+      description: `${ok} succeeded${fail ? `, ${fail} failed` : ""}.`,
+    });
+  };
 
   const filtered = useMemo(
     () => filter === "all" ? items : items.filter(i => i.kind === filter),
@@ -128,6 +168,27 @@ export default function LibraryPage() {
               <Button variant="hero" size="sm" onClick={() => setUploadOpen(true)}>
                 <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload STL
               </Button>
+              {missingThumbs.length > 0 && (
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={backfillThumbnails}
+                  disabled={!!backfilling}
+                  title="Render missing previews for uploaded parts"
+                >
+                  {backfilling ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      Generating {backfilling.done}/{backfilling.total}
+                    </>
+                  ) : (
+                    <>
+                      <ImageIcon className="mr-1.5 h-3.5 w-3.5" />
+                      Generate {missingThumbs.length} preview{missingThumbs.length === 1 ? "" : "s"}
+                    </>
+                  )}
+                </Button>
+              )}
               <Button variant="glass" size="sm" asChild>
                 <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
               </Button>
