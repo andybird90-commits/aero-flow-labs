@@ -13,9 +13,21 @@ import { Loader2 } from "lucide-react";
 interface Props {
   url: string;
   className?: string;
+  /** Background colour (hex int, e.g. 0x000000). Default 0x0b0d10. */
+  background?: number;
+  /** Mesh material colour (hex int). Default 0xb8c2cc (warm clay). */
+  meshColor?: number;
+  /** Auto-rotate the model. Default true. */
+  autoRotate?: boolean;
 }
 
-export function PartMeshViewer({ url, className }: Props) {
+export function PartMeshViewer({
+  url,
+  className,
+  background = 0x0b0d10,
+  meshColor = 0xb8c2cc,
+  autoRotate = true,
+}: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
