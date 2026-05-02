@@ -417,9 +417,33 @@ export function PropertiesPanel({
                   <Wand2 className="h-3 w-3 text-primary" /> Autofit to car
                 </Label>
                 {hasAutofit && (
-                  <Badge variant="secondary" className="gap-1 text-[10px]">
-                    <CheckCircle2 className="h-3 w-3" /> Fitted
-                  </Badge>
+                  <div className="flex items-center gap-1">
+                    <Badge variant="secondary" className="gap-1 text-[10px]">
+                      <CheckCircle2 className="h-3 w-3" /> Fitted
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-5 px-1 text-[10px] text-muted-foreground hover:text-destructive"
+                      title="Clear autofit result"
+                      onClick={async () => {
+                        const nextMeta = { ...(part.metadata as Record<string, unknown> ?? {}) };
+                        delete nextMeta.autofit_glb_url;
+                        await (supabase as any)
+                          .from("placed_parts")
+                          .update({ metadata: nextMeta })
+                          .eq("id", part.id);
+                        qc.setQueryData<PlacedPart[]>(["placed_parts", part.project_id], (current) => {
+                          if (!current) return current;
+                          return current.map((p) => p.id !== part.id ? p : { ...p, metadata: nextMeta });
+                        });
+                        await qc.invalidateQueries({ queryKey: ["placed_parts", part.project_id] });
+                        toast.success("Autofit cleared");
+                      }}
+                    >
+                      ✕
+                    </Button>
+                  </div>
                 )}
               </div>
               <Select value={autofitKind} onValueChange={(v) => setAutofitKind(v as AutofitPartKind)}>
