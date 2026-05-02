@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { MeshStructureChip } from "@/components/build-studio/MeshStructureChip";
 import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
+import { LiveMeshTile } from "@/components/LiveMeshTile";
 
 const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: string }> = {
   concept_image:       { label: "Concept image", icon: ImageIcon, tone: "text-cyan-400"    },
