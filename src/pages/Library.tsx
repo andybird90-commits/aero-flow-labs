@@ -399,8 +399,8 @@ function ItemCard({
   return (
     <div className="group glass rounded-xl overflow-hidden flex flex-col">
       <div className="relative aspect-square bg-black">
-        {item.kind === "uploaded_part_mesh" && item.asset_url && isMesh ? (
-          // Live STL/GLB preview for uploaded parts: white mesh on black bg.
+        {isMesh && item.asset_url ? (
+          // Live STL/GLB preview for any mesh asset.
           <PartMeshViewer
             url={item.asset_url}
             className="absolute inset-0 h-full w-full"
