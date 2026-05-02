@@ -522,9 +522,6 @@ export function PropertiesPanel({
             </div>
             <Separator />
           </>
-            </div>
-            <Separator />
-          </>
         )}
 
         <VecRow
