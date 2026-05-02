@@ -55,6 +55,7 @@ function DeformScene({
 }: SceneProps) {
   const { camera, gl } = useThree();
   const [deformedGeom, setDeformedGeom] = useState<THREE.BufferGeometry | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const draggingRef = useRef<string | null>(null);
   const dragStartMouseRef = useRef<THREE.Vector2 | null>(null);
   const dragStartPosRef = useRef<THREE.Vector3 | null>(null);
@@ -70,15 +71,19 @@ function DeformScene({
     e.stopPropagation();
     onHandleSelect(handleId);
     draggingRef.current = handleId;
+    setIsDragging(true);
     dragStartMouseRef.current = new THREE.Vector2(e.clientX, e.clientY);
     const handle = handles.find(h => h.id === handleId);
     dragStartPosRef.current = handle ? handle.position.clone() : null;
     gl.domElement.style.cursor = "grabbing";
+    // Capture pointer so we keep getting events even if cursor leaves canvas
+    try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch { /* noop */ }
   }, [handles, onHandleSelect, gl]);
 
   const handlePointerMove = useCallback((e: PointerEvent) => {
     if (!draggingRef.current || !dragStartMouseRef.current || !dragStartPosRef.current) return;
     e.stopPropagation();
+    e.preventDefault();
 
     const dx = e.clientX - dragStartMouseRef.current.x;
     const dy = e.clientY - dragStartMouseRef.current.y;
@@ -101,19 +106,25 @@ function DeformScene({
   }, [camera, gl, onHandleMove]);
 
   const handlePointerUp = useCallback(() => {
+    if (!draggingRef.current) return;
     draggingRef.current = null;
+    dragStartMouseRef.current = null;
+    dragStartPosRef.current = null;
+    setIsDragging(false);
     gl.domElement.style.cursor = "default";
   }, [gl]);
 
   useEffect(() => {
-    const el = gl.domElement;
-    el.addEventListener("pointermove", handlePointerMove);
-    el.addEventListener("pointerup", handlePointerUp);
+    // Listen on window so we keep tracking even if the cursor flies off the canvas.
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
     return () => {
-      el.removeEventListener("pointermove", handlePointerMove);
-      el.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [gl, handlePointerMove, handlePointerUp]);
+  }, [handlePointerMove, handlePointerUp]);
 
   if (!deformedGeom) return null;
 
@@ -162,7 +173,7 @@ function DeformScene({
       <ambientLight intensity={0.6} />
       <directionalLight position={[3, 4, 2]} intensity={1.0} />
       <Environment preset="studio" />
-      <OrbitControls makeDefault enabled={!draggingRef.current} />
+      <OrbitControls makeDefault enabled={!isDragging} />
     </>
   );
 }
