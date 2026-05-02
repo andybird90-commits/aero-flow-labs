@@ -198,6 +198,11 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const result = evaluator.evaluate(partBrush, carBrush, SUBTRACTION) as Brush;
 
   const rawResultGeom = result.geometry.clone();
+  console.log("[autofit] CSG result vertex count:", rawResultGeom.attributes.position?.count ?? 0);
+  console.log("[autofit] part input vertex count:", partGeom.attributes.position.count);
+  console.log("[autofit] car input vertex count:", carGeom.attributes.position.count);
+  rawResultGeom.computeBoundingBox();
+  console.log("[autofit] CSG result bbox:", JSON.stringify(rawResultGeom.boundingBox));
 
   const welded = mergeVertices(rawResultGeom, 1e-4);
   if (welded !== rawResultGeom) rawResultGeom.dispose();
