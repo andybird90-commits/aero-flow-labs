@@ -53,10 +53,11 @@ function DeformScene({
   originalGeom, handles, selectedHandleId, addingHandle,
   onHandleSelect, onHandleMove, onMeshClick, meshWorldMatrix,
 }: SceneProps) {
-  const { camera, gl, raycaster } = useThree();
+  const { camera, gl } = useThree();
   const [deformedGeom, setDeformedGeom] = useState<THREE.BufferGeometry | null>(null);
   const draggingRef = useRef<string | null>(null);
-  const dragPlaneRef = useRef(new THREE.Plane());
+  const dragStartMouseRef = useRef<THREE.Vector2 | null>(null);
+  const dragStartPosRef = useRef<THREE.Vector3 | null>(null);
 
   // Recompute deformed geometry whenever handles change
   useEffect(() => {
@@ -69,28 +70,35 @@ function DeformScene({
     e.stopPropagation();
     onHandleSelect(handleId);
     draggingRef.current = handleId;
-    const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
+    dragStartMouseRef.current = new THREE.Vector2(e.clientX, e.clientY);
     const handle = handles.find(h => h.id === handleId);
-    if (handle) {
-      dragPlaneRef.current.setFromNormalAndCoplanarPoint(normal, handle.position);
-    }
+    dragStartPosRef.current = handle ? handle.position.clone() : null;
     gl.domElement.style.cursor = "grabbing";
-  }, [camera, handles, onHandleSelect, gl]);
+  }, [handles, onHandleSelect, gl]);
 
   const handlePointerMove = useCallback((e: PointerEvent) => {
-    if (!draggingRef.current) return;
+    if (!draggingRef.current || !dragStartMouseRef.current || !dragStartPosRef.current) return;
     e.stopPropagation();
-    const rect = gl.domElement.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    raycaster.setFromCamera(mouse, camera);
-    const target = new THREE.Vector3();
-    if (raycaster.ray.intersectPlane(dragPlaneRef.current, target)) {
-      onHandleMove(draggingRef.current, target);
-    }
-  }, [camera, gl, raycaster, onHandleMove]);
+
+    const dx = e.clientX - dragStartMouseRef.current.x;
+    const dy = e.clientY - dragStartMouseRef.current.y;
+
+    // Convert pixel delta to world-space delta at the handle's depth.
+    const handleWorldPos = dragStartPosRef.current;
+    const distToCamera = camera.position.distanceTo(handleWorldPos);
+    const vFov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
+    const worldHeightAtDist = 2 * distToCamera * Math.tan(vFov / 2);
+    const pixelToWorld = worldHeightAtDist / gl.domElement.clientHeight;
+
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+
+    const newPos = dragStartPosRef.current.clone()
+      .addScaledVector(right, dx * pixelToWorld)
+      .addScaledVector(up, -dy * pixelToWorld);
+
+    onHandleMove(draggingRef.current, newPos);
+  }, [camera, gl, onHandleMove]);
 
   const handlePointerUp = useCallback(() => {
     draggingRef.current = null;
