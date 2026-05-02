@@ -20,6 +20,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { createImageTo3dTask, getImageTo3dTask } from "../_shared/meshy.ts";
 import { lovableGenerateImage } from "../_shared/lovable-image.ts";
+import { perplexityResearch, formatResearchBlock } from "../_shared/perplexity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
