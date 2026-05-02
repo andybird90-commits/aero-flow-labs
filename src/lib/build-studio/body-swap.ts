@@ -294,13 +294,31 @@ export function useBodySwap() {
       const shellGeom = bakeLiveWorldGeometry(shellMesh);
       const donorGeom = bakeLiveWorldGeometry(carMesh);
 
-      // Step 2 — centre shell over donor, scale ×preClearance about that centre
-      // so the shell brackets the donor everywhere before the cut.
+      // Step 2 — fit shell to donor's bounding box (uniform scale to bracket
+      // donor on every axis), then centre over donor.
       const donorBox = new THREE.Box3().setFromBufferAttribute(
         donorGeom.attributes.position as THREE.BufferAttribute,
       );
-      const donorCenter = donorBox.getCenter(new THREE.Vector3());
-      centerAndScaleAround(shellGeom, donorCenter, preClearance);
+      const shellBoxBefore = new THREE.Box3().setFromBufferAttribute(
+        shellGeom.attributes.position as THREE.BufferAttribute,
+      );
+      // eslint-disable-next-line no-console
+      console.log("[body-swap] bounding boxes BEFORE fit", {
+        donor: { min: donorBox.min.toArray(), max: donorBox.max.toArray() },
+        shell: { min: shellBoxBefore.min.toArray(), max: shellBoxBefore.max.toArray() },
+      });
+      fitShellToDonor(shellGeom, donorBox, preClearance);
+      const shellBoxAfter = new THREE.Box3().setFromBufferAttribute(
+        shellGeom.attributes.position as THREE.BufferAttribute,
+      );
+      const overlap = donorBox.clone().intersect(shellBoxAfter);
+      // eslint-disable-next-line no-console
+      console.log("[body-swap] bounding boxes AFTER fit", {
+        donor: { min: donorBox.min.toArray(), max: donorBox.max.toArray() },
+        shell: { min: shellBoxAfter.min.toArray(), max: shellBoxAfter.max.toArray() },
+        overlapEmpty: overlap.isEmpty(),
+        overlapSize: overlap.isEmpty() ? null : overlap.getSize(new THREE.Vector3()).toArray(),
+      });
 
       const trianglesIn =
         shellGeom.attributes.position.count / 3 + donorGeom.attributes.position.count / 3;
