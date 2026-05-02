@@ -213,9 +213,36 @@ export default function LibraryPage() {
           title="Your saved assets"
           description="Every concept image, aero kit, and 3D part you've generated — across all projects. Make any of them public to list on the Marketplace."
           actions={
-            <Button variant="glass" size="sm" asChild>
-              <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_UPLOAD_EXT}
+                multiple
+                className="hidden"
+                onChange={(e) => handleUploadFiles(e.target.files)}
+              />
+              <Button
+                variant="hero"
+                size="sm"
+                disabled={!!uploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    Uploading {uploading.done}/{uploading.total}…
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload parts
+                  </>
+                )}
+              </Button>
+              <Button variant="glass" size="sm" asChild>
+                <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
+              </Button>
+            </div>
           }
         />
       </div>
