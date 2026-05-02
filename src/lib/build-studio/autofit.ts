@@ -77,35 +77,28 @@ function exportGlb(root: THREE.Object3D): Promise<Blob> {
  * GLB is in the same world frame as the car GLB.
  */
 /**
- * Bake a transform into mesh geometry vertices.
+ * Bake the live world matrix of every mesh under `liveRoot` into cloned
+ * geometries. The returned root contains meshes whose vertices are already
+ * in **world coordinates of the scene** — exactly where they appear in the
+ * viewport at this instant, including any unsaved drag/transform changes.
  *
- * Walks the loaded scene, clones each mesh + its geometry, applies the
- * computed world matrix to the cloned geometry, then resets the clone's
- * local TRS to identity. The returned root contains meshes whose vertices
- * are already in world space — GLTFExporter will write those exact
- * coordinates regardless of any parent transform.
+ * Pass the actual live Three.js Object3D from the scene (not a freshly
+ * loaded GLB), so `child.matrixWorld` reflects the current viewport state.
  */
-function bakeWorldTransformIntoGeometry(
-  source: THREE.Object3D,
-  worldMatrix: THREE.Matrix4,
-): THREE.Object3D {
+function bakeLiveWorldGeometry(liveRoot: THREE.Object3D): THREE.Object3D {
   const root = new THREE.Group();
 
-  // Make sure children's matrixWorld is current relative to `source`.
-  source.updateMatrixWorld(true);
+  // Force the entire ancestor chain → children to recompute matrices so
+  // matrixWorld is exact at this instant.
+  liveRoot.updateWorldMatrix(true, true);
 
-  source.traverse((child) => {
+  liveRoot.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!(mesh as any).isMesh || !mesh.geometry) return;
 
     const cloned = mesh.clone();
     cloned.geometry = mesh.geometry.clone();
-
-    // Combined matrix = outer placed transform * mesh's own world matrix
-    // inside the loaded scene (handles nested mesh hierarchies in the GLB).
-    const combined = new THREE.Matrix4()
-      .multiplyMatrices(worldMatrix, mesh.matrixWorld);
-    cloned.geometry.applyMatrix4(combined);
+    cloned.geometry.applyMatrix4(mesh.matrixWorld);
 
     cloned.position.set(0, 0, 0);
     cloned.rotation.set(0, 0, 0);
