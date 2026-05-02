@@ -16,6 +16,7 @@ const MESH_KINDS = new Set([
   "prototype_part_mesh",
   "geometry_part_mesh",
   "cad_part_mesh",
+  "uploaded_part_mesh",
 ]);
 
 /**
