@@ -292,6 +292,7 @@ export type Database = {
           notes: string | null
           preview_url: string | null
           source_image_urls: Json
+          source_skin_id: string | null
           style_tags: string[]
           updated_at: string
           user_id: string
@@ -309,6 +310,7 @@ export type Database = {
           notes?: string | null
           preview_url?: string | null
           source_image_urls?: Json
+          source_skin_id?: string | null
           style_tags?: string[]
           updated_at?: string
           user_id: string
@@ -326,6 +328,7 @@ export type Database = {
           notes?: string | null
           preview_url?: string | null
           source_image_urls?: Json
+          source_skin_id?: string | null
           style_tags?: string[]
           updated_at?: string
           user_id?: string
@@ -343,6 +346,13 @@ export type Database = {
             columns: ["donor_car_template_id"]
             isOneToOne: false
             referencedRelation: "car_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "body_skins_source_skin_id_fkey"
+            columns: ["source_skin_id"]
+            isOneToOne: false
+            referencedRelation: "body_skins"
             referencedColumns: ["id"]
           },
         ]
