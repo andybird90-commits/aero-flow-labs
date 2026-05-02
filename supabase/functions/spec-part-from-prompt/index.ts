@@ -111,7 +111,16 @@ Deno.serve(async (req) => {
           : await uploadImageToBucket(admin, userId, body.image_data_url);
       } else {
         if (!LOVABLE_API_KEY) return json({ error: "LOVABLE_API_KEY not configured" }, 500);
-        const img = await lovableGenerateImage({ apiKey: LOVABLE_API_KEY, prompt: enrichPrompt(prompt) });
+        // Web-grounded research first — pulls real-world part naming / shapes
+        // so e.g. "front splitter for porsche cayman 987" actually looks the part.
+        const research = await perplexityResearch(
+          `Automotive aero / body part: ${prompt}. Describe typical shape, ` +
+          `proportions, mounting, materials and any well-known products that match.`,
+        );
+        const img = await lovableGenerateImage({
+          apiKey: LOVABLE_API_KEY,
+          prompt: enrichPrompt(prompt, undefined, formatResearchBlock(research)),
+        });
         if (!img.ok || !img.dataUrl) {
           return json({ error: `Reference generation failed: ${img.error ?? "unknown"}` }, 502);
         }
