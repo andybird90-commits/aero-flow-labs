@@ -493,9 +493,18 @@ export function useAutofitPlacedPart() {
         autofit_source: "client-bvh-csg",
         autofit_center: center,
       };
+      // Reset position/rotation/scale to identity: the autofit GLB has
+      // world-space vertices baked in, so any non-identity transform on the
+      // wrapper would double-apply on top. PartMesh shifts the inner mesh by
+      // -autofit_center to keep the visual location correct.
       const { error: dbErr } = await (supabase as any)
         .from("placed_parts")
-        .update({ metadata: nextMetadata })
+        .update({
+          metadata: nextMetadata,
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        })
         .eq("id", input.placed_part_id);
       if (dbErr) throw new Error(`Failed to save autofit metadata: ${dbErr.message}`);
 
