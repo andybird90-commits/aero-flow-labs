@@ -81,6 +81,7 @@ import { useBodySkins, useSignedBodySkinUrl, type BodySkin } from "@/lib/body-sk
 import { useShellAlignment, useUpsertShellAlignment, type LockedHardpointPair } from "@/lib/build-studio/shell-alignments";
 import { useCarHardpoints } from "@/lib/build-studio/hardpoints";
 import { ShellFitPanel } from "@/components/build-studio/ShellFitPanel";
+import { BodySwapButton } from "@/components/build-studio/BodySwapButton";
 // BakeBodyKitButton retired — autofit is now a per-placed-part action in PropertiesPanel.
 import type * as THREE from "three";
 import { DEFAULT_PAINT_FINISH, parsePaintFinish, type PaintFinish } from "@/lib/build-studio/paint-finish";
@@ -943,6 +944,20 @@ export default function BuildStudio() {
                   disabled={!shellSkinId}
                   onApplyTransform={handleShellCommit}
                   onStretchChange={handleStretchChange}
+                />
+
+                <BodySwapButton
+                  activeSkin={activeSkin}
+                  userId={user?.id ?? null}
+                  donorCarTemplateId={carTemplateId}
+                  donorCarLabel={(() => {
+                    const tpl = templates.find((t) => t.id === carTemplateId);
+                    return tpl ? `${tpl.make} ${tpl.model}` : null;
+                  })()}
+                  onSwapComplete={(newSkinId) => {
+                    setShellSkinId(newSkinId);
+                    setShellEditMode(false);
+                  }}
                 />
 
                 {/* Autofit moved to PropertiesPanel — per placed-part action. */}

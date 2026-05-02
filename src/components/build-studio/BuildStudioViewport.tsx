@@ -28,6 +28,7 @@ import { SnapZoneViz } from "@/components/build-studio/SnapZoneViz";
 import {
   registerPlacedPartObject,
   registerCarObject,
+  registerShellObject,
 } from "@/lib/build-studio/scene-registry";
 import {
   DEFAULT_PAINT_FINISH,
@@ -882,6 +883,14 @@ export function BuildStudioViewport({
   useEffect(() => {
     onShellMeshReady?.(shellNode ?? null);
   }, [shellNode, onShellMeshReady]);
+
+  // Expose the live shell group (with the user's alignment transforms applied)
+  // to non-R3F code such as the Body Swap action, which needs the exact mesh
+  // currently visible in the scene.
+  useEffect(() => {
+    registerShellObject(shellGroupRef.current ?? shellNode ?? null);
+    return () => registerShellObject(null);
+  }, [shellNode]);
 
   // mm per scene-unit. We scale the car so its longest side ≈ wheelbase + 1.45m,
   // so 1 scene unit = 1 metre = 1000 mm.
