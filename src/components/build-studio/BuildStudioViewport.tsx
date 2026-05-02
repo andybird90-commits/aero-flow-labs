@@ -763,21 +763,13 @@ function PlacedPartGroup({
 
   if (part.hidden) return null;
 
-  // Autofit results bake world-space vertices into the returned GLB, so the
-  // wrapper group must be at identity — applying the placed TRS again would
-  // double-transform the mesh. Non-autofit parts use their stored TRS.
-  const hasAutofit = !!(part.metadata as Record<string, unknown> | null)?.autofit_glb_url;
-  const position = hasAutofit ? { x: 0, y: 0, z: 0 } : part.position;
-  const rotation = hasAutofit ? { x: 0, y: 0, z: 0 } : part.rotation;
-  const scale = hasAutofit ? { x: 1, y: 1, z: 1 } : part.scale;
-
   const inner = (
     <group
       ref={groupRef}
       name={`placed-${part.id}`}
-      position={[position.x, position.y, position.z]}
-      rotation={[rotation.x, rotation.y, rotation.z]}
-      scale={[scale.x, scale.y, scale.z]}
+      position={[part.position.x, part.position.y, part.position.z]}
+      rotation={[part.rotation.x, part.rotation.y, part.rotation.z]}
+      scale={[part.scale.x, part.scale.y, part.scale.z]}
       onClick={(e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
         onSelect();
