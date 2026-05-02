@@ -142,6 +142,7 @@ function RotButton({
       <Icon className="h-3 w-3" />
     </Button>
   );
+}
 
 export function PropertiesPanel({
   part, onPatch, onDuplicate, onDelete, onMirror,
