@@ -44,12 +44,16 @@ export function applyHandles(
   const geom = originalGeom.clone();
   const posAttr = geom.attributes.position as THREE.BufferAttribute;
   const worldInv = meshWorldMatrix.clone().invert();
+  const vLocal = new THREE.Vector3();
+  const vWorld = new THREE.Vector3();
+  const totalOffset = new THREE.Vector3();
+  const newWorld = new THREE.Vector3();
 
   for (let i = 0; i < posAttr.count; i++) {
-    const vLocal = new THREE.Vector3().fromBufferAttribute(posAttr, i);
-    const vWorld = vLocal.clone().applyMatrix4(meshWorldMatrix);
+    vLocal.fromBufferAttribute(posAttr, i);
+    vWorld.copy(vLocal).applyMatrix4(meshWorldMatrix);
 
-    const totalOffset = new THREE.Vector3();
+    totalOffset.set(0, 0, 0);
     for (const handle of handles) {
       const dist = vWorld.distanceTo(handle.position);
       const weight = falloff(dist, handle.radius);
@@ -59,9 +63,8 @@ export function applyHandles(
     }
 
     if (totalOffset.lengthSq() > 0) {
-      const newWorld = vWorld.clone().add(totalOffset);
-      const newLocal = newWorld.applyMatrix4(worldInv);
-      posAttr.setXYZ(i, newLocal.x, newLocal.y, newLocal.z);
+      newWorld.copy(vWorld).add(totalOffset).applyMatrix4(worldInv);
+      posAttr.setXYZ(i, newWorld.x, newWorld.y, newWorld.z);
     }
   }
 
