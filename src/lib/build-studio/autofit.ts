@@ -55,6 +55,7 @@ export interface AutofitPlacedPartResult {
   result_url: string;
   part_kind?: string;
   processing_ms: number | null;
+  center?: { x: number; y: number; z: number };
 }
 
 /**
@@ -289,7 +290,7 @@ function keepLargestComponents(
  * Run the part − car boolean entirely client-side.
  * Returns a binary GLB blob whose vertices are in world coordinates.
  */
-async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
+async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<{ blob: Blob; center: { x: number; y: number; z: number } }> {
   const partMesh = getPlacedPartObject(input.placed_part_id);
   const carMesh = getCarObject();
   if (!partMesh) {
@@ -344,12 +345,23 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
   const scene = new THREE.Scene();
   scene.add(mesh);
 
+  // Capture the world-space bbox center BEFORE export so the viewport can
+  // reposition the wrapper group there (keeps the transform gizmo on the
+  // part instead of stranding it at world origin).
+  resultGeom.computeBoundingBox();
+  const bb = resultGeom.boundingBox!;
+  const center = {
+    x: (bb.min.x + bb.max.x) / 2,
+    y: (bb.min.y + bb.max.y) / 2,
+    z: (bb.min.z + bb.max.z) / 2,
+  };
+
   const blob = await exportGlb(scene);
 
   // Free CSG-side allocations.
   partGeom.dispose();
   carGeom.dispose();
-  return blob;
+  return { blob, center };
 }
 
 async function uploadResultGlb(input: AutofitPlacedPartInput, blob: Blob): Promise<string> {
@@ -377,7 +389,7 @@ export function useAutofitPlacedPart() {
   return useMutation({
     mutationFn: async (input: AutofitPlacedPartInput): Promise<AutofitPlacedPartResult> => {
       const start = performance.now();
-      const blob = await clientCsgRefit(input);
+      const { blob, center } = await clientCsgRefit(input);
       const result_url = await uploadResultGlb(input, blob);
       const processing_ms = Math.round(performance.now() - start);
 
@@ -390,6 +402,7 @@ export function useAutofitPlacedPart() {
         autofit_at: new Date().toISOString(),
         autofit_frame: "world",
         autofit_source: "client-bvh-csg",
+        autofit_center: center,
       };
       const { error: dbErr } = await (supabase as any)
         .from("placed_parts")
@@ -403,6 +416,7 @@ export function useAutofitPlacedPart() {
         result_url,
         part_kind: input.part_kind,
         processing_ms,
+        center,
       };
     },
     onSuccess: async (data, vars) => {
@@ -423,6 +437,7 @@ export function useAutofitPlacedPart() {
               autofit_at: new Date().toISOString(),
               autofit_frame: "world",
               autofit_source: "client-bvh-csg",
+              autofit_center: data.center,
             },
           };
         });
