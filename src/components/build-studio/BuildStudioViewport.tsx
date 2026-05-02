@@ -521,6 +521,12 @@ function HeroGlbCar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, template?.wheelbase_mm]);
 
+  // Expose the live car wrapper to the autofit hook (see scene-registry).
+  useEffect(() => {
+    registerCarObject(object);
+    return () => registerCarObject(null);
+  }, [object]);
+
   if (!object) return null;
   return <primitive object={object} />;
 }
