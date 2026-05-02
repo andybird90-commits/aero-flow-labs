@@ -19,6 +19,8 @@ interface Props {
   meshColor?: number;
   /** Auto-rotate the model. Default true. */
   autoRotate?: boolean;
+  /** Optional poster image shown until the viewer scrolls into view. */
+  poster?: string | null;
 }
 
 export function PartMeshViewer({
@@ -27,16 +29,37 @@ export function PartMeshViewer({
   background = 0x0b0d10,
   meshColor = 0xb8c2cc,
   autoRotate = true,
+  poster = null,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [visible, setVisible] = useState(false);
+
+  // Lazy-mount: only spin up a WebGL context when the card scrolls near view.
+  // Mobile browsers cap concurrent WebGL contexts (~8) — without this, large
+  // libraries blow the limit and every card renders blank.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") { setVisible(true); return; }
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) { setVisible(true); io.disconnect(); break; }
+      }
+    }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
+    if (!visible) return;
     let cancelled = false;
     let cleanup: (() => void) | null = null;
     setError(null);
     setLoading(true);
+
 
     const init = (mount: HTMLDivElement, w: number, h: number) => {
       const scene = new THREE.Scene();
@@ -171,12 +194,15 @@ export function PartMeshViewer({
       cancelled = true;
       cleanup?.();
     };
-  }, [url, background, meshColor, autoRotate]);
+  }, [url, background, meshColor, autoRotate, visible]);
 
   return (
-    <div className={className} style={{ position: "relative" }}>
-      <div ref={mountRef} className="absolute inset-0" />
-      {loading && !error && (
+    <div ref={wrapRef} className={className} style={{ position: "relative" }}>
+      {visible && <div ref={mountRef} className="absolute inset-0" />}
+      {!visible && poster && (
+        <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      )}
+      {visible && loading && !error && (
         <div className="absolute inset-0 grid place-items-center text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
         </div>

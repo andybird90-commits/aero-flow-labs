@@ -400,12 +400,12 @@ function ItemCard({
     <div className="group glass rounded-xl overflow-hidden flex flex-col">
       <div className="relative aspect-square bg-black">
         {isMesh && item.asset_url ? (
-          // Live STL/GLB preview for any mesh asset.
           <PartMeshViewer
             url={item.asset_url}
             className="absolute inset-0 h-full w-full"
             background={0x000000}
             meshColor={0xffffff}
+            poster={item.thumbnail_url}
           />
         ) : item.thumbnail_url ? (
           <img src={item.thumbnail_url} alt={item.title} className="absolute inset-0 h-full w-full object-cover" />
