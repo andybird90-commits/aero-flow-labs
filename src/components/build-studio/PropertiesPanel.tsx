@@ -23,6 +23,7 @@ import type { LibraryItem } from "@/lib/repo";
 import { LiveFitPanel } from "@/components/build-studio/LiveFitPanel";
 import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
 import { useAutofitPlacedPart, type AutofitPartKind } from "@/lib/build-studio/autofit";
+import { conformPlacedPartToBody } from "@/lib/build-studio/conform";
 import { toast } from "sonner";
 
 const AUTOFIT_KINDS: AutofitPartKind[] = ["wing", "bumper", "spoiler", "lip", "skirt", "diffuser"];
