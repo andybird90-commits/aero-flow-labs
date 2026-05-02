@@ -67,12 +67,13 @@ async function uploadImageToBucket(
   return admin.storage.from("library-uploads").getPublicUrl(path).data.publicUrl;
 }
 
-function enrichPrompt(prompt: string, comment?: string): string {
+function enrichPrompt(prompt: string, comment?: string, research?: string): string {
   const base =
     `${prompt}\n\nIndustrial spec part. Single solid object, watertight mesh, ` +
     `clean engineering surfaces, ~3mm wall thickness, neutral matte material, ` +
     `studio lighting, plain white background, centered isometric 3/4 view.`;
-  return comment?.trim() ? `${base}\n\nRevision notes: ${comment.trim()}` : base;
+  const withComment = comment?.trim() ? `${base}\n\nRevision notes: ${comment.trim()}` : base;
+  return research ? `${withComment}${research}` : withComment;
 }
 
 Deno.serve(async (req) => {
