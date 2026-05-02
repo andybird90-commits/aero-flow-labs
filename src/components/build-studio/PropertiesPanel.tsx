@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/select";
 import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2, RotateCcw, Crosshair } from "lucide-react";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import {
   type SnapZone,
@@ -296,6 +298,7 @@ export function PropertiesPanel({
   onLiveFitBaked, onSendForPrint,
 }: Props) {
   const [sculptOpen, setSculptOpen] = useState(false);
+  const qc = useQueryClient();
   const autofitMeta = (part?.metadata ?? {}) as Record<string, unknown>;
   const initialKind = (autofitMeta.autofit_part_kind as AutofitPartKind | undefined)
     ?? (selectedLibraryItem?.metadata as any)?.part_kind
@@ -414,9 +417,33 @@ export function PropertiesPanel({
                   <Wand2 className="h-3 w-3 text-primary" /> Autofit to car
                 </Label>
                 {hasAutofit && (
-                  <Badge variant="secondary" className="gap-1 text-[10px]">
-                    <CheckCircle2 className="h-3 w-3" /> Fitted
-                  </Badge>
+                  <div className="flex items-center gap-1">
+                    <Badge variant="secondary" className="gap-1 text-[10px]">
+                      <CheckCircle2 className="h-3 w-3" /> Fitted
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-5 px-1 text-[10px] text-muted-foreground hover:text-destructive"
+                      title="Clear autofit result"
+                      onClick={async () => {
+                        const nextMeta = { ...(part.metadata as Record<string, unknown> ?? {}) };
+                        delete nextMeta.autofit_glb_url;
+                        await (supabase as any)
+                          .from("placed_parts")
+                          .update({ metadata: nextMeta })
+                          .eq("id", part.id);
+                        qc.setQueryData<PlacedPart[]>(["placed_parts", part.project_id], (current) => {
+                          if (!current) return current;
+                          return current.map((p) => p.id !== part.id ? p : { ...p, metadata: nextMeta });
+                        });
+                        await qc.invalidateQueries({ queryKey: ["placed_parts", part.project_id] });
+                        toast.success("Autofit cleared");
+                      }}
+                    >
+                      ✕
+                    </Button>
+                  </div>
                 )}
               </div>
               <Select value={autofitKind} onValueChange={(v) => setAutofitKind(v as AutofitPartKind)}>
