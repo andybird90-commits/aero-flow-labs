@@ -431,11 +431,60 @@ export function PropertiesPanel({
                   ))}
                 </SelectContent>
               </Select>
+              {/* Conform & Fit — projects inner vertices onto car surface then runs boolean */}
               <Button
                 size="sm"
                 variant="default"
                 className="h-7 w-full text-xs"
-                disabled={autofit.isPending}
+                disabled={isConforming || autofit.isPending}
+                onClick={async () => {
+                  if (!selectedLibraryItem?.asset_url) {
+                    toast.error("Part has no GLB asset to fit.");
+                    return;
+                  }
+                  if (!baseMeshUrl) {
+                    toast.error("Donor car GLB not available.");
+                    return;
+                  }
+                  setIsConforming(true);
+                  try {
+                    // Step 1 — warp kit vertices to hug the car surface.
+                    conformPlacedPartToBody(part.id, {
+                      proximityThreshold: 0.05, // 5 cm — tune if needed
+                      gapM: 0.002,              // 2 mm standoff
+                    });
+                    // Step 2 — run the boolean cut as normal.
+                    await autofit.mutateAsync({
+                      placed_part_id: part.id,
+                      project_id: part.project_id,
+                      part_kind: autofitKind,
+                      car_url: baseMeshUrl,
+                      part_url: selectedLibraryItem.asset_url,
+                      part,
+                    });
+                    toast.success("Kit conformed and fitted to car");
+                  } catch (e) {
+                    toast.error((e as Error).message ?? "Conform & Fit failed");
+                  } finally {
+                    setIsConforming(false);
+                  }
+                }}
+              >
+                {isConforming ? (
+                  <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Conforming…</>
+                ) : autofit.isPending ? (
+                  <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Fitting…</>
+                ) : (
+                  <><Magnet className="mr-1 h-3 w-3" /> Conform & Fit</>
+                )}
+              </Button>
+
+              {/* Original boolean-only autofit — kept for parts that already sit flush */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 w-full text-xs"
+                disabled={autofit.isPending || isConforming}
                 onClick={async () => {
                   if (!selectedLibraryItem?.asset_url) {
                     toast.error("Part has no GLB asset to fit.");
@@ -467,9 +516,12 @@ export function PropertiesPanel({
                 )}
               </Button>
               <p className="text-[10px] leading-tight text-muted-foreground">
-                Sends this part + the donor car to the mesh worker. The part
-                is reshaped to follow the car surface.
+                <strong>Conform & Fit</strong> — warps the kit to hug this car's lines, then trims flush.<br />
+                <strong>Autofit</strong> — boolean trim only, for parts already sitting flush.
               </p>
+            </div>
+            <Separator />
+          </>
             </div>
             <Separator />
           </>
