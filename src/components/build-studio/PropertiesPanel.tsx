@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/select";
 import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2, RotateCcw, Crosshair } from "lucide-react";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import {
   type SnapZone,
