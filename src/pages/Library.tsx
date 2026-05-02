@@ -7,7 +7,7 @@
  *   • publish to the marketplace with a price (free or paid)
  *   • unpublish, delete, download
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -30,10 +30,14 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Box, Download, Trash2, Image as ImageIcon, Layers, Wrench,
   Globe, Lock, Tag, Store, ImageOff, Beaker, Wand2, Sparkles,
+  Upload, Loader2, Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MeshStructureChip } from "@/components/build-studio/MeshStructureChip";
 import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
+import { PartMeshViewer } from "@/components/PartMeshViewer";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: string }> = {
   concept_image:       { label: "Concept image", icon: ImageIcon, tone: "text-cyan-400"    },
@@ -42,6 +46,7 @@ const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: strin
   prototype_part_mesh: { label: "Prototype",     icon: Beaker,    tone: "text-fuchsia-400" },
   geometry_part_mesh:  { label: "Fitted part",   icon: Wand2,     tone: "text-violet-400"  },
   cad_part_mesh:       { label: "CAD part",      icon: Wrench,    tone: "text-sky-400"     },
+  uploaded_part_mesh:  { label: "Uploaded part", icon: Package,   tone: "text-orange-400"  },
 };
 
 const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
@@ -52,7 +57,18 @@ const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
   { id: "prototype_part_mesh", label: "Prototypes" },
   { id: "geometry_part_mesh",  label: "Fitted parts" },
   { id: "cad_part_mesh",       label: "CAD parts" },
+  { id: "uploaded_part_mesh",  label: "Uploads" },
 ];
+
+const ACCEPTED_UPLOAD_EXT = ".stl,.glb,.gltf";
+
+function inferMime(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".glb")) return "model/gltf-binary";
+  if (lower.endsWith(".gltf")) return "model/gltf+json";
+  if (lower.endsWith(".stl")) return "model/stl";
+  return "application/octet-stream";
+}
 
 export default function LibraryPage() {
   const { user } = useAuth();
@@ -66,6 +82,84 @@ export default function LibraryPage() {
   const [filter, setFilter] = useState<LibraryItemKind | "all">("all");
   const [publishing, setPublishing] = useState<LibraryItem | null>(null);
   const [sculpting, setSculpting] = useState<LibraryItem | null>(null);
+  const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const qc = useQueryClient();
+
+  const handleUploadFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !user) return;
+    const list = Array.from(files);
+    const valid = list.filter((f) => /\.(stl|glb|gltf)$/i.test(f.name));
+    const skipped = list.length - valid.length;
+    if (valid.length === 0) {
+      toast({
+        title: "No supported files",
+        description: "Upload .stl, .glb, or .gltf files.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setUploading({ done: 0, total: valid.length });
+    let ok = 0;
+    let failed = 0;
+    for (const file of valid) {
+      try {
+        const ts = Date.now();
+        const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-");
+        // Folder must start with the user's id — that's how the bucket RLS keys.
+        const path = `${user.id}/parts/${ts}-${safe}`;
+        const mime = inferMime(file.name);
+        const { error: upErr } = await supabase.storage
+          .from("library-uploads")
+          .upload(path, file, { contentType: mime, upsert: false });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from("library-uploads").getPublicUrl(path);
+        const publicUrl = pub?.publicUrl;
+        if (!publicUrl) throw new Error("Could not resolve public URL");
+
+        const titleBase = file.name.replace(/\.(stl|glb|gltf)$/i, "");
+        const { error: insErr } = await (supabase as any).from("library_items").insert({
+          user_id: user.id,
+          kind: "uploaded_part_mesh",
+          title: titleBase || "Uploaded part",
+          asset_url: publicUrl,
+          asset_mime: mime,
+          visibility: "private",
+          metadata: {
+            source: "user_upload",
+            original_filename: file.name,
+            size_bytes: file.size,
+          },
+        });
+        if (insErr) throw insErr;
+        ok++;
+      } catch (e: any) {
+        console.error("Upload failed for", file.name, e);
+        failed++;
+      } finally {
+        setUploading((prev) => prev ? { done: prev.done + 1, total: prev.total } : prev);
+      }
+    }
+    setUploading(null);
+    qc.invalidateQueries({ queryKey: ["library_items"] });
+    if (ok > 0) {
+      toast({
+        title: `Uploaded ${ok} part${ok === 1 ? "" : "s"}`,
+        description: failed
+          ? `${failed} failed${skipped ? `, ${skipped} skipped (unsupported)` : ""}.`
+          : skipped
+          ? `${skipped} skipped (unsupported file types).`
+          : "Available in your library.",
+      });
+    } else {
+      toast({
+        title: "Upload failed",
+        description: "None of the files could be uploaded.",
+        variant: "destructive",
+      });
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const filtered = useMemo(
     () => filter === "all" ? items : items.filter(i => i.kind === filter),
@@ -119,9 +213,36 @@ export default function LibraryPage() {
           title="Your saved assets"
           description="Every concept image, aero kit, and 3D part you've generated — across all projects. Make any of them public to list on the Marketplace."
           actions={
-            <Button variant="glass" size="sm" asChild>
-              <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_UPLOAD_EXT}
+                multiple
+                className="hidden"
+                onChange={(e) => handleUploadFiles(e.target.files)}
+              />
+              <Button
+                variant="hero"
+                size="sm"
+                disabled={!!uploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    Uploading {uploading.done}/{uploading.total}…
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload parts
+                  </>
+                )}
+              </Button>
+              <Button variant="glass" size="sm" asChild>
+                <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
+              </Button>
+            </div>
           }
         />
       </div>
@@ -267,8 +388,16 @@ function ItemCard({
 
   return (
     <div className="group glass rounded-xl overflow-hidden flex flex-col">
-      <div className="relative aspect-square bg-surface-0">
-        {item.thumbnail_url ? (
+      <div className="relative aspect-square bg-black">
+        {item.kind === "uploaded_part_mesh" && item.asset_url && isMesh ? (
+          // Live STL/GLB preview for uploaded parts: white mesh on black bg.
+          <PartMeshViewer
+            url={item.asset_url}
+            className="absolute inset-0 h-full w-full"
+            background={0x000000}
+            meshColor={0xffffff}
+          />
+        ) : item.thumbnail_url ? (
           <img src={item.thumbnail_url} alt={item.title} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <div className="absolute inset-0 grid place-items-center text-muted-foreground">

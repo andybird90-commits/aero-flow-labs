@@ -13,9 +13,21 @@ import { Loader2 } from "lucide-react";
 interface Props {
   url: string;
   className?: string;
+  /** Background colour (hex int, e.g. 0x000000). Default 0x0b0d10. */
+  background?: number;
+  /** Mesh material colour (hex int). Default 0xb8c2cc (warm clay). */
+  meshColor?: number;
+  /** Auto-rotate the model. Default true. */
+  autoRotate?: boolean;
 }
 
-export function PartMeshViewer({ url, className }: Props) {
+export function PartMeshViewer({
+  url,
+  className,
+  background = 0x0b0d10,
+  meshColor = 0xb8c2cc,
+  autoRotate = true,
+}: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,7 +40,7 @@ export function PartMeshViewer({ url, className }: Props) {
 
     const init = (mount: HTMLDivElement, w: number, h: number) => {
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x0b0d10);
+      scene.background = new THREE.Color(background);
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 10000);
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -43,7 +55,7 @@ export function PartMeshViewer({ url, className }: Props) {
 
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
-      controls.autoRotate = true;
+      controls.autoRotate = autoRotate;
       controls.autoRotateSpeed = 0.7;
 
       (async () => {
@@ -66,7 +78,7 @@ export function PartMeshViewer({ url, className }: Props) {
             model = gltf.scene;
             // Re-skin with neutral clay material so it matches our STL look.
             const clay = new THREE.MeshStandardMaterial({
-              color: 0xb8c2cc, metalness: 0.2, roughness: 0.6,
+              color: meshColor, metalness: 0.2, roughness: 0.6,
             });
             model.traverse((o) => {
               const m = o as THREE.Mesh;
@@ -81,7 +93,7 @@ export function PartMeshViewer({ url, className }: Props) {
               : stlLoader.parse(buf);
             geometry.computeVertexNormals();
             const material = new THREE.MeshStandardMaterial({
-              color: 0xb8c2cc, metalness: 0.2, roughness: 0.6,
+              color: meshColor, metalness: 0.2, roughness: 0.6,
             });
             model = new THREE.Mesh(geometry, material);
           }
@@ -159,7 +171,7 @@ export function PartMeshViewer({ url, className }: Props) {
       cancelled = true;
       cleanup?.();
     };
-  }, [url]);
+  }, [url, background, meshColor, autoRotate]);
 
   return (
     <div className={className} style={{ position: "relative" }}>
