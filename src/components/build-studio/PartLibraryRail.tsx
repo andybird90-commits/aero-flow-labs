@@ -85,13 +85,13 @@ export function PartLibraryRail({ items, isLoading, onAdd, onAddBlank }: Props) 
                 onClick={() => onAdd(item)}
                 className="group flex w-full items-center gap-2 rounded-md border border-border bg-card/40 p-1.5 text-left transition hover:border-primary/50 hover:bg-card"
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white">
                   {item.thumbnail_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={item.thumbnail_url}
                       alt={item.title}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-contain"
                     />
                   ) : (
                     <Box className="h-4 w-4 text-muted-foreground" />
