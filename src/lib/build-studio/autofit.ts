@@ -1,14 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
-import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
-import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { supabase } from "@/integrations/supabase/client";
 import type { PlacedPart } from "@/lib/build-studio/placed-parts";
-import {
-  getCarObject,
-  getPlacedPartObject,
-} from "@/lib/build-studio/scene-registry";
 
 export type AutofitPartKind =
   | "wing" | "bumper" | "spoiler" | "lip" | "skirt" | "diffuser";
@@ -30,48 +25,16 @@ export interface AutofitPlacedPartResult {
   processing_ms: number | null;
 }
 
-function bakeLiveWorldGeometry(liveRoot: THREE.Object3D): THREE.BufferGeometry {
-  liveRoot.updateWorldMatrix(true, true);
-  const geometries: THREE.BufferGeometry[] = [];
-  liveRoot.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (!(mesh as any).isMesh || !mesh.geometry) return;
-    const g = mesh.geometry.clone();
-    for (const name of Object.keys(g.attributes)) {
-      if (name !== "position" && name !== "normal") g.deleteAttribute(name);
-    }
-    if (g.index) {
-      const nonIndexed = g.toNonIndexed();
-      g.dispose();
-      nonIndexed.applyMatrix4(mesh.matrixWorld);
-      if (!nonIndexed.attributes.normal) nonIndexed.computeVertexNormals();
-      geometries.push(nonIndexed);
-      return;
-    }
-    g.applyMatrix4(mesh.matrixWorld);
-    if (!g.attributes.normal) g.computeVertexNormals();
-    geometries.push(g);
+async function loadGlb(url: string): Promise<THREE.Group> {
+  const loader = new GLTFLoader();
+  return new Promise((resolve, reject) => {
+    loader.load(
+      url,
+      (gltf) => resolve(gltf.scene),
+      undefined,
+      (err) => reject(new Error(`Failed to load GLB ${url}: ${(err as any)?.message ?? String(err)}`)),
+    );
   });
-  if (geometries.length === 0) throw new Error("No meshes found under live root");
-  let totalVerts = 0;
-  for (const g of geometries) totalVerts += g.attributes.position.count;
-  const positions = new Float32Array(totalVerts * 3);
-  const normals = new Float32Array(totalVerts * 3);
-  let offset = 0;
-  for (const g of geometries) {
-    const p = g.attributes.position.array as ArrayLike<number>;
-    const n = g.attributes.normal.array as ArrayLike<number>;
-    positions.set(p as any, offset * 3);
-    normals.set(n as any, offset * 3);
-    offset += g.attributes.position.count;
-    g.dispose();
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  out.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
-  out.computeBoundingBox();
-  out.computeBoundingSphere();
-  return out;
 }
 
 function exportGlb(root: THREE.Object3D): Promise<Blob> {
@@ -92,179 +55,57 @@ function exportGlb(root: THREE.Object3D): Promise<Blob> {
   });
 }
 
-let cachedEvaluator: Evaluator | null = null;
-function getEvaluator(): Evaluator {
-  if (cachedEvaluator) return cachedEvaluator;
-  const ev = new Evaluator();
-  ev.attributes = ["position", "normal"];
-  ev.useGroups = false;
-  cachedEvaluator = ev;
-  return ev;
+async function buildCarBlob(carUrl: string): Promise<Blob> {
+  const carScene = await loadGlb(carUrl);
+  return exportGlb(carScene);
 }
 
-function keepLargestComponents(
-  inputGeom: THREE.BufferGeometry,
-  originalVertCount: number,
-): THREE.BufferGeometry {
-  const welded = mergeVertices(inputGeom, 1e-5);
-  if (!welded.index) return inputGeom;
-  const indexArr = welded.index.array as ArrayLike<number>;
-  const triCount = indexArr.length / 3;
-  const vertCount = welded.attributes.position.count;
-
-  const vertToTris: number[][] = new Array(vertCount);
-  for (let i = 0; i < vertCount; i++) vertToTris[i] = [];
-  for (let t = 0; t < triCount; t++) {
-    vertToTris[indexArr[t * 3] as number].push(t);
-    vertToTris[indexArr[t * 3 + 1] as number].push(t);
-    vertToTris[indexArr[t * 3 + 2] as number].push(t);
-  }
-
-  const compOf = new Int32Array(triCount).fill(-1);
-  const components: number[][] = [];
-  const stack: number[] = [];
-  for (let seed = 0; seed < triCount; seed++) {
-    if (compOf[seed] !== -1) continue;
-    const compId = components.length;
-    const tris: number[] = [];
-    stack.length = 0;
-    stack.push(seed);
-    compOf[seed] = compId;
-    while (stack.length > 0) {
-      const t = stack.pop() as number;
-      tris.push(t);
-      for (const k of [0, 1, 2]) {
-        for (const nt of vertToTris[indexArr[t * 3 + k] as number]) {
-          if (compOf[nt] === -1) { compOf[nt] = compId; stack.push(nt); }
-        }
-      }
-    }
-    components.push(tris);
-  }
-
-  components.sort((a, b) => b.length - a.length);
-  const largestTriCount = components[0]?.length ?? 0;
-
-  // Safety check: if the largest component is less than 10% of the original
-  // vertex count, the boolean probably ate the part — return input as-is
-  // so the upload step gets something visible rather than a sliver.
-  const minExpectedTris = Math.max(10, originalVertCount * 0.1);
-  if (largestTriCount < minExpectedTris) {
-    console.warn("[autofit] component cleanup: largest component too small, keeping full result", {
-      largestTriCount,
-      minExpectedTris,
-      totalTris: triCount,
-    });
-    welded.dispose();
-    return inputGeom;
-  }
-
-  const posAttr = welded.attributes.position;
-  const normAttr = welded.attributes.normal;
-  const kept = components[0];
-  const positions = new Float32Array(kept.length * 9);
-  const normals = normAttr ? new Float32Array(kept.length * 9) : null;
-  let w = 0;
-  for (const t of kept) {
-    for (let k = 0; k < 3; k++) {
-      const vi = indexArr[t * 3 + k] as number;
-      positions[w] = posAttr.getX(vi);
-      positions[w + 1] = posAttr.getY(vi);
-      positions[w + 2] = posAttr.getZ(vi);
-      if (normals && normAttr) {
-        normals[w] = normAttr.getX(vi);
-        normals[w + 1] = normAttr.getY(vi);
-        normals[w + 2] = normAttr.getZ(vi);
-      }
-      w += 3;
-    }
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  if (normals) out.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
-  else out.computeVertexNormals();
-  out.computeBoundingBox();
-  out.computeBoundingSphere();
-  welded.dispose();
-  return out;
-}
-
-async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
-  const partMesh = getPlacedPartObject(input.placed_part_id);
-  const carMesh = getCarObject();
-  if (!partMesh) throw new Error(`Autofit: no live scene object for placed_part_id=${input.placed_part_id}`);
-  if (!carMesh) throw new Error("Autofit: no live car mesh registered in scene");
-
-  const partGeom = bakeLiveWorldGeometry(partMesh);
-  const carGeom = bakeLiveWorldGeometry(carMesh);
-
-  const originalVertCount = partGeom.attributes.position.count;
-
-  const partBrush = new Brush(partGeom);
-  partBrush.updateMatrixWorld();
-  const carBrush = new Brush(carGeom);
-  carBrush.updateMatrixWorld();
-
-  const evaluator = getEvaluator();
-  const result = evaluator.evaluate(partBrush, carBrush, SUBTRACTION) as Brush;
-
-  const rawResultGeom = result.geometry.clone();
-  const cleanedGeom = keepLargestComponents(rawResultGeom, originalVertCount);
-  if (cleanedGeom !== rawResultGeom) rawResultGeom.dispose();
-
-  const welded = mergeVertices(cleanedGeom, 1e-4);
-  if (welded !== cleanedGeom) cleanedGeom.dispose();
-  welded.computeVertexNormals();
-  welded.computeBoundingBox();
-  welded.computeBoundingSphere();
-
-  const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-  const mesh = new THREE.Mesh(welded, mat);
-  const scene = new THREE.Scene();
-  scene.add(mesh);
-
-  const blob = await exportGlb(scene);
-  partGeom.dispose();
-  carGeom.dispose();
-  return blob;
-}
-
-async function uploadResultGlb(input: AutofitPlacedPartInput, blob: Blob): Promise<string> {
-  const { data: userData } = await supabase.auth.getUser();
-  const userId = userData?.user?.id ?? "anon";
-  const path = `${userId}/${input.project_id}/autofit/${input.placed_part_id}-${Date.now()}.glb`;
-  const { error: upErr } = await supabase.storage
-    .from("frozen-parts")
-    .upload(path, blob, { contentType: "model/gltf-binary", upsert: false });
-  if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
-  const { data } = supabase.storage.from("frozen-parts").getPublicUrl(path);
-  if (!data?.publicUrl) throw new Error("Failed to resolve public URL for autofit result");
-  return data.publicUrl;
+async function buildPositionedPartBlob(
+  partUrl: string,
+  part: PlacedPart,
+): Promise<Blob> {
+  const partScene = await loadGlb(partUrl);
+  const wrapper = new THREE.Group();
+  wrapper.position.set(part.position.x, part.position.y, part.position.z);
+  wrapper.rotation.set(part.rotation.x, part.rotation.y, part.rotation.z);
+  wrapper.scale.set(part.scale.x, part.scale.y, part.scale.z);
+  wrapper.add(partScene);
+  wrapper.updateMatrixWorld(true);
+  return exportGlb(wrapper);
 }
 
 export function useAutofitPlacedPart() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: AutofitPlacedPartInput): Promise<AutofitPlacedPartResult> => {
-      const start = performance.now();
-      const blob = await clientCsgRefit(input);
-      const result_url = await uploadResultGlb(input, blob);
-      const processing_ms = Math.round(performance.now() - start);
-      const nextMetadata = {
-        ...((input.part.metadata as Record<string, unknown> | null) ?? {}),
-        autofit_glb_url: result_url,
-        autofit_part_kind: input.part_kind,
-        autofit_processing_ms: processing_ms,
-        autofit_at: new Date().toISOString(),
-        autofit_frame: "world",
-        autofit_source: "client-bvh-csg",
+      if (!input.car_url) throw new Error("Autofit: car_url is required");
+      if (!input.part_url) throw new Error("Autofit: part_url is required");
+
+      const [carBlob, partBlob] = await Promise.all([
+        buildCarBlob(input.car_url),
+        buildPositionedPartBlob(input.part_url, input.part),
+      ]);
+
+      const form = new FormData();
+      form.append("placed_part_id", input.placed_part_id);
+      form.append("part_kind", input.part_kind);
+      form.append("car", new File([carBlob], "car.glb", { type: "model/gltf-binary" }));
+      form.append("part", new File([partBlob], "part.glb", { type: "model/gltf-binary" }));
+
+      const { data, error } = await supabase.functions.invoke("bake-bodykit-from-shell", {
+        body: form,
+      });
+      if (error) throw new Error(`Autofit failed: ${error.message}`);
+      if (!data?.ok || !data?.result_url) {
+        throw new Error(`Autofit returned no result_url: ${JSON.stringify(data)}`);
+      }
+      return {
+        ok: true,
+        placed_part_id: input.placed_part_id,
+        result_url: data.result_url,
+        part_kind: data.part_kind ?? input.part_kind,
+        processing_ms: data.processing_ms ?? null,
       };
-      const { error: dbErr } = await (supabase as any)
-        .from("placed_parts")
-        .update({ metadata: nextMetadata })
-        .eq("id", input.placed_part_id);
-      if (dbErr) throw new Error(`Failed to save autofit metadata: ${dbErr.message}`);
-      return { ok: true, placed_part_id: input.placed_part_id, result_url, part_kind: input.part_kind, processing_ms };
     },
     onSuccess: async (data, vars) => {
       const queryKey = ["placed_parts", vars.project_id];
@@ -281,7 +122,7 @@ export function useAutofitPlacedPart() {
               autofit_processing_ms: data.processing_ms ?? null,
               autofit_at: new Date().toISOString(),
               autofit_frame: "world",
-              autofit_source: "client-bvh-csg",
+              autofit_source: "server-mesh-api",
             },
           };
         });
