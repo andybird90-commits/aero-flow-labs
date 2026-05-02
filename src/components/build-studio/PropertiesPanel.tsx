@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2, Move3d } from "lucide-react";
+import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2, Move3d, RotateCcw, RotateCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from "lucide-react";
+import * as THREE from "three";
 import { useState } from "react";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import {
@@ -96,6 +97,50 @@ function VecRow({
           onChange={(z) => onChange({ ...value, z })} />
       </div>
     </div>
+  );
+}
+
+/**
+ * Apply a world-space 90° rotation around `axis` to the part's current Euler.
+ * We pre-multiply (worldQ * partQ) so the rotation is around the WORLD axis,
+ * not the part's local axis. This means "yaw" always spins the part around
+ * world-up regardless of how the part has been tilted or rolled.
+ */
+function rotate90Worldspace(rotation: Vec3, axis: "x" | "y" | "z", sign: 1 | -1): Vec3 {
+  const current = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(rotation.x, rotation.y, rotation.z, "XYZ"),
+  );
+  const axisV = axis === "x" ? new THREE.Vector3(1, 0, 0)
+              : axis === "y" ? new THREE.Vector3(0, 1, 0)
+              :                new THREE.Vector3(0, 0, 1);
+  const step = new THREE.Quaternion().setFromAxisAngle(axisV, sign * Math.PI / 2);
+  const next = step.multiply(current); // pre-multiply = world-space
+  const e = new THREE.Euler().setFromQuaternion(next, "XYZ");
+  return { x: e.x, y: e.y, z: e.z };
+}
+
+function RotButton({
+  label, axis, sign, icon: Icon, rotation, disabled, onChange,
+}: {
+  label: string;
+  axis: "x" | "y" | "z";
+  sign: 1 | -1;
+  icon: React.ComponentType<{ className?: string }>;
+  rotation: Vec3;
+  disabled?: boolean;
+  onChange: (r: Vec3) => void;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={disabled}
+      title={label}
+      onClick={() => onChange(rotate90Worldspace(rotation, axis, sign))}
+      className="h-7 px-1 text-[10px]"
+    >
+      <Icon className="h-3 w-3" />
+    </Button>
   );
 }
 
@@ -291,6 +336,35 @@ export function PropertiesPanel({
           disabled={part.locked}
           onChange={(position) => onPatch({ position })}
         />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              Rotate 90°
+            </Label>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+              disabled={part.locked}
+              onClick={() => onPatch({ rotation: { x: 0, y: 0, z: 0 } })}
+              title="Reset rotation"
+            >
+              Reset
+            </Button>
+          </div>
+          {/* World-space 90° rotations. We pre-multiply a world-axis quaternion onto
+              the part's current orientation so that "up" stays world-up no matter
+              how the part has already been rolled. */}
+          <div className="grid grid-cols-3 gap-1">
+            <RotButton label="Tilt back"   axis="x" sign={-1} icon={ArrowUp}    rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+            <RotButton label="Yaw left"    axis="y" sign={ 1} icon={ArrowLeft}  rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+            <RotButton label="Roll left"   axis="z" sign={ 1} icon={RotateCcw}  rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+            <RotButton label="Tilt fwd"    axis="x" sign={ 1} icon={ArrowDown}  rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+            <RotButton label="Yaw right"   axis="y" sign={-1} icon={ArrowRight} rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+            <RotButton label="Roll right"  axis="z" sign={-1} icon={RotateCw}   rotation={part.rotation} disabled={part.locked} onChange={(r) => onPatch({ rotation: r })} />
+          </div>
+        </div>
+
         <VecRow
           label="Rotation (rad)"
           value={part.rotation}
