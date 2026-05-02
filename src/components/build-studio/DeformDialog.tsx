@@ -54,124 +54,129 @@ function DeformScene({
   onHandleSelect, onHandleMove, onMeshClick, meshWorldMatrix,
 }: SceneProps) {
   const { camera, gl } = useThree();
+  const meshRef = useRef<THREE.Mesh>(null);
   const [deformedGeom, setDeformedGeom] = useState<THREE.BufferGeometry | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const draggingRef = useRef<string | null>(null);
-  const dragStartMouseRef = useRef<THREE.Vector2 | null>(null);
-  const dragStartPosRef = useRef<THREE.Vector3 | null>(null);
+  const lastMouseRef = useRef<{ x: number; y: number } | null>(null);
+  const handlesRef = useRef(handles);
+  useEffect(() => { handlesRef.current = handles; }, [handles]);
 
-  // Recompute deformed geometry whenever handles change
   useEffect(() => {
     if (!originalGeom) return;
     const g = applyHandles(originalGeom, handles, meshWorldMatrix);
     setDeformedGeom(g);
   }, [originalGeom, handles, meshWorldMatrix]);
 
-  const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>, handleId: string) => {
-    e.stopPropagation();
-    onHandleSelect(handleId);
-    draggingRef.current = handleId;
-    setIsDragging(true);
-    dragStartMouseRef.current = new THREE.Vector2(e.clientX, e.clientY);
-    const handle = handles.find(h => h.id === handleId);
-    dragStartPosRef.current = handle ? handle.position.clone() : null;
-    gl.domElement.style.cursor = "grabbing";
-    // Capture pointer so we keep getting events even if cursor leaves canvas
-    try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch { /* noop */ }
-  }, [handles, onHandleSelect, gl]);
-
-  const handlePointerMove = useCallback((e: PointerEvent) => {
-    if (!draggingRef.current || !dragStartMouseRef.current || !dragStartPosRef.current) return;
-    e.stopPropagation();
-    e.preventDefault();
-
-    const dx = e.clientX - dragStartMouseRef.current.x;
-    const dy = e.clientY - dragStartMouseRef.current.y;
-
-    // Convert pixel delta to world-space delta at the handle's depth.
-    const handleWorldPos = dragStartPosRef.current;
-    const distToCamera = camera.position.distanceTo(handleWorldPos);
+  const getPixelToWorld = useCallback((handlePos: THREE.Vector3) => {
+    const dist = camera.position.distanceTo(handlePos);
     const vFov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
-    const worldHeightAtDist = 2 * distToCamera * Math.tan(vFov / 2);
-    const pixelToWorld = worldHeightAtDist / gl.domElement.clientHeight;
+    const worldHeight = 2 * dist * Math.tan(vFov / 2);
+    return worldHeight / gl.domElement.clientHeight;
+  }, [camera, gl]);
 
-    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
-    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  const onMouseMove = useCallback((e: MouseEvent) => {
+    if (!draggingRef.current || !lastMouseRef.current) return;
 
-    const newPos = dragStartPosRef.current.clone()
-      .addScaledVector(right, dx * pixelToWorld)
-      .addScaledVector(up, -dy * pixelToWorld);
+    const dx = e.clientX - lastMouseRef.current.x;
+    const dy = e.clientY - lastMouseRef.current.y;
+    lastMouseRef.current = { x: e.clientX, y: e.clientY };
 
+    if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return;
+
+    const handle = handlesRef.current.find(h => h.id === draggingRef.current);
+    if (!handle) return;
+
+    const scale = getPixelToWorld(handle.position);
+
+    const right = new THREE.Vector3()
+      .setFromMatrixColumn(camera.matrixWorld, 0)
+      .normalize();
+    const up = new THREE.Vector3()
+      .setFromMatrixColumn(camera.matrixWorld, 1)
+      .normalize();
+
+    const delta = new THREE.Vector3()
+      .addScaledVector(right, dx * scale)
+      .addScaledVector(up, -dy * scale);
+
+    const newPos = handle.position.clone().add(delta);
     onHandleMove(draggingRef.current, newPos);
-  }, [camera, gl, onHandleMove]);
+  }, [camera, getPixelToWorld, onHandleMove]);
 
-  const handlePointerUp = useCallback(() => {
-    if (!draggingRef.current) return;
+  const onMouseUp = useCallback(() => {
     draggingRef.current = null;
-    dragStartMouseRef.current = null;
-    dragStartPosRef.current = null;
+    lastMouseRef.current = null;
     setIsDragging(false);
     gl.domElement.style.cursor = "default";
   }, [gl]);
 
   useEffect(() => {
-    // Listen on window so we keep tracking even if the cursor flies off the canvas.
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    window.addEventListener("pointercancel", handlePointerUp);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
     return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-      window.removeEventListener("pointercancel", handlePointerUp);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [handlePointerMove, handlePointerUp]);
+  }, [onMouseMove, onMouseUp]);
 
   if (!deformedGeom) return null;
 
-  const selected = handles.find(h => h.id === selectedHandleId) ?? null;
-
   return (
     <>
-      {/* Main deformed mesh */}
       <mesh
+        ref={meshRef}
         geometry={deformedGeom}
-        onPointerDown={(e) => {
+        onClick={(e) => {
           if (addingHandle) {
             e.stopPropagation();
             onMeshClick(e.point);
           }
         }}
       >
-        <meshStandardMaterial color="#cccccc" metalness={0.1} roughness={0.5} side={THREE.DoubleSide} />
+        <meshPhysicalMaterial
+          color="#ffffff"
+          metalness={0.1}
+          roughness={0.4}
+          side={THREE.DoubleSide}
+        />
       </mesh>
 
-      {/* Deformation handles */}
       {handles.map((handle) => (
         <mesh
           key={handle.id}
           position={handle.position}
-          onPointerDown={(e) => handlePointerDown(e, handle.id)}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            onHandleSelect(handle.id);
+            draggingRef.current = handle.id;
+            lastMouseRef.current = { x: e.clientX, y: e.clientY };
+            setIsDragging(true);
+            gl.domElement.style.cursor = "grabbing";
+          }}
         >
           <sphereGeometry args={[0.012, 16, 16]} />
-          <meshBasicMaterial
-            color={handle.id === selectedHandleId ? "#ff7a00" : "#00aaff"}
+          <meshStandardMaterial
+            color={selectedHandleId === handle.id ? "#f97316" : "#3b82f6"}
+            emissive={selectedHandleId === handle.id ? "#f97316" : "#000000"}
+            emissiveIntensity={selectedHandleId === handle.id ? 0.6 : 0}
             depthTest={false}
-            transparent
-            opacity={0.95}
           />
         </mesh>
       ))}
 
-      {/* Influence radius ring for the selected handle */}
-      {selected && (
-        <mesh position={selected.position} rotation={[Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[selected.radius * 0.98, selected.radius, 64]} />
-          <meshBasicMaterial color="#ff7a00" side={THREE.DoubleSide} transparent opacity={0.4} depthTest={false} />
-        </mesh>
-      )}
+      {handles
+        .filter(h => h.id === selectedHandleId)
+        .map(h => (
+          <mesh key={`ring-${h.id}`} position={h.position} rotation={[Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[h.radius - 0.002, h.radius + 0.002, 48]} />
+            <meshBasicMaterial color="#f97316" transparent opacity={0.5} side={THREE.DoubleSide} depthTest={false} />
+          </mesh>
+        ))}
 
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[3, 4, 2]} intensity={1.0} />
+      <ambientLight intensity={0.7} />
+      <directionalLight position={[3, 5, 3]} intensity={1.2} castShadow />
+      <directionalLight position={[-2, 2, -2]} intensity={0.4} />
       <Environment preset="studio" />
       <OrbitControls makeDefault enabled={!isDragging} />
     </>
@@ -261,8 +266,11 @@ export function DeformDialog({ open, onOpenChange, libraryItem, userId, onSaved 
   const moveHandle = useCallback((id: string, newPos: THREE.Vector3) => {
     setHandles(prev => prev.map(h => {
       if (h.id !== id) return h;
-      const offset = newPos.clone().sub(h.position).add(h.offset);
-      return { ...h, offset };
+      // Original placement = current position - current offset.
+      // New offset = newPos - original placement.
+      const origin = h.position.clone().sub(h.offset);
+      const offset = newPos.clone().sub(origin);
+      return { ...h, position: newPos.clone(), offset };
     }));
   }, []);
 
