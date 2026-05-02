@@ -177,7 +177,6 @@ function getEvaluator(): Evaluator {
  */
 function keepLargestComponents(
   inputGeom: THREE.BufferGeometry,
-  minRatio = 0.05,
 ): THREE.BufferGeometry {
   // Weld so connectivity reflects topology, not duplicated verts at seams.
   const welded = mergeVertices(inputGeom, 1e-5);
