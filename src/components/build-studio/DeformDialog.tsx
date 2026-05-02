@@ -433,7 +433,11 @@ export function DeformDialog({ open, onOpenChange, libraryItem, userId, onSaved 
         <div className="flex-1 grid grid-cols-[1fr_280px] min-h-0">
           {/* 3D viewport */}
           <div className="relative bg-black">
-            <Canvas camera={{ position: [0.6, 0.5, 0.8], fov: 45 }}>
+            <Canvas
+              camera={{ position: [0.6, 0.5, 0.8], fov: 45 }}
+              dpr={[1, 1.5]}
+              gl={{ antialias: false, powerPreference: "high-performance" }}
+            >
               <DeformScene
                 originalGeom={originalGeom}
                 handles={handles}
