@@ -289,7 +289,7 @@ function keepLargestComponents(
  * Run the part − car boolean entirely client-side.
  * Returns a binary GLB blob whose vertices are in world coordinates.
  */
-async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<Blob> {
+async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<{ blob: Blob; center: { x: number; y: number; z: number } }> {
   const partMesh = getPlacedPartObject(input.placed_part_id);
   const carMesh = getCarObject();
   if (!partMesh) {
