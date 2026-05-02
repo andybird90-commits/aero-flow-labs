@@ -86,10 +86,8 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
   });
   const kind: "glb" | "stl" = autofitUrl ? "glb" : (detectMeshKind(libraryItem ?? null) ?? "stl");
   const metadata = (libraryItem?.metadata ?? {}) as Record<string, unknown>;
-  // Render as-is (no recentre/rescale) when:
-  //  • Live Fit baked the mesh in the placed-part local frame, OR
-  //  • Autofit baked world-space vertices into the returned GLB — in which
-  //    case the parent group also clears its TRS (see BuildStudioViewport).
+  // Render as-is (no recentre/rescale) when the mesh was already baked into
+  // the placed-part local frame.
   const preservesLocalFrame = metadata.source === "live-fit" || !!autofitUrl;
 
   // Dispose helper — releases GPU memory of the previously loaded GLB so
