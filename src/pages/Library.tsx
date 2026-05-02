@@ -49,7 +49,6 @@ const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: strin
 const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
   { id: "all",                 label: "All" },
   { id: "uploaded_part_mesh",  label: "Uploaded" },
-  { id: "concept_image",       label: "Images" },
   { id: "aero_kit_mesh",       label: "Aero kits" },
   { id: "concept_part_mesh",   label: "Parts" },
   { id: "prototype_part_mesh", label: "Prototypes" },
@@ -59,7 +58,9 @@ const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
 
 export default function LibraryPage() {
   const { user } = useAuth();
-  const { data: items = [], isLoading } = useMyLibrary(user?.id);
+  const { data: rawItems = [], isLoading } = useMyLibrary(user?.id);
+  // Concept images live in the Concept Studio — exclude them from Part Library.
+  const items = useMemo(() => rawItems.filter(i => i.kind !== "concept_image"), [rawItems]);
   const update = useUpdateLibraryItem();
   const del = useDeleteLibraryItem();
   const publish = usePublishListing();
@@ -119,7 +120,7 @@ export default function LibraryPage() {
 
   const stats = useMemo(() => ({
     total: items.length,
-    images: items.filter(i => i.kind === "concept_image").length,
+    uploaded: items.filter(i => i.kind === "uploaded_part_mesh").length,
     kits: items.filter(i => i.kind === "aero_kit_mesh").length,
     parts: items.filter(i => i.kind === "concept_part_mesh").length,
     listed: items.filter(i => i.marketplace_listings?.some(l => l.status === "active")).length,
@@ -201,7 +202,7 @@ export default function LibraryPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
             <Stat label="Total" value={stats.total} />
-            <Stat label="Images" value={stats.images} />
+            <Stat label="Uploaded" value={stats.uploaded} />
             <Stat label="Aero kits" value={stats.kits} />
             <Stat label="Parts" value={stats.parts} />
             <Stat label="Listed" value={stats.listed} accent />
