@@ -2192,6 +2192,48 @@ export type Database = {
         }
         Relationships: []
       }
+      user_generated_parts: {
+        Row: {
+          created_at: string
+          deformation_handles: Json
+          deformed_mesh_url: string | null
+          description: string | null
+          id: string
+          is_for_sale: boolean
+          name: string
+          original_mesh_url: string
+          thumbnail_url: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deformation_handles?: Json
+          deformed_mesh_url?: string | null
+          description?: string | null
+          id?: string
+          is_for_sale?: boolean
+          name?: string
+          original_mesh_url: string
+          thumbnail_url?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          deformation_handles?: Json
+          deformed_mesh_url?: string | null
+          description?: string | null
+          id?: string
+          is_for_sale?: boolean
+          name?: string
+          original_mesh_url?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
