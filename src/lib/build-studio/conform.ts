@@ -118,9 +118,8 @@ function buildConformedGeometry(
     const nWorld = new THREE.Vector3().fromBufferAttribute(normAttr, i).normalize();
 
     // Proximity check.
-    const closest = new THREE.Vector3();
-    bvhMesh.geometry.boundsTree!.closestPointToPoint(bvhMesh, vWorld, closest);
-    if (vWorld.distanceTo(closest) > proximityThreshold) { skippedProx++; continue; }
+    const hitInfo = bvhMesh.geometry.boundsTree!.closestPointToPoint(vWorld);
+    if (!hitInfo || hitInfo.distance > proximityThreshold) { skippedProx++; continue; }
 
     // Cast inward along flipped normal.
     const origin = vWorld.clone().addScaledVector(nWorld, 0.005);
