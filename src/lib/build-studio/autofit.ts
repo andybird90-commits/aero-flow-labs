@@ -128,6 +128,27 @@ function bakeWorldTransformIntoGeometry(
   return root;
 }
 
+/**
+ * Read the first N vertex positions from the first mesh under `root`.
+ * Geometry is already baked, so these are the exact coords GLTFExporter writes.
+ */
+function firstVertices(root: THREE.Object3D, n = 3): Array<{ x: number; y: number; z: number }> {
+  const out: Array<{ x: number; y: number; z: number }> = [];
+  let found: THREE.Mesh | null = null;
+  root.traverse((c) => {
+    if (found) return;
+    const m = c as THREE.Mesh;
+    if ((m as any).isMesh && m.geometry?.attributes?.position) found = m;
+  });
+  if (!found) return out;
+  const pos = (found as THREE.Mesh).geometry.attributes.position as THREE.BufferAttribute;
+  const count = Math.min(n, pos.count);
+  for (let i = 0; i < count; i++) {
+    out.push({ x: pos.getX(i), y: pos.getY(i), z: pos.getZ(i) });
+  }
+  return out;
+}
+
 async function buildPositionedPartBlob(partUrl: string, part: PlacedPart): Promise<Blob> {
   const partRoot = await loadGlb(partUrl);
 
