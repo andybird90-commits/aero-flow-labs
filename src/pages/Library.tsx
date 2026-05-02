@@ -384,6 +384,14 @@ function ItemCard({
           <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             {new Date(item.created_at).toLocaleDateString()}
           </div>
+          {item.description && (
+            <div
+              className="mt-1.5 text-xs text-muted-foreground line-clamp-2"
+              title={item.description}
+            >
+              {item.description}
+            </div>
+          )}
           <div className="mt-1.5">
             <MeshStructureChip item={item} variant="pill" />
           </div>
