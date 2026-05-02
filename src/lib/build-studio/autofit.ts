@@ -212,6 +212,7 @@ async function buildCarBlob(carUrl: string): Promise<Blob> {
       max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
       size: { x: size.x, y: size.y, z: size.z },
     },
+    firstVertices: firstVertices(baked, 3),
   });
 
   return exportGlb(baked);
