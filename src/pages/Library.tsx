@@ -202,7 +202,7 @@ export default function LibraryPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
             <Stat label="Total" value={stats.total} />
-            <Stat label="Images" value={stats.images} />
+            <Stat label="Uploaded" value={stats.uploaded} />
             <Stat label="Aero kits" value={stats.kits} />
             <Stat label="Parts" value={stats.parts} />
             <Stat label="Listed" value={stats.listed} accent />
