@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2 } from "lucide-react";
+import { Copy, Trash2, FlipHorizontal, Lock, EyeOff, Magnet, Sparkles, Wand2, Loader2, CheckCircle2, Move3d } from "lucide-react";
 import { useState } from "react";
 import type { PlacedPart, Vec3 } from "@/lib/build-studio/placed-parts";
 import {
@@ -22,6 +22,7 @@ import {
 import type { LibraryItem } from "@/lib/repo";
 import { LiveFitPanel } from "@/components/build-studio/LiveFitPanel";
 import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
+import { DeformDialog } from "@/components/build-studio/DeformDialog";
 import { useAutofitPlacedPart, type AutofitPartKind } from "@/lib/build-studio/autofit";
 import { toast } from "sonner";
 
@@ -105,6 +106,7 @@ export function PropertiesPanel({
   onLiveFitBaked, onSendForPrint,
 }: Props) {
   const [sculptOpen, setSculptOpen] = useState(false);
+  const [deformOpen, setDeformOpen] = useState(false);
   const autofitMeta = (part?.metadata ?? {}) as Record<string, unknown>;
   const initialKind = (autofitMeta.autofit_part_kind as AutofitPartKind | undefined)
     ?? (selectedLibraryItem?.metadata as any)?.part_kind
@@ -333,6 +335,17 @@ export function PropertiesPanel({
           <Button
             size="sm"
             variant="outline"
+            onClick={() => setDeformOpen(true)}
+            className="h-7 w-full text-xs"
+            title="Grab edges and deform this part to fit"
+          >
+            <Move3d className="mr-1 h-3 w-3 text-primary" /> Deform part
+          </Button>
+        )}
+        {selectedLibraryItem?.asset_url && (
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => setSculptOpen(true)}
             className="h-7 w-full text-xs"
             title="Push, pull and smooth this part's geometry"
@@ -358,6 +371,18 @@ export function PropertiesPanel({
           item={selectedLibraryItem}
           open={sculptOpen}
           onOpenChange={setSculptOpen}
+        />
+      )}
+
+      {selectedLibraryItem && userId && (
+        <DeformDialog
+          open={deformOpen}
+          onOpenChange={setDeformOpen}
+          libraryItem={selectedLibraryItem}
+          userId={userId}
+          onSaved={() => {
+            toast.success("Deformed part saved — find it in your library");
+          }}
         />
       )}
     </div>
