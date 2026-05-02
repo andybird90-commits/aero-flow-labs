@@ -62,10 +62,31 @@ function DeformScene({
   const handlesRef = useRef(handles);
   useEffect(() => { handlesRef.current = handles; }, [handles]);
 
+  // Coalesce rapid handle updates into one recompute per animation frame.
+  // Without this, dragging a handle re-deforms 66k+ vertices on every
+  // mousemove event and freezes the UI.
+  const rafRef = useRef<number | null>(null);
+  const pendingRef = useRef<{ geom: THREE.BufferGeometry; handles: DeformHandle[]; mat: THREE.Matrix4 } | null>(null);
   useEffect(() => {
     if (!originalGeom) return;
-    const g = applyHandles(originalGeom, handles, meshWorldMatrix);
-    setDeformedGeom(g);
+    pendingRef.current = { geom: originalGeom, handles, mat: meshWorldMatrix };
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const p = pendingRef.current;
+      if (!p) return;
+      const g = applyHandles(p.geom, p.handles, p.mat);
+      setDeformedGeom((prev) => {
+        prev?.dispose();
+        return g;
+      });
+    });
+    return () => {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
   }, [originalGeom, handles, meshWorldMatrix]);
 
   const getPixelToWorld = useCallback((handlePos: THREE.Vector3) => {
