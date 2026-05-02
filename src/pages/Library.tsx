@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { MeshStructureChip } from "@/components/build-studio/MeshStructureChip";
 import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
+import { SpecPartDialog } from "@/components/build-studio/SpecPartDialog";
 import { PartMeshViewer } from "@/components/PartMeshViewer";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
