@@ -84,6 +84,7 @@ export default function LibraryPage() {
   const [publishing, setPublishing] = useState<LibraryItem | null>(null);
   const [sculpting, setSculpting] = useState<LibraryItem | null>(null);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const [specOpen, setSpecOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
