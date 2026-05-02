@@ -124,9 +124,14 @@ export default function LibraryPage() {
           title="Your saved assets"
           description="Every concept image, aero kit, and 3D part you've generated — across all projects. Make any of them public to list on the Marketplace."
           actions={
-            <Button variant="glass" size="sm" asChild>
-              <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="hero" size="sm" onClick={() => setUploadOpen(true)}>
+                <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload STL
+              </Button>
+              <Button variant="glass" size="sm" asChild>
+                <Link to="/marketplace"><Store className="mr-1.5 h-3.5 w-3.5" /> Browse Marketplace</Link>
+              </Button>
+            </div>
           }
         />
       </div>
