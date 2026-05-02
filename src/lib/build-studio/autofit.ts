@@ -527,6 +527,9 @@ export function useAutofitPlacedPart() {
           if (part.id !== vars.placed_part_id) return part;
           return {
             ...part,
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: { x: 1, y: 1, z: 1 },
             metadata: {
               ...(part.metadata ?? {}),
               autofit_glb_url: data.result_url,
