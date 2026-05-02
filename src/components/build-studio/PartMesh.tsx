@@ -124,6 +124,35 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
       const wrapper = new THREE.Group();
       wrapper.add(obj);
 
+      // Diagnostic: log the loaded GLB's world bbox + per-node transforms so we
+      // can confirm the autofit result is at world origin with identity TRS.
+      if (autofitUrl) {
+        const bbox = new THREE.Box3().setFromObject(wrapper);
+        const size = new THREE.Vector3(); bbox.getSize(size);
+        const center = new THREE.Vector3(); bbox.getCenter(center);
+        const nodes: Array<{ name: string; type: string; pos: number[]; rot: number[]; scl: number[] }> = [];
+        obj.traverse((n) => {
+          nodes.push({
+            name: n.name || "(unnamed)",
+            type: n.type,
+            pos: [n.position.x, n.position.y, n.position.z],
+            rot: [n.rotation.x, n.rotation.y, n.rotation.z],
+            scl: [n.scale.x, n.scale.y, n.scale.z],
+          });
+        });
+        // eslint-disable-next-line no-console
+        console.log("[PartMesh autofit GLB loaded]", {
+          url,
+          bbox: {
+            min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
+            max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
+            size: { x: size.x, y: size.y, z: size.z },
+            center: { x: center.x, y: center.y, z: center.z },
+          },
+          sceneNodes: nodes,
+        });
+      }
+
       if (!preservesLocalFrame) {
         const box = new THREE.Box3().setFromObject(wrapper);
         const size = new THREE.Vector3();
