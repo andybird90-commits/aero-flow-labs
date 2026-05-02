@@ -1,22 +1,21 @@
 /**
  * spec-part-from-prompt
  *
- * User-facing edge function that turns a text description (and optional
- * reference image) into a 3D spec part saved into the user's part library.
+ * Two-phase flow:
+ *   Phase 1 (reference): generate or accept a reference image, show it to the
+ *                        user, accept revision comments, regenerate as needed.
+ *   Phase 2 (mesh):      once the user approves the reference, kick off Meshy
+ *                        image-to-3D, poll, then save into library_items.
  *
- * Flow:
- *   1. If no reference image is provided, generate one with Lovable AI
- *      (gemini image preview) so Meshy has something to work from.
- *   2. Kick off a Meshy 6 image-to-3d task tuned for a printable spec part
- *      (solid shell, watertight, moderate polycount).
- *   3. Poll until SUCCEEDED, download the GLB, re-host it in the
- *      `library-uploads` bucket under the user's folder.
- *   4. Insert a `library_items` row (kind = uploaded_part_mesh) so it
- *      shows up immediately in the Part Library rail.
- *
- * Two actions:
- *   "start"  → { prompt, image_data_url? }      → { generation_id }
- *   "status" → { generation_id }                → { status, library_item_id?, error? }
+ * Actions:
+ *   "generate_ref"  → { prompt, image_data_url? }
+ *                     → { generation_id, reference_url }
+ *   "revise_ref"    → { generation_id, comment }
+ *                     → { reference_url }
+ *   "approve"       → { generation_id }
+ *                     → { status: "running" }   (kicks off Meshy)
+ *   "status"        → { generation_id }
+ *                     → { status, progress?, library_item_id?, glb_url?, preview_url? }
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { createImageTo3dTask, getImageTo3dTask } from "../_shared/meshy.ts";
@@ -41,7 +40,6 @@ function json(body: unknown, status = 200) {
   });
 }
 
-/** Decode a data URL → Uint8Array + mime. */
 function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; mime: string } {
   const m = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
   if (!m) throw new Error("Invalid data URL");
@@ -56,16 +54,24 @@ async function uploadImageToBucket(
   admin: ReturnType<typeof createClient>,
   userId: string,
   dataUrl: string,
+  folder = "spec-refs",
 ): Promise<string> {
   const { bytes, mime } = decodeDataUrl(dataUrl);
   const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
-  const path = `${userId}/spec-refs/${Date.now()}.${ext}`;
+  const path = `${userId}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const { error } = await admin.storage
     .from("library-uploads")
     .upload(path, bytes, { contentType: mime, upsert: true });
-  if (error) throw new Error(`Reference upload failed: ${error.message}`);
-  const { data } = admin.storage.from("library-uploads").getPublicUrl(path);
-  return data.publicUrl;
+  if (error) throw new Error(`Upload failed: ${error.message}`);
+  return admin.storage.from("library-uploads").getPublicUrl(path).data.publicUrl;
+}
+
+function enrichPrompt(prompt: string, comment?: string): string {
+  const base =
+    `${prompt}\n\nIndustrial spec part. Single solid object, watertight mesh, ` +
+    `clean engineering surfaces, ~3mm wall thickness, neutral matte material, ` +
+    `studio lighting, plain white background, centered isometric 3/4 view.`;
+  return comment?.trim() ? `${base}\n\nRevision notes: ${comment.trim()}` : base;
 }
 
 Deno.serve(async (req) => {
@@ -83,45 +89,33 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
     const body = await req.json() as {
-      action?: "start" | "status";
+      action?: "generate_ref" | "revise_ref" | "approve" | "status" | "start";
       generation_id?: string;
       prompt?: string;
+      comment?: string;
       image_data_url?: string | null;
     };
-    const action = body.action ?? "start";
+    const action = body.action ?? "generate_ref";
 
-    if (action === "start") {
+    // ── PHASE 1a: generate reference ──────────────────────────────
+    if (action === "generate_ref" || action === "start") {
       const prompt = (body.prompt ?? "").trim();
       if (!prompt) return json({ error: "prompt required" }, 400);
 
-      // Build a "spec part" friendly prompt — encourages a solid printable shell.
-      const enriched =
-        `${prompt}\n\nIndustrial spec part. Single solid object, watertight mesh, ` +
-        `clean engineering surfaces, ~3mm wall thickness, neutral matte material, ` +
-        `studio lighting, plain white background, centered isometric 3/4 view.`;
-
-      // 1. Reference image — provided or generated.
       let refImageUrl: string;
       if (body.image_data_url) {
-        // If it's already an http(s) URL, use as-is; else upload data URL.
-        if (/^https?:\/\//i.test(body.image_data_url)) {
-          refImageUrl = body.image_data_url;
-        } else {
-          refImageUrl = await uploadImageToBucket(admin, userId, body.image_data_url);
-        }
+        refImageUrl = /^https?:\/\//i.test(body.image_data_url)
+          ? body.image_data_url
+          : await uploadImageToBucket(admin, userId, body.image_data_url);
       } else {
         if (!LOVABLE_API_KEY) return json({ error: "LOVABLE_API_KEY not configured" }, 500);
-        const img = await lovableGenerateImage({
-          apiKey: LOVABLE_API_KEY,
-          prompt: enriched,
-        });
+        const img = await lovableGenerateImage({ apiKey: LOVABLE_API_KEY, prompt: enrichPrompt(prompt) });
         if (!img.ok || !img.dataUrl) {
-          return json({ error: `Reference image generation failed: ${img.error ?? "unknown"}` }, 502);
+          return json({ error: `Reference generation failed: ${img.error ?? "unknown"}` }, 502);
         }
         refImageUrl = await uploadImageToBucket(admin, userId, img.dataUrl);
       }
 
-      // 2. Insert tracking row.
       const { data: gen, error: insErr } = await admin
         .from("meshy_generations")
         .insert({
@@ -129,17 +123,54 @@ Deno.serve(async (req) => {
           generation_type: "part",
           prompt,
           reference_image_urls: [refImageUrl],
-          parameters: { source: "spec_part_from_prompt", ai_model: "latest" },
+          parameters: { source: "spec_part_from_prompt", phase: "awaiting_approval" },
           status: "queued",
         })
         .select("*")
         .single();
       if (insErr) return json({ error: insErr.message }, 500);
 
-      // 3. Kick off Meshy.
+      return json({ generation_id: gen.id, reference_url: refImageUrl, status: "awaiting_approval" });
+    }
+
+    // ── PHASE 1b: revise reference ────────────────────────────────
+    if (action === "revise_ref") {
+      if (!body.generation_id) return json({ error: "generation_id required" }, 400);
+      const { data: gen } = await admin
+        .from("meshy_generations").select("*").eq("id", body.generation_id).maybeSingle();
+      if (!gen || gen.user_id !== userId) return json({ error: "Not found" }, 404);
+      if (!LOVABLE_API_KEY) return json({ error: "LOVABLE_API_KEY not configured" }, 500);
+
+      const prevRefs: string[] = Array.isArray(gen.reference_image_urls) ? gen.reference_image_urls : [];
+      const lastRef = prevRefs[prevRefs.length - 1];
+      const img = await lovableGenerateImage({
+        apiKey: LOVABLE_API_KEY,
+        prompt: enrichPrompt(gen.prompt as string, body.comment),
+        referenceImages: lastRef ? [lastRef] : undefined,
+      });
+      if (!img.ok || !img.dataUrl) return json({ error: img.error ?? "Revision failed" }, 502);
+
+      const newUrl = await uploadImageToBucket(admin, userId, img.dataUrl);
+      await admin.from("meshy_generations")
+        .update({ reference_image_urls: [...prevRefs, newUrl] })
+        .eq("id", gen.id);
+      return json({ reference_url: newUrl });
+    }
+
+    // ── PHASE 2: approve & kick off Meshy ─────────────────────────
+    if (action === "approve") {
+      if (!body.generation_id) return json({ error: "generation_id required" }, 400);
+      const { data: gen } = await admin
+        .from("meshy_generations").select("*").eq("id", body.generation_id).maybeSingle();
+      if (!gen || gen.user_id !== userId) return json({ error: "Not found" }, 404);
+
+      const refs: string[] = Array.isArray(gen.reference_image_urls) ? gen.reference_image_urls : [];
+      const refUrl = refs[refs.length - 1];
+      if (!refUrl) return json({ error: "No reference image" }, 400);
+
       try {
         const { task_id } = await createImageTo3dTask({
-          image_url: refImageUrl,
+          image_url: refUrl,
           ai_model: "latest",
           enable_pbr: true,
           should_remesh: true,
@@ -151,25 +182,24 @@ Deno.serve(async (req) => {
         await admin.from("meshy_generations")
           .update({ meshy_task_id: task_id, status: "running" })
           .eq("id", gen.id);
-        return json({ generation_id: gen.id, status: "running", reference_url: refImageUrl });
+        return json({ status: "running" });
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Meshy create failed";
         await admin.from("meshy_generations")
           .update({ status: "failed", error: msg.slice(0, 500) })
           .eq("id", gen.id);
-        return json({ error: msg, generation_id: gen.id }, 500);
+        return json({ error: msg }, 500);
       }
     }
 
-    // STATUS — also handles promotion to the user's library on first success.
+    // ── STATUS ────────────────────────────────────────────────────
+    if (action !== "status") return json({ error: `Unknown action: ${action}` }, 400);
+
     const generation_id = body.generation_id;
     if (!generation_id) return json({ error: "generation_id required" }, 400);
 
     const { data: gen } = await admin
-      .from("meshy_generations")
-      .select("*")
-      .eq("id", generation_id)
-      .maybeSingle();
+      .from("meshy_generations").select("*").eq("id", generation_id).maybeSingle();
     if (!gen) return json({ error: "Generation not found" }, 404);
     if (gen.user_id !== userId) return json({ error: "Forbidden" }, 403);
 
@@ -181,39 +211,34 @@ Deno.serve(async (req) => {
         preview_url: gen.preview_url,
       });
     }
-    if (!gen.meshy_task_id) return json({ error: "No meshy task on this generation" }, 400);
+    if (!gen.meshy_task_id) {
+      return json({ status: gen.status === "failed" ? "failed" : "awaiting_approval", error: gen.error });
+    }
 
     const result = await getImageTo3dTask(gen.meshy_task_id);
-
     if (result.status === "FAILED" || result.status === "CANCELED" || result.status === "EXPIRED") {
       const msg = (result.error || `Meshy ${result.status}`).slice(0, 500);
-      await admin.from("meshy_generations")
-        .update({ status: "failed", error: msg })
-        .eq("id", generation_id);
+      await admin.from("meshy_generations").update({ status: "failed", error: msg }).eq("id", generation_id);
       return json({ status: "failed", error: msg });
     }
-    if (result.status !== "SUCCEEDED") {
-      return json({ status: "running", progress: result.progress });
-    }
+    if (result.status !== "SUCCEEDED") return json({ status: "running", progress: result.progress });
     if (!result.glb_url) {
       await admin.from("meshy_generations")
-        .update({ status: "failed", error: "Meshy returned no GLB" })
-        .eq("id", generation_id);
+        .update({ status: "failed", error: "Meshy returned no GLB" }).eq("id", generation_id);
       return json({ status: "failed", error: "Meshy returned no GLB" });
     }
 
-    // Re-host the GLB in our bucket (Meshy URLs expire).
+    // Re-host GLB
     const glbResp = await fetch(result.glb_url);
     if (!glbResp.ok) return json({ error: `Failed to fetch GLB: ${glbResp.status}` }, 500);
     const glbBytes = new Uint8Array(await glbResp.arrayBuffer());
-    const path = `${userId}/parts/${generation_id}-${Date.now()}.glb`;
+    const glbPath = `${userId}/parts/${generation_id}-${Date.now()}.glb`;
     const { error: upErr } = await admin.storage
       .from("library-uploads")
-      .upload(path, glbBytes, { contentType: "model/gltf-binary", upsert: true });
+      .upload(glbPath, glbBytes, { contentType: "model/gltf-binary", upsert: true });
     if (upErr) return json({ error: `Upload failed: ${upErr.message}` }, 500);
-    const publicUrl = admin.storage.from("library-uploads").getPublicUrl(path).data.publicUrl;
+    const publicUrl = admin.storage.from("library-uploads").getPublicUrl(glbPath).data.publicUrl;
 
-    // Optionally re-host the preview thumb so it survives Meshy URL expiry.
     let thumbUrl: string | null = result.thumbnail_url;
     if (thumbUrl) {
       try {
@@ -226,14 +251,11 @@ Deno.serve(async (req) => {
           const { error: tErr } = await admin.storage
             .from("library-uploads")
             .upload(tPath, tBytes, { contentType: tMime, upsert: true });
-          if (!tErr) {
-            thumbUrl = admin.storage.from("library-uploads").getPublicUrl(tPath).data.publicUrl;
-          }
+          if (!tErr) thumbUrl = admin.storage.from("library-uploads").getPublicUrl(tPath).data.publicUrl;
         }
-      } catch (_) { /* keep original meshy thumb */ }
+      } catch (_) { /* keep meshy thumb */ }
     }
 
-    // Insert library item.
     const titleBase = (gen.prompt as string).trim().slice(0, 80) || "Spec part";
     const { data: lib, error: libErr } = await admin
       .from("library_items")
