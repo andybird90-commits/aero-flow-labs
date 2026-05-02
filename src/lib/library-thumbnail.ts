@@ -123,58 +123,11 @@ export async function renderMeshThumbnail(
   file: File,
   size = 512,
 ): Promise<Blob | null> {
-  let renderer: THREE.WebGLRenderer | null = null;
   try {
     const obj = await loadGeometryFromFile(file);
-
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    renderer.setSize(size, size, false);
-    renderer.setPixelRatio(1);
-    renderer.setClearColor(0x0b0d12, 1);
-
-    const scene = new THREE.Scene();
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const key = new THREE.DirectionalLight(0xffffff, 1.1);
-    key.position.set(3, 5, 4);
-    scene.add(key);
-    const rim = new THREE.DirectionalLight(0x88aaff, 0.5);
-    rim.position.set(-4, 2, -3);
-    scene.add(rim);
-
-    const wrapper = new THREE.Group();
-    wrapper.add(obj);
-    scene.add(wrapper);
-
-    const box = new THREE.Box3().setFromObject(wrapper);
-    if (box.isEmpty()) return null;
-    const sz = new THREE.Vector3();
-    const c = new THREE.Vector3();
-    box.getSize(sz);
-    box.getCenter(c);
-    wrapper.position.sub(c);
-
-    const longest = Math.max(sz.x, sz.y, sz.z) || 1;
-    const camera = new THREE.PerspectiveCamera(28, 1, longest * 0.05, longest * 20);
-    const dir = new THREE.Vector3(-0.85, 0.35, -1.0).normalize();
-    camera.position.copy(dir.multiplyScalar(longest * 1.7));
-    camera.position.y = (sz.y || 1) * 0.45;
-    camera.lookAt(0, 0, 0);
-    camera.updateProjectionMatrix();
-
-    renderer.render(scene, camera);
-
-    const canvas = renderer.domElement;
-    const blob: Blob | null = await new Promise((res) =>
-      canvas.toBlob((b) => res(b), "image/png", 0.92),
-    );
-    return blob;
+    return await renderObjectToBlob(obj, size);
   } catch (e) {
     console.warn("[thumbnail] render failed", e);
     return null;
-  } finally {
-    if (renderer) {
-      renderer.dispose();
-      renderer.forceContextLoss?.();
-    }
   }
 }
