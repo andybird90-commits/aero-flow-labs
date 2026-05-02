@@ -7,7 +7,7 @@
  *   • publish to the marketplace with a price (free or paid)
  *   • unpublish, delete, download
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -30,10 +30,14 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Box, Download, Trash2, Image as ImageIcon, Layers, Wrench,
   Globe, Lock, Tag, Store, ImageOff, Beaker, Wand2, Sparkles,
+  Upload, Loader2, Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MeshStructureChip } from "@/components/build-studio/MeshStructureChip";
 import { SculptStudioDialog } from "@/components/build-studio/SculptStudioDialog";
+import { PartMeshViewer } from "@/components/PartMeshViewer";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: string }> = {
   concept_image:       { label: "Concept image", icon: ImageIcon, tone: "text-cyan-400"    },
@@ -42,6 +46,7 @@ const KIND_META: Record<LibraryItemKind, { label: string; icon: any; tone: strin
   prototype_part_mesh: { label: "Prototype",     icon: Beaker,    tone: "text-fuchsia-400" },
   geometry_part_mesh:  { label: "Fitted part",   icon: Wand2,     tone: "text-violet-400"  },
   cad_part_mesh:       { label: "CAD part",      icon: Wrench,    tone: "text-sky-400"     },
+  uploaded_part_mesh:  { label: "Uploaded part", icon: Package,   tone: "text-orange-400"  },
 };
 
 const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
@@ -52,7 +57,18 @@ const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
   { id: "prototype_part_mesh", label: "Prototypes" },
   { id: "geometry_part_mesh",  label: "Fitted parts" },
   { id: "cad_part_mesh",       label: "CAD parts" },
+  { id: "uploaded_part_mesh",  label: "Uploads" },
 ];
+
+const ACCEPTED_UPLOAD_EXT = ".stl,.glb,.gltf";
+
+function inferMime(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".glb")) return "model/gltf-binary";
+  if (lower.endsWith(".gltf")) return "model/gltf+json";
+  if (lower.endsWith(".stl")) return "model/stl";
+  return "application/octet-stream";
+}
 
 export default function LibraryPage() {
   const { user } = useAuth();
