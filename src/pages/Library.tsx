@@ -213,16 +213,12 @@ export default function LibraryPage() {
       <UploadPartDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
-        busy={upload.isPending}
-        onSubmit={async ({ file, title, description }) => {
-          if (!user) return;
-          try {
-            await upload.mutateAsync({ userId: user.id, file, title, description });
-            toast({ title: "Part uploaded", description: title || file.name });
-            setUploadOpen(false);
-          } catch (e: any) {
-            toast({ title: "Upload failed", description: String(e.message ?? e), variant: "destructive" });
-          }
+        uploadOne={async ({ file, title, description }) => {
+          if (!user) throw new Error("Not signed in");
+          await upload.mutateAsync({ userId: user.id, file, title, description });
+        }}
+        onAllDone={(count) => {
+          if (count > 0) toast({ title: `${count} part${count === 1 ? "" : "s"} uploaded` });
         }}
       />
     </AppLayout>
@@ -462,46 +458,101 @@ function PublishDialog({
   );
 }
 
+type QueueItem = {
+  id: string;
+  file: File;
+  title: string;
+  status: "pending" | "uploading" | "done" | "error";
+  error?: string;
+};
+
+const ACCEPTED_EXTS = ["stl", "obj", "glb", "gltf"];
+
 function UploadPartDialog({
-  open, onOpenChange, busy, onSubmit,
+  open, onOpenChange, uploadOne, onAllDone,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  busy: boolean;
-  onSubmit: (input: { file: File; title: string; description: string }) => Promise<void>;
+  uploadOne: (input: { file: File; title: string; description: string }) => Promise<void>;
+  onAllDone: (successCount: number) => void;
 }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [title, setTitle] = useState("");
+  const [items, setItems] = useState<QueueItem[]>([]);
   const [desc, setDesc] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   // Reset when dialog closes
   useMemo(() => {
     if (!open) {
-      setFile(null);
-      setTitle("");
+      setItems([]);
       setDesc("");
       setDragOver(false);
+      setBusy(false);
     }
   }, [open]);
 
-  const acceptFile = (f: File | null | undefined) => {
-    if (!f) return;
-    const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
-    if (!["stl", "obj", "glb", "gltf"].includes(ext)) return;
-    setFile(f);
-    if (!title) setTitle(f.name.replace(/\.[^.]+$/, ""));
+  const acceptFiles = (files: FileList | File[] | null | undefined) => {
+    if (!files) return;
+    const arr = Array.from(files);
+    const accepted: QueueItem[] = [];
+    for (const f of arr) {
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      if (!ACCEPTED_EXTS.includes(ext)) continue;
+      accepted.push({
+        id: `${f.name}-${f.size}-${f.lastModified}-${Math.random().toString(36).slice(2, 7)}`,
+        file: f,
+        title: f.name.replace(/\.[^.]+$/, ""),
+        status: "pending",
+      });
+    }
+    if (accepted.length === 0) return;
+    setItems((prev) => [...prev, ...accepted]);
   };
 
-  const sizeMb = file ? (file.size / 1024 / 1024).toFixed(1) : null;
+  const removeItem = (id: string) => {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  const updateTitle = (id: string, title: string) => {
+    setItems((prev) => prev.map((i) => i.id === id ? { ...i, title } : i));
+  };
+
+  const setStatus = (id: string, patch: Partial<QueueItem>) => {
+    setItems((prev) => prev.map((i) => i.id === id ? { ...i, ...patch } : i));
+  };
+
+  const pendingCount = items.filter((i) => i.status === "pending" || i.status === "error").length;
+  const doneCount = items.filter((i) => i.status === "done").length;
+  const totalSizeMb = items.reduce((s, i) => s + i.file.size, 0) / 1024 / 1024;
+
+  const handleUpload = async () => {
+    setBusy(true);
+    let success = 0;
+    // Sequential uploads — keeps memory/network sane for big meshes.
+    for (const item of items) {
+      if (item.status === "done") continue;
+      setStatus(item.id, { status: "uploading", error: undefined });
+      try {
+        await uploadOne({ file: item.file, title: item.title || item.file.name, description: desc });
+        setStatus(item.id, { status: "done" });
+        success++;
+      } catch (e: any) {
+        setStatus(item.id, { status: "error", error: String(e?.message ?? e) });
+      }
+    }
+    setBusy(false);
+    onAllDone(success);
+    // Auto-close only if everything succeeded.
+    if (success > 0 && success === items.length) onOpenChange(false);
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+    <Dialog open={open} onOpenChange={(o) => { if (!busy) onOpenChange(o); }}>
+      <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Upload a part</DialogTitle>
+          <DialogTitle>Upload parts</DialogTitle>
           <DialogDescription>
-            Add an STL, OBJ or GLB mesh to your library. It stays private until you list it on the Marketplace.
+            Add one or more STL, OBJ or GLB meshes to your library. They stay private until you list them on the Marketplace.
           </DialogDescription>
         </DialogHeader>
 
@@ -512,50 +563,105 @@ function UploadPartDialog({
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              acceptFile(e.dataTransfer.files?.[0]);
+              acceptFiles(e.dataTransfer.files);
             }}
             className={cn(
-              "flex flex-col items-center justify-center gap-2 rounded-md border border-dashed px-4 py-8 cursor-pointer transition-colors",
+              "flex flex-col items-center justify-center gap-2 rounded-md border border-dashed px-4 py-6 cursor-pointer transition-colors",
               dragOver ? "border-primary/60 bg-primary/5" : "border-border hover:border-primary/40",
+              busy && "opacity-60 pointer-events-none",
             )}
           >
             <Upload className="h-6 w-6 text-muted-foreground" />
             <div className="text-sm">
-              {file ? (
-                <span className="font-medium">{file.name}</span>
-              ) : (
-                <>Drop a file or <span className="text-primary underline-offset-4 hover:underline">browse</span></>
-              )}
+              Drop files or <span className="text-primary underline-offset-4 hover:underline">browse</span>
             </div>
             <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              {file ? `${sizeMb} MB` : "STL · OBJ · GLB · GLTF"}
+              STL · OBJ · GLB · GLTF — multiple allowed
             </div>
             <input
               type="file"
+              multiple
               accept=".stl,.obj,.glb,.gltf,model/stl,model/obj,model/gltf-binary"
               className="hidden"
-              onChange={(e) => acceptFile(e.target.files?.[0])}
+              onChange={(e) => { acceptFiles(e.target.files); e.target.value = ""; }}
             />
           </label>
 
+          {items.length > 0 && (
+            <div className="rounded-md border border-border bg-surface-0/40">
+              <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
+                <div className="text-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  {items.length} file{items.length === 1 ? "" : "s"} · {totalSizeMb.toFixed(1)} MB
+                </div>
+                {doneCount > 0 && (
+                  <div className="text-[11px] text-muted-foreground">
+                    {doneCount}/{items.length} uploaded
+                  </div>
+                )}
+              </div>
+              <ul className="max-h-[240px] overflow-y-auto divide-y divide-border">
+                {items.map((it) => (
+                  <li key={it.id} className="flex items-center gap-2 px-3 py-2">
+                    <div className="flex-shrink-0">
+                      {it.status === "uploading" && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
+                      {it.status === "done" && <Box className="h-3.5 w-3.5 text-emerald-500" />}
+                      {it.status === "error" && <ImageOff className="h-3.5 w-3.5 text-destructive" />}
+                      {it.status === "pending" && <Box className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        value={it.title}
+                        disabled={busy || it.status === "done"}
+                        onChange={(e) => updateTitle(it.id, e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground truncate">
+                        <span className="truncate">{it.file.name}</span>
+                        <span>·</span>
+                        <span className="font-mono">{(it.file.size / 1024 / 1024).toFixed(1)} MB</span>
+                        {it.error && (
+                          <>
+                            <span>·</span>
+                            <span className="text-destructive truncate">{it.error}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm" variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      disabled={busy}
+                      onClick={() => removeItem(it.id)}
+                      title="Remove"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div>
-            <Label htmlFor="up-title">Title</Label>
-            <Input id="up-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Custom front splitter v3" />
-          </div>
-          <div>
-            <Label htmlFor="up-desc">Description (optional)</Label>
-            <Textarea id="up-desc" value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} />
+            <Label htmlFor="up-desc">Description (optional, applied to all)</Label>
+            <Textarea id="up-desc" value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} disabled={busy} />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+            {doneCount > 0 && doneCount < items.length ? "Close" : "Cancel"}
+          </Button>
           <Button
             variant="hero"
-            disabled={!file || busy}
-            onClick={() => file && onSubmit({ file, title, description: desc })}
+            disabled={pendingCount === 0 || busy}
+            onClick={handleUpload}
           >
-            {busy ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Uploading…</> : <><Upload className="mr-1.5 h-3.5 w-3.5" /> Upload</>}
+            {busy ? (
+              <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Uploading {items.length} file{items.length === 1 ? "" : "s"}…</>
+            ) : (
+              <><Upload className="mr-1.5 h-3.5 w-3.5" /> Upload {pendingCount > 0 ? `${pendingCount} ` : ""}file{pendingCount === 1 ? "" : "s"}</>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
