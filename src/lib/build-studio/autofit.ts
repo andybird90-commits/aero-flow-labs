@@ -388,7 +388,7 @@ export function useAutofitPlacedPart() {
   return useMutation({
     mutationFn: async (input: AutofitPlacedPartInput): Promise<AutofitPlacedPartResult> => {
       const start = performance.now();
-      const blob = await clientCsgRefit(input);
+      const { blob, center } = await clientCsgRefit(input);
       const result_url = await uploadResultGlb(input, blob);
       const processing_ms = Math.round(performance.now() - start);
 
@@ -401,6 +401,7 @@ export function useAutofitPlacedPart() {
         autofit_at: new Date().toISOString(),
         autofit_frame: "world",
         autofit_source: "client-bvh-csg",
+        autofit_center: center,
       };
       const { error: dbErr } = await (supabase as any)
         .from("placed_parts")
@@ -414,6 +415,7 @@ export function useAutofitPlacedPart() {
         result_url,
         part_kind: input.part_kind,
         processing_ms,
+        center,
       };
     },
     onSuccess: async (data, vars) => {
