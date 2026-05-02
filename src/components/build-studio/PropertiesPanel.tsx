@@ -450,8 +450,9 @@ export function PropertiesPanel({
                   try {
                     // Step 1 — warp kit vertices to hug the car surface.
                     conformPlacedPartToBody(part.id, {
-                      proximityThreshold: 0.05, // 5 cm — tune if needed
-                      gapM: 0.002,              // 2 mm standoff
+                      proximityThreshold: 0.02, // 2cm — only inner-facing vertices
+                      gapM: 0.002,              // 2mm standoff
+                      maxProjectionM: 0.04,     // skip if hit is more than 4cm away
                     });
                     // Step 2 — run the boolean cut as normal.
                     await autofit.mutateAsync({
