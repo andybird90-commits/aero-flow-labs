@@ -440,31 +440,41 @@ export function PropertiesPanel({
                 className="h-7 w-full text-xs"
                 disabled={isConforming || autofit.isPending}
                 onClick={async () => {
-                  if (!selectedLibraryItem?.asset_url) {
-                    toast.error("Part has no GLB asset to fit.");
-                    return;
-                  }
-                  if (!baseMeshUrl) {
-                    toast.error("Donor car GLB not available.");
+                  if (!selectedLibraryItem?.asset_url || !baseMeshUrl) {
+                    toast.error("Part or car mesh not available.");
                     return;
                   }
                   setIsConforming(true);
                   try {
-                    // Step 1 — warp kit vertices to hug the car surface.
-                    conformPlacedPartToBody(part.id, {
-                      proximityThreshold: 0.02, // 2cm — only inner-facing vertices
-                      gapM: 0.002,              // 2mm standoff
-                      maxProjectionM: 0.04,     // skip if hit is more than 4cm away
+                    const result = await conformAndFit(
+                      {
+                        placed_part_id: part.id,
+                        project_id: part.project_id,
+                        part_kind: autofitKind,
+                        car_url: baseMeshUrl,
+                        part_url: selectedLibraryItem.asset_url,
+                        part,
+                      },
+                      { proximityThreshold: 0.02, gapM: 0.008, maxProjectionM: 0.04 },
+                    );
+                    qc.setQueryData<PlacedPart[]>(["placed_parts", part.project_id], (current) => {
+                      if (!current) return current;
+                      return current.map((p) =>
+                        p.id !== part.id ? p : {
+                          ...p,
+                          metadata: {
+                            ...(p.metadata ?? {}),
+                            autofit_glb_url: result.result_url,
+                            autofit_part_kind: result.part_kind,
+                            autofit_processing_ms: result.processing_ms,
+                            autofit_at: new Date().toISOString(),
+                            autofit_frame: "world",
+                            autofit_source: "client-conform-csg",
+                          },
+                        }
+                      );
                     });
-                    // Step 2 — run the boolean cut as normal.
-                    await autofit.mutateAsync({
-                      placed_part_id: part.id,
-                      project_id: part.project_id,
-                      part_kind: autofitKind,
-                      car_url: baseMeshUrl,
-                      part_url: selectedLibraryItem.asset_url,
-                      part,
-                    });
+                    await qc.invalidateQueries({ queryKey: ["placed_parts", part.project_id] });
                     toast.success("Kit conformed and fitted to car");
                   } catch (e) {
                     toast.error((e as Error).message ?? "Conform & Fit failed");
