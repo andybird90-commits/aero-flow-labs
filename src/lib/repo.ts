@@ -1519,6 +1519,84 @@ export function useDeleteLibraryItem() {
 }
 
 /**
+ * Upload an STL / OBJ / GLB mesh from disk and register it in the user's
+ * library as an "uploaded_part_mesh" so it shows up alongside generated parts.
+ */
+export function useUploadLibraryPart() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      userId: string;
+      file: File;
+      title: string;
+      description?: string | null;
+    }) => {
+      const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const ext = (safeName.split(".").pop() ?? "").toLowerCase();
+      if (!["stl", "obj", "glb", "gltf"].includes(ext)) {
+        throw new Error("Only .stl, .obj, .glb or .gltf files are supported.");
+      }
+      const contentType =
+        ext === "glb" || ext === "gltf" ? "model/gltf-binary" :
+        ext === "obj" ? "model/obj" : "model/stl";
+
+      const path = `${input.userId}/${Date.now()}-${safeName}`;
+
+      // Big mesh files need a signed upload URL (gateway rejects ~50 MB POST).
+      const LARGE_THRESHOLD = 6 * 1024 * 1024;
+      if (input.file.size > LARGE_THRESHOLD) {
+        const { data: signed, error: signErr } = await supabase.storage
+          .from("library-uploads")
+          .createSignedUploadUrl(path);
+        if (signErr || !signed) {
+          throw new Error(signErr?.message ?? "Could not create upload URL");
+        }
+        const { error: putErr } = await supabase.storage
+          .from("library-uploads")
+          .uploadToSignedUrl(signed.path, signed.token, input.file, { contentType });
+        if (putErr) {
+          throw new Error(`Upload failed (${(input.file.size / 1024 / 1024).toFixed(1)} MB): ${putErr.message}`);
+        }
+      } else {
+        const { error: upErr } = await supabase.storage
+          .from("library-uploads")
+          .upload(path, input.file, { contentType, upsert: false });
+        if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+      }
+
+      const { data: pub } = supabase.storage.from("library-uploads").getPublicUrl(path);
+      const publicUrl = pub.publicUrl;
+
+      const { data, error } = await (supabase as any)
+        .from("library_items")
+        .insert({
+          user_id: input.userId,
+          kind: "uploaded_part_mesh" as LibraryItemKind,
+          title: input.title || safeName.replace(/\.[^.]+$/, ""),
+          description: input.description ?? null,
+          asset_url: publicUrl,
+          asset_mime: contentType,
+          thumbnail_url: null,
+          visibility: "private" as LibraryVisibility,
+          metadata: {
+            source: "user_upload",
+            original_filename: input.file.name,
+            size_bytes: input.file.size,
+            storage_path: path,
+          },
+        })
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as LibraryItem;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["library_items"] });
+    },
+  });
+}
+
+/**
  * Publish (or update) a marketplace listing for a library item. Also flips the
  * underlying library_item.visibility to 'public' so it's discoverable.
  */
