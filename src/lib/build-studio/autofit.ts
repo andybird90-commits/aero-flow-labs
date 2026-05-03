@@ -25,7 +25,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as THREE from "three";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
-import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+
 import { supabase } from "@/integrations/supabase/client";
 import type { PlacedPart } from "@/lib/build-studio/placed-parts";
 import {
