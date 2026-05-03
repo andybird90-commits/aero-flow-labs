@@ -7,7 +7,7 @@
  * current car_template. Selecting a part shows TransformControls; releasing
  * commits to DB and snaps to the nearest snap zone if within threshold.
  */
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   OrbitControls,
@@ -740,22 +740,29 @@ function CarPlaceholder({ template }: { template?: CarTemplate | null }) {
  * TransformControls instance mounted at the viewport level so move axes never
  * inherit a part's local rotation.
  */
-function PlacedPartGroup({
-  part,
-  libraryItem,
-  selected,
-  showLabel,
-  onSelect,
-  onFrame,
-}: {
+type PlacedPartGroupProps = {
   part: PlacedPart;
   libraryItem: LibraryItem | null;
   selected: boolean;
   showLabel: boolean;
   onSelect: () => void;
   onFrame: (object: THREE.Object3D) => void;
-}) {
+};
+
+const PlacedPartGroup = forwardRef<THREE.Group, PlacedPartGroupProps>(function PlacedPartGroup({
+  part,
+  libraryItem,
+  selected,
+  showLabel,
+  onSelect,
+  onFrame,
+}, forwardedRef) {
   const groupRef = useRef<THREE.Group>(null);
+  const setGroupRef = useCallback((node: THREE.Group | null) => {
+    groupRef.current = node;
+    if (typeof forwardedRef === "function") forwardedRef(node);
+    else if (forwardedRef) forwardedRef.current = node;
+  }, [forwardedRef]);
 
   // Register the live group with the autofit scene-registry so the autofit
   // hook can read this part's *current* matrixWorld (including any unsaved
@@ -785,7 +792,7 @@ function PlacedPartGroup({
 
   const inner = (
     <group
-      ref={groupRef}
+      ref={setGroupRef}
       name={`placed-${part.id}`}
       position={[position.x + cx, position.y + cy, position.z + cz]}
       rotation={[rotation.x, rotation.y, rotation.z]}
@@ -816,7 +823,7 @@ function PlacedPartGroup({
   );
 
   return inner;
-}
+});
 
 
 /* ─── Camera preset driver ─── */
