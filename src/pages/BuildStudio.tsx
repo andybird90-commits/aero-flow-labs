@@ -157,6 +157,8 @@ export default function BuildStudio() {
   const [measureLines, setMeasureLines] = useState<MeasureLine[]>([]);
   const [wheelCentres, setWheelCentres] = useState<THREE.Vector3[]>([]);
   const [wheelTrackOffset, setWheelTrackOffset] = useState(0);
+  const [curvePoints, setCurvePoints] = useState<THREE.Vector3[]>([]);
+  const [curveMatchActive, setCurveMatchActive] = useState(false);
   const translateSnapM = snapEnabled ? 0.05 : 0;   // 5 cm
   const rotateSnapDeg = snapEnabled ? 15 : 0;
 
@@ -1041,6 +1043,9 @@ export default function BuildStudio() {
                     wheelCentres={wheelCentres}
                     onWheelCentresChange={setWheelCentres}
                     wheelTrackOffset={wheelTrackOffset}
+                    curvePoints={curvePoints}
+                    onCurvePointsChange={setCurvePoints}
+                    curveMatchActive={curveMatchActive}
                     onCommit={handleCommit}
                   />
                   {/* Soft vignette so the canvas reads as a "studio plate" */}
@@ -1102,6 +1107,9 @@ export default function BuildStudio() {
                           baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
                           userId={user?.id ?? null}
                           onLiveFitBaked={handleLiveFitBaked}
+                          curvePoints={curvePoints}
+                          onCurveMatchActiveChange={setCurveMatchActive}
+                          onClearCurvePoints={() => setCurvePoints([])}
                         />
                       )}
                     </div>
@@ -1163,6 +1171,9 @@ export default function BuildStudio() {
                           baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
                           userId={user?.id ?? null}
                           onLiveFitBaked={handleLiveFitBaked}
+                          curvePoints={curvePoints}
+                          onCurveMatchActiveChange={setCurveMatchActive}
+                          onClearCurvePoints={() => setCurvePoints([])}
                         />
                       </div>
                     </SheetContent>

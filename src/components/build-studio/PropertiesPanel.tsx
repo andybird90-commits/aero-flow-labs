@@ -53,6 +53,10 @@ interface Props {
   onLiveFitBaked?: (newAssetUrl: string, newLibraryItemId: string) => void;
   /** Optional handler for the "Print-ready" CTA inside Live Fit. */
   onSendForPrint?: (snappedStlBlob: Blob) => void;
+  /** Curve Match — points placed on the car in the main viewport. */
+  curvePoints?: THREE.Vector3[];
+  onCurveMatchActiveChange?: (active: boolean) => void;
+  onClearCurvePoints?: () => void;
 }
 
 const NONE = "__none__";
@@ -149,6 +153,7 @@ export function PropertiesPanel({
   snapZones = [], onSnapToZone, onMirrorToZone,
   selectedLibraryItem = null, baseMeshUrl = null, userId = null,
   onLiveFitBaked, onSendForPrint,
+  curvePoints, onCurveMatchActiveChange, onClearCurvePoints,
 }: Props) {
   const [sculptOpen, setSculptOpen] = useState(false);
   const [deformOpen, setDeformOpen] = useState(false);
@@ -457,6 +462,9 @@ export function PropertiesPanel({
           onSaved={() => {
             toast.success("Deformed part saved — find it in your library");
           }}
+          curvePoints={curvePoints ?? []}
+          onCurveMatchActiveChange={onCurveMatchActiveChange}
+          onClearCurvePoints={onClearCurvePoints}
         />
       )}
     </div>

@@ -198,6 +198,10 @@ interface ViewportProps {
   onWheelCentresChange?: (centres: THREE.Vector3[]) => void;
   /** Track width offset in metres per side (pushed outward). */
   wheelTrackOffset?: number;
+  /** Curve match — points clicked on the car for the Deform dialog. */
+  curvePoints?: THREE.Vector3[];
+  onCurvePointsChange?: (pts: THREE.Vector3[]) => void;
+  curveMatchActive?: boolean;
   onCommit: (
     id: string,
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "snap_zone_id">>,
@@ -955,6 +959,71 @@ function WheelStanceTool({
   );
 }
 
+/** Curve Match picker — click on car to drop spline points for the Deform dialog. */
+function CurveMatchPicker({
+  active,
+  points,
+  onPointsChange,
+  carRoot,
+}: {
+  active: boolean;
+  points: THREE.Vector3[];
+  onPointsChange: (pts: THREE.Vector3[]) => void;
+  carRoot: React.MutableRefObject<THREE.Object3D | null>;
+}) {
+  const { camera, gl } = useThree();
+  const pointsRef = useRef(points);
+  useEffect(() => { pointsRef.current = points; }, [points]);
+  const onPointsChangeRef = useRef(onPointsChange);
+  useEffect(() => { onPointsChangeRef.current = onPointsChange; }, [onPointsChange]);
+
+  useEffect(() => {
+    if (!active) return;
+    const raycaster = new THREE.Raycaster();
+    const onClick = (e: MouseEvent) => {
+      const car = carRoot.current;
+      if (!car) return;
+      const rect = gl.domElement.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+      const targets: THREE.Object3D[] = [];
+      car.traverse((c) => { if ((c as THREE.Mesh).isMesh) targets.push(c); });
+      const hits = raycaster.intersectObjects(targets, false);
+      if (!hits.length) return;
+      onPointsChangeRef.current([...pointsRef.current, hits[0].point.clone()]);
+    };
+    gl.domElement.addEventListener("click", onClick);
+    return () => gl.domElement.removeEventListener("click", onClick);
+  }, [active, camera, gl, carRoot]);
+
+  return (
+    <>
+      {points.map((p, i) => (
+        <mesh key={i} position={p}>
+          <sphereGeometry args={[0.012, 12, 12]} />
+          <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={0.8} depthTest={false} />
+        </mesh>
+      ))}
+      {points.length > 1 && points.map((p, i) => {
+        if (i === 0) return null;
+        const prev = points[i - 1];
+        const mid = p.clone().add(prev).multiplyScalar(0.5);
+        const dir = p.clone().sub(prev);
+        const len = dir.length();
+        const up = new THREE.Vector3(0, 1, 0);
+        const q = new THREE.Quaternion().setFromUnitVectors(up, dir.clone().normalize());
+        return (
+          <mesh key={`line-${i}`} position={mid} quaternion={q}>
+            <cylinderGeometry args={[0.003, 0.003, len, 6]} />
+            <meshBasicMaterial color="#22d3ee" />
+          </mesh>
+        );
+      })}
+    </>
+  );
+}
+
 export function BuildStudioViewport({
   template,
   heroStlUrl,
@@ -989,6 +1058,9 @@ export function BuildStudioViewport({
   wheelCentres,
   onWheelCentresChange,
   wheelTrackOffset,
+  curvePoints,
+  onCurvePointsChange,
+  curveMatchActive,
   onCommit,
 }: ViewportProps) {
   const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
@@ -1235,6 +1307,13 @@ export function BuildStudioViewport({
         trackOffset={wheelTrackOffset ?? 0}
         carRoot={carPickRootRef.current}
         orbitRef={orbitRef}
+      />
+
+      <CurveMatchPicker
+        active={curveMatchActive ?? false}
+        points={curvePoints ?? []}
+        onPointsChange={onCurvePointsChange ?? (() => {})}
+        carRoot={carPickRootRef as React.MutableRefObject<THREE.Object3D | null>}
       />
 
       {/* Annotation pieces — pose probe, surface raycaster, surface tube renderer. */}

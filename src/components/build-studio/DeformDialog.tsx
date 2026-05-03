@@ -34,6 +34,9 @@ interface Props {
   libraryItem: LibraryItem;
   userId: string | null;
   onSaved: (newPartId: string, newMeshUrl: string) => void;
+  curvePoints?: THREE.Vector3[];
+  onCurveMatchActiveChange?: (active: boolean) => void;
+  onClearCurvePoints?: () => void;
 }
 
 // ── Inner 3D scene ──────────────────────────────────────────────────────────
@@ -47,11 +50,12 @@ interface SceneProps {
   onHandleMove: (id: string, newWorldPos: THREE.Vector3) => void;
   onMeshClick: (worldPos: THREE.Vector3) => void;
   meshWorldMatrix: THREE.Matrix4;
+  onEdgeClick?: (point: THREE.Vector3) => void;
 }
 
 function DeformScene({
   originalGeom, handles, selectedHandleId, addingHandle,
-  onHandleSelect, onHandleMove, onMeshClick, meshWorldMatrix,
+  onHandleSelect, onHandleMove, onMeshClick, meshWorldMatrix, onEdgeClick,
 }: SceneProps) {
   const { camera, gl } = useThree();
   const meshRef = useRef<THREE.Mesh>(null);
@@ -153,6 +157,9 @@ function DeformScene({
           if (addingHandle) {
             e.stopPropagation();
             onMeshClick(e.point);
+          } else if (onEdgeClick) {
+            e.stopPropagation();
+            onEdgeClick(e.point);
           }
         }}
       >
@@ -207,7 +214,10 @@ function DeformScene({
 
 // ── Main dialog ─────────────────────────────────────────────────────────────
 
-export function DeformDialog({ open, onOpenChange, libraryItem, userId, onSaved }: Props) {
+export function DeformDialog({
+  open, onOpenChange, libraryItem, userId, onSaved,
+  curvePoints, onCurveMatchActiveChange, onClearCurvePoints,
+}: Props) {
   const [originalGeom, setOriginalGeom] = useState<THREE.BufferGeometry | null>(null);
   const [handles, setHandles] = useState<DeformHandle[]>([]);
   const [selectedHandleId, setSelectedHandleId] = useState<string | null>(null);
@@ -215,6 +225,8 @@ export function DeformDialog({ open, onOpenChange, libraryItem, userId, onSaved 
   const [influenceRadius, setInfluenceRadius] = useState(0.08);
   const [partName, setPartName] = useState(`${libraryItem.title} (custom)`);
   const [isSaving, setIsSaving] = useState(false);
+  const [deformMode, setDeformMode] = useState<"handles" | "curvematch">("handles");
+  const [selectedEdgePoint, setSelectedEdgePoint] = useState<THREE.Vector3 | null>(null);
   const meshWorldMatrix = useRef(new THREE.Matrix4()).current;
 
   // Reset name when item changes
@@ -424,10 +436,32 @@ export function DeformDialog({ open, onOpenChange, libraryItem, userId, onSaved 
   const selectedHandle = handles.find(h => h.id === selectedHandleId) ?? null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onCurveMatchActiveChange?.(false);
+        onOpenChange(o);
+      }}
+    >
       <DialogContent className="max-w-6xl h-[80vh] p-0 flex flex-col">
         <DialogHeader className="px-4 py-3 border-b border-border">
-          <DialogTitle>Deform Part — {libraryItem.title}</DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-sm">Deform Part — {libraryItem.title}</DialogTitle>
+            <div className="flex rounded-md border border-border overflow-hidden">
+              <button
+                className={`px-3 py-1 text-xs ${deformMode === "handles" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
+                onClick={() => { setDeformMode("handles"); onCurveMatchActiveChange?.(false); }}
+              >
+                Handles
+              </button>
+              <button
+                className={`px-3 py-1 text-xs border-l border-border ${deformMode === "curvematch" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
+                onClick={() => { setDeformMode("curvematch"); }}
+              >
+                Curve Match
+              </button>
+            </div>
+          </div>
         </DialogHeader>
 
         <div className="flex-1 grid grid-cols-[1fr_280px] min-h-0">
@@ -447,6 +481,7 @@ export function DeformDialog({ open, onOpenChange, libraryItem, userId, onSaved 
                 onHandleMove={moveHandle}
                 onMeshClick={addHandle}
                 meshWorldMatrix={meshWorldMatrix}
+                onEdgeClick={deformMode === "curvematch" ? setSelectedEdgePoint : undefined}
               />
             </Canvas>
 
@@ -530,9 +565,95 @@ export function DeformDialog({ open, onOpenChange, libraryItem, userId, onSaved 
                 </div>
               )}
 
-              {handles.length === 0 && (
+              {handles.length === 0 && deformMode === "handles" && (
                 <div className="rounded-md border border-dashed border-border p-3 text-[11px] text-muted-foreground leading-tight">
                   Add handles by clicking "Add handle" then clicking on the mesh. Drag handles to deform.
+                </div>
+              )}
+
+              {deformMode === "curvematch" && (
+                <div className="space-y-3">
+                  <div className="rounded-md border border-border/60 bg-muted/20 p-2 space-y-2">
+                    <Label className="text-xs flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-cyan-400" />
+                      Step 1 — Trace curve on car
+                    </Label>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Click points along the target curve on the car in the main viewport.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant={(onCurveMatchActiveChange && (curvePoints?.length ?? 0) === 0) ? "default" : "outline"}
+                      className="h-7 w-full text-xs"
+                      onClick={() => onCurveMatchActiveChange?.(true)}
+                    >
+                      Start tracing curve
+                    </Button>
+                    {(curvePoints?.length ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground">{curvePoints!.length} points placed</span>
+                        <Button
+                          size="sm" variant="ghost"
+                          className="h-5 px-2 text-[10px] text-muted-foreground hover:text-destructive"
+                          onClick={() => { onClearCurvePoints?.(); onCurveMatchActiveChange?.(false); }}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-md border border-border/60 bg-muted/20 p-2 space-y-2">
+                    <Label className="text-xs flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
+                      Step 2 — Pick edge on part
+                    </Label>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Click on the part mesh in the 3D view to select the edge to match.
+                    </p>
+                    {selectedEdgePoint && (
+                      <div className="text-[10px] text-muted-foreground font-mono">
+                        Edge point: {selectedEdgePoint.x.toFixed(3)}, {selectedEdgePoint.y.toFixed(3)}, {selectedEdgePoint.z.toFixed(3)}
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 w-full text-xs"
+                    disabled={!selectedEdgePoint || (curvePoints?.length ?? 0) < 2}
+                    onClick={() => {
+                      if (!originalGeom || !selectedEdgePoint || !curvePoints?.length) return;
+                      const geo = originalGeom.clone();
+                      const posAttr = geo.attributes.position as THREE.BufferAttribute;
+                      const influenceRadius = 0.08;
+                      const spline = new THREE.CatmullRomCurve3(curvePoints);
+                      const splinePoints = spline.getPoints(50);
+
+                      for (let i = 0; i < posAttr.count; i++) {
+                        const v = new THREE.Vector3().fromBufferAttribute(posAttr, i);
+                        const dist = v.distanceTo(selectedEdgePoint);
+                        if (dist > influenceRadius) continue;
+                        const weight = 1 - (dist / influenceRadius);
+                        let minDist = Infinity;
+                        let nearest = splinePoints[0];
+                        for (const sp of splinePoints) {
+                          const d = v.distanceTo(sp);
+                          if (d < minDist) { minDist = d; nearest = sp; }
+                        }
+                        const newPos = v.clone().lerp(nearest, weight);
+                        posAttr.setXYZ(i, newPos.x, newPos.y, newPos.z);
+                      }
+
+                      posAttr.needsUpdate = true;
+                      geo.computeVertexNormals();
+                      setOriginalGeom(geo);
+                      toast.success("Edge matched to curve");
+                    }}
+                  >
+                    Match edge to curve
+                  </Button>
                 </div>
               )}
             </div>
