@@ -127,7 +127,7 @@ function groundProjectionFor(preset: EnvPreset | string, carLength: number): { h
 export type TransformMode = "translate" | "rotate" | "scale";
 export type CameraPreset = "free" | "front" | "rear" | "left" | "right" | "top" | "three_quarter";
 /** Active interactive tool. `select` = normal pivot/transform editing. */
-export type ViewportTool = "select" | "measure" | "clip";
+export type ViewportTool = "select" | "measure" | "clip" | "wheelstance";
 
 export interface ShellTransform {
   position: Vec3;
