@@ -34,6 +34,9 @@ interface Props {
   libraryItem: LibraryItem;
   userId: string | null;
   onSaved: (newPartId: string, newMeshUrl: string) => void;
+  curvePoints?: THREE.Vector3[];
+  onCurveMatchActiveChange?: (active: boolean) => void;
+  onClearCurvePoints?: () => void;
 }
 
 // ── Inner 3D scene ──────────────────────────────────────────────────────────
