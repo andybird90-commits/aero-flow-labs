@@ -157,6 +157,9 @@ function DeformScene({
           if (addingHandle) {
             e.stopPropagation();
             onMeshClick(e.point);
+          } else if (onEdgeClick) {
+            e.stopPropagation();
+            onEdgeClick(e.point);
           }
         }}
       >
