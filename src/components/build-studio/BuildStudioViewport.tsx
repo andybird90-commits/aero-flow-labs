@@ -844,6 +844,87 @@ function CameraRig({ preset, template }: { preset: CameraPreset; template?: CarT
   return null;
 }
 
+/** Procedural wheel+tyre mesh — a cylinder stack. */
+function WheelMesh({ position, outward }: { position: THREE.Vector3; outward: THREE.Vector3 }) {
+  const tyreRadius = 0.32;
+  const tyreWidth = 0.22;
+  const rimRadius = 0.22;
+  const rimWidth = 0.18;
+  const pos = position.clone().addScaledVector(outward, 1);
+
+  return (
+    <group position={pos} rotation={[Math.PI / 2, 0, 0]}>
+      <mesh castShadow>
+        <cylinderGeometry args={[tyreRadius, tyreRadius, tyreWidth, 32]} />
+        <meshStandardMaterial color="#111111" roughness={0.9} metalness={0.0} />
+      </mesh>
+      <mesh>
+        <cylinderGeometry args={[rimRadius, rimRadius, rimWidth + 0.01, 24]} />
+        <meshStandardMaterial color="#888888" roughness={0.3} metalness={0.8} />
+      </mesh>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <mesh key={i} rotation={[0, (i / 5) * Math.PI * 2, 0]}>
+          <boxGeometry args={[rimRadius * 0.12, rimWidth, rimRadius * 1.6]} />
+          <meshStandardMaterial color="#999999" roughness={0.4} metalness={0.7} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** Wheel stance tool — click to place centres, renders overlay wheels. */
+function WheelStanceTool({
+  enabled,
+  centres,
+  onCentresChange,
+  trackOffset,
+  carRoot,
+}: {
+  enabled: boolean;
+  centres: THREE.Vector3[];
+  onCentresChange: (c: THREE.Vector3[]) => void;
+  trackOffset: number;
+  carRoot: THREE.Group | null;
+  orbitRef: React.MutableRefObject<any>;
+}) {
+  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+    if (!enabled) return;
+    if (centres.length >= 4) return;
+    e.stopPropagation();
+    const point = e.point.clone();
+    onCentresChange([...centres, point]);
+  }, [enabled, centres, onCentresChange]);
+
+  const getOutward = (centre: THREE.Vector3) =>
+    new THREE.Vector3(0, 0, centre.z > 0 ? 1 : -1);
+
+  return (
+    <>
+      {enabled && carRoot && (
+        <primitive object={carRoot} onClick={handleClick} />
+      )}
+      {centres.map((c, i) => (
+        <mesh key={i} position={c}>
+          <sphereGeometry args={[0.04, 16, 16]} />
+          <meshStandardMaterial
+            color="#f97316"
+            emissive="#f97316"
+            emissiveIntensity={0.6}
+            depthTest={false}
+          />
+        </mesh>
+      ))}
+      {trackOffset > 0 && centres.map((c, i) => (
+        <WheelMesh
+          key={`wheel-${i}`}
+          position={c}
+          outward={getOutward(c).multiplyScalar(trackOffset)}
+        />
+      ))}
+    </>
+  );
+}
+
 export function BuildStudioViewport({
   template,
   heroStlUrl,
