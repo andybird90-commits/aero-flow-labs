@@ -175,16 +175,24 @@ Deno.serve(async (req) => {
 
       const prevRefs: string[] = Array.isArray(gen.reference_image_urls) ? gen.reference_image_urls : [];
       const lastRef = prevRefs[prevRefs.length - 1];
+      const params = (gen.parameters && typeof gen.parameters === "object") ? gen.parameters as Record<string, unknown> : {};
+      const prevComments: string[] = Array.isArray(params.revision_comments) ? params.revision_comments as string[] : [];
+      const newComment = (body.comment ?? "").trim();
+      const allComments = newComment ? [...prevComments, newComment] : prevComments;
+
       const img = await lovableGenerateImage({
         apiKey: LOVABLE_API_KEY,
-        prompt: enrichPrompt(gen.prompt as string, body.comment),
+        prompt: enrichPrompt(gen.prompt as string, allComments),
         referenceImages: lastRef ? [lastRef] : undefined,
       });
       if (!img.ok || !img.dataUrl) return json({ error: img.error ?? "Revision failed" }, 502);
 
       const newUrl = await uploadImageToBucket(admin, userId, img.dataUrl);
       await admin.from("meshy_generations")
-        .update({ reference_image_urls: [...prevRefs, newUrl] })
+        .update({
+          reference_image_urls: [...prevRefs, newUrl],
+          parameters: { ...params, revision_comments: allComments },
+        })
         .eq("id", gen.id);
       return json({ reference_url: newUrl });
     }
