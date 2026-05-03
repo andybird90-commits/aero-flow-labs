@@ -993,6 +993,9 @@ export function BuildStudioViewport({
   wheelCentres,
   onWheelCentresChange,
   wheelTrackOffset,
+  curvePoints,
+  onCurvePointsChange,
+  curveMatchActive,
   onCommit,
 }: ViewportProps) {
   const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
