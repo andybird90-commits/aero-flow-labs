@@ -990,6 +990,7 @@ export function BuildStudioViewport({
   const [meshNode, setMeshNode] = useState<THREE.Object3D | null>(null);
   const [shellNode, setShellNode] = useState<THREE.Object3D | null>(null);
   const sceneRootRef = useRef<THREE.Group | null>(null);
+  const carPickRootRef = useRef<THREE.Group | null>(null);
 
   const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellNode;
   const showPartGizmo = tool === "select" && !shellEditMode && !!selected && !!meshNode && !selected.locked;
@@ -1108,20 +1109,22 @@ export function BuildStudioViewport({
       <Bounds clip observe margin={1.2}>
         <FrameOnDoubleClick scene={sceneRootRef.current} />
         <group ref={sceneRootRef}>
-          {heroGlbUrl ? (
-            // Textured GLB hero — preferred when an admin has uploaded one.
-            // Authored materials carry through, paint shader is bypassed so
-            // baked colours/normals/clearcoat render exactly as authored.
-            <Suspense fallback={<CarPlaceholder template={template} />}>
-              <HeroGlbCar url={heroGlbUrl} template={template} paintFinish={finish} onTriangleCount={onTriangleCount} />
-            </Suspense>
-          ) : heroStlUrl ? (
-            <Suspense fallback={<CarPlaceholder template={template} />}>
-              <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} onTriangleCount={onTriangleCount} />
-            </Suspense>
-          ) : (
-            <CarPlaceholder template={template} />
-          )}
+          <group ref={carPickRootRef} name="wheel-stance-car-pick-root">
+            {heroGlbUrl ? (
+              // Textured GLB hero — preferred when an admin has uploaded one.
+              // Authored materials carry through, paint shader is bypassed so
+              // baked colours/normals/clearcoat render exactly as authored.
+              <Suspense fallback={<CarPlaceholder template={template} />}>
+                <HeroGlbCar url={heroGlbUrl} template={template} paintFinish={finish} onTriangleCount={onTriangleCount} />
+              </Suspense>
+            ) : heroStlUrl ? (
+              <Suspense fallback={<CarPlaceholder template={template} />}>
+                <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} onTriangleCount={onTriangleCount} />
+              </Suspense>
+            ) : (
+              <CarPlaceholder template={template} />
+            )}
+          </group>
 
           {bodySkinUrl && bodySkinKind && (
             <Suspense fallback={null}>
@@ -1220,7 +1223,7 @@ export function BuildStudioViewport({
         centres={wheelCentres ?? []}
         onCentresChange={onWheelCentresChange ?? (() => {})}
         trackOffset={wheelTrackOffset ?? 0}
-        carRoot={sceneRootRef.current}
+        carRoot={carPickRootRef.current}
         orbitRef={orbitRef}
       />
 
