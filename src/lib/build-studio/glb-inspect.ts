@@ -163,7 +163,9 @@ export function useEnsureStructureInspected(item: LibraryItem | undefined) {
   useEffect(() => {
     if (!item) return;
     if (!item.asset_url) return;
-    if (item.metadata?.structure) return;
+    // Re-inspect if we previously cached a bogus zero-mesh result (legacy bug).
+    const cached = item.metadata?.structure as MeshStructure | undefined;
+    if (cached && cached.meshCount > 0) return;
     // Only inspect mesh assets. Skip images.
     const mime = (item.asset_mime ?? "").toLowerCase();
     const url = item.asset_url.toLowerCase().split("?")[0];
