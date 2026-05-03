@@ -834,6 +834,9 @@ export default function BuildStudio() {
                   <ToggleGroupItem value="clip" size="sm" className="h-9 px-3" aria-label="Section / clipping plane" title="Section plane (C)">
                     <Scissors className="h-4 w-4" />
                   </ToggleGroupItem>
+                  <ToggleGroupItem value="wheelstance" size="sm" className="h-9 px-3" aria-label="Wheel stance" title="Wheel stance — preview track width with wide arches">
+                    <CircleDot className="h-4 w-4" />
+                  </ToggleGroupItem>
                 </ToggleGroup>
 
                 {tool === "clip" && (
