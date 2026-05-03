@@ -462,6 +462,9 @@ export function PropertiesPanel({
           onSaved={() => {
             toast.success("Deformed part saved — find it in your library");
           }}
+          curvePoints={curvePoints ?? []}
+          onCurveMatchActiveChange={onCurveMatchActiveChange}
+          onClearCurvePoints={onClearCurvePoints}
         />
       )}
     </div>
