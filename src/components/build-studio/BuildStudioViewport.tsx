@@ -886,6 +886,7 @@ function WheelStanceTool({
   onCentresChange,
   trackOffset,
   carRoot,
+  orbitRef,
 }: {
   enabled: boolean;
   centres: THREE.Vector3[];
@@ -895,30 +896,37 @@ function WheelStanceTool({
   orbitRef: React.MutableRefObject<any>;
 }) {
   const { camera, gl } = useThree();
-  const raycaster = useRef(new THREE.Raycaster()).current;
-  const mouse = useRef(new THREE.Vector2()).current;
 
   useEffect(() => {
     if (!enabled || !carRoot) return;
-    const dom = gl.domElement;
-    const onDown = (ev: PointerEvent) => {
-      if (ev.button !== 0) return;
-      if (centres.length >= 4) return;
-      const rect = dom.getBoundingClientRect();
-      mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
-      const hits = raycaster.intersectObject(carRoot, true);
-      if (hits.length > 0) {
-        ev.stopPropagation();
-        onCentresChange([...centres, hits[0].point.clone()]);
-      }
-    };
-    dom.addEventListener("pointerdown", onDown);
-    return () => dom.removeEventListener("pointerdown", onDown);
-  }, [enabled, carRoot, centres, onCentresChange, camera, gl, raycaster, mouse]);
 
-  if (!enabled) return null;
+    const raycaster = new THREE.Raycaster();
+
+    const onClick = (e: MouseEvent) => {
+      if (!enabled || centres.length >= 4 || !carRoot) return;
+
+      const rect = gl.domElement.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+
+      // Only intersect the car root — never placed parts
+      const targets: THREE.Object3D[] = [];
+      carRoot.traverse((c) => {
+        if ((c as THREE.Mesh).isMesh) targets.push(c);
+      });
+
+      const hits = raycaster.intersectObjects(targets, false);
+      if (hits.length === 0) return;
+
+      const point = hits[0].point.clone();
+      onCentresChange([...centres, point]);
+    };
+
+    gl.domElement.addEventListener("click", onClick);
+    return () => gl.domElement.removeEventListener("click", onClick);
+  }, [enabled, centres, onCentresChange, carRoot, camera, gl]);
 
   const getOutward = (centre: THREE.Vector3) =>
     new THREE.Vector3(0, 0, centre.z > 0 ? 1 : -1);
