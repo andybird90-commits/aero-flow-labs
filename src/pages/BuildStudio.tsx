@@ -1171,6 +1171,9 @@ export default function BuildStudio() {
                           baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
                           userId={user?.id ?? null}
                           onLiveFitBaked={handleLiveFitBaked}
+                          curvePoints={curvePoints}
+                          onCurveMatchActiveChange={setCurveMatchActive}
+                          onClearCurvePoints={() => setCurvePoints([])}
                         />
                       </div>
                     </SheetContent>
