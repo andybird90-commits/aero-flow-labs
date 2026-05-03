@@ -435,6 +435,53 @@ export function DeformDialog({
 
   const selectedHandle = handles.find(h => h.id === selectedHandleId) ?? null;
 
+  // While tracing the curve on the car, the modal dialog (and its overlay)
+  // would block clicks from reaching the main viewport. We swap to a compact
+  // floating bar so the user can actually click the car body underneath.
+  const tracing = deformMode === "curvematch" && (curvePoints?.length ?? 0) >= 0 &&
+    (curvePoints !== undefined) && (
+      // active = panel set curveMatchActive true; we infer via a local flag
+      false
+    );
+
+  // Local "is tracing" flag — set true when user presses Start tracing.
+  // We track it here so we can collapse the dialog.
+  // (Mirrors curveMatchActive on the parent.)
+  const [isTracing, setIsTracing] = useState(false);
+  useEffect(() => { if (!open) setIsTracing(false); }, [open]);
+
+  if (open && isTracing) {
+    return (
+      <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 rounded-lg border border-border bg-background/95 backdrop-blur-md shadow-2xl px-4 py-3 flex items-center gap-3">
+        <div className="text-xs">
+          <div className="font-medium">Tracing curve on car</div>
+          <div className="text-muted-foreground text-[10px]">
+            Click points along the target curve. {(curvePoints?.length ?? 0)} placed.
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs"
+          onClick={() => { onClearCurvePoints?.(); }}
+        >
+          Clear
+        </Button>
+        <Button
+          size="sm"
+          variant="default"
+          className="h-7 text-xs"
+          onClick={() => {
+            setIsTracing(false);
+            onCurveMatchActiveChange?.(false);
+          }}
+        >
+          Done — back to dialog
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <Dialog
       open={open}
