@@ -565,9 +565,95 @@ export function DeformDialog({
                 </div>
               )}
 
-              {handles.length === 0 && (
+              {handles.length === 0 && deformMode === "handles" && (
                 <div className="rounded-md border border-dashed border-border p-3 text-[11px] text-muted-foreground leading-tight">
                   Add handles by clicking "Add handle" then clicking on the mesh. Drag handles to deform.
+                </div>
+              )}
+
+              {deformMode === "curvematch" && (
+                <div className="space-y-3">
+                  <div className="rounded-md border border-border/60 bg-muted/20 p-2 space-y-2">
+                    <Label className="text-xs flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-cyan-400" />
+                      Step 1 — Trace curve on car
+                    </Label>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Click points along the target curve on the car in the main viewport.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant={(onCurveMatchActiveChange && (curvePoints?.length ?? 0) === 0) ? "default" : "outline"}
+                      className="h-7 w-full text-xs"
+                      onClick={() => onCurveMatchActiveChange?.(true)}
+                    >
+                      Start tracing curve
+                    </Button>
+                    {(curvePoints?.length ?? 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground">{curvePoints!.length} points placed</span>
+                        <Button
+                          size="sm" variant="ghost"
+                          className="h-5 px-2 text-[10px] text-muted-foreground hover:text-destructive"
+                          onClick={() => { onClearCurvePoints?.(); onCurveMatchActiveChange?.(false); }}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-md border border-border/60 bg-muted/20 p-2 space-y-2">
+                    <Label className="text-xs flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
+                      Step 2 — Pick edge on part
+                    </Label>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Click on the part mesh in the 3D view to select the edge to match.
+                    </p>
+                    {selectedEdgePoint && (
+                      <div className="text-[10px] text-muted-foreground font-mono">
+                        Edge point: {selectedEdgePoint.x.toFixed(3)}, {selectedEdgePoint.y.toFixed(3)}, {selectedEdgePoint.z.toFixed(3)}
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 w-full text-xs"
+                    disabled={!selectedEdgePoint || (curvePoints?.length ?? 0) < 2}
+                    onClick={() => {
+                      if (!originalGeom || !selectedEdgePoint || !curvePoints?.length) return;
+                      const geo = originalGeom.clone();
+                      const posAttr = geo.attributes.position as THREE.BufferAttribute;
+                      const influenceRadius = 0.08;
+                      const spline = new THREE.CatmullRomCurve3(curvePoints);
+                      const splinePoints = spline.getPoints(50);
+
+                      for (let i = 0; i < posAttr.count; i++) {
+                        const v = new THREE.Vector3().fromBufferAttribute(posAttr, i);
+                        const dist = v.distanceTo(selectedEdgePoint);
+                        if (dist > influenceRadius) continue;
+                        const weight = 1 - (dist / influenceRadius);
+                        let minDist = Infinity;
+                        let nearest = splinePoints[0];
+                        for (const sp of splinePoints) {
+                          const d = v.distanceTo(sp);
+                          if (d < minDist) { minDist = d; nearest = sp; }
+                        }
+                        const newPos = v.clone().lerp(nearest, weight);
+                        posAttr.setXYZ(i, newPos.x, newPos.y, newPos.z);
+                      }
+
+                      posAttr.needsUpdate = true;
+                      geo.computeVertexNormals();
+                      setOriginalGeom(geo);
+                      toast.success("Edge matched to curve");
+                    }}
+                  >
+                    Match edge to curve
+                  </Button>
                 </div>
               )}
             </div>
