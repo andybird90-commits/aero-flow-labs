@@ -220,9 +220,14 @@ export function PartMeshViewer({
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground p-4 text-center">
-          Mesh failed to load
-        </div>
+        <>
+          {poster ? (
+            <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" />
+          ) : null}
+          <div className="absolute inset-x-0 bottom-0 px-2 py-1 text-[10px] text-center text-muted-foreground bg-background/70 backdrop-blur">
+            Mesh preview unavailable
+          </div>
+        </>
       )}
     </div>
   );
