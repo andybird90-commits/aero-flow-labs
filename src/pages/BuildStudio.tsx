@@ -1043,6 +1043,9 @@ export default function BuildStudio() {
                     wheelCentres={wheelCentres}
                     onWheelCentresChange={setWheelCentres}
                     wheelTrackOffset={wheelTrackOffset}
+                    curvePoints={curvePoints}
+                    onCurvePointsChange={setCurvePoints}
+                    curveMatchActive={curveMatchActive}
                     onCommit={handleCommit}
                   />
                   {/* Soft vignette so the canvas reads as a "studio plate" */}
