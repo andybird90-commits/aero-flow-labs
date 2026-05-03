@@ -1309,6 +1309,13 @@ export function BuildStudioViewport({
         orbitRef={orbitRef}
       />
 
+      <CurveMatchPicker
+        active={curveMatchActive ?? false}
+        points={curvePoints ?? []}
+        onPointsChange={onCurvePointsChange ?? (() => {})}
+        carRoot={carPickRootRef as React.MutableRefObject<THREE.Object3D | null>}
+      />
+
       {/* Annotation pieces — pose probe, surface raycaster, surface tube renderer. */}
       {livePoseRef && <CameraPoseProbe outRef={livePoseRef} />}
       <SurfaceStrokeRecorder pickRoot={sceneRootRef.current} orbitRef={orbitRef} />
