@@ -45,7 +45,7 @@ export async function lovableGenerateImage(opts: LovableImageOpts): Promise<Lova
   if (!OPENAI_API_KEY) {
     return { ok: false, status: 500, error: "OPENAI_API_KEY not configured" };
   }
-  const model = opts.model ?? "gpt-image-2";
+  const model = opts.model ?? "gpt-image-1";
   const size = opts.size ?? "1536x1024";
   const quality = opts.quality ?? "high";
   const refs = (opts.referenceImages ?? []).filter(Boolean);
