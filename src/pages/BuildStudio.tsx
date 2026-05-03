@@ -82,7 +82,7 @@ import { useShellAlignment, useUpsertShellAlignment, type LockedHardpointPair } 
 import { useCarHardpoints } from "@/lib/build-studio/hardpoints";
 import { ShellFitPanel } from "@/components/build-studio/ShellFitPanel";
 // BakeBodyKitButton retired — autofit is now a per-placed-part action in PropertiesPanel.
-import type * as THREE from "three";
+import * as THREE from "three";
 import { DEFAULT_PAINT_FINISH, parsePaintFinish, type PaintFinish } from "@/lib/build-studio/paint-finish";
 
 import { BuildStudioViewport, type CameraPreset, type TransformMode, type ShellTransform } from "@/components/build-studio/BuildStudioViewport";
