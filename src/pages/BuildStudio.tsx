@@ -1038,6 +1038,9 @@ export default function BuildStudio() {
                     onMeasureLinesChange={setMeasureLines}
                     livePoseRef={livePoseRef}
                     onTriangleCount={setTriangleCount}
+                    wheelCentres={wheelCentres}
+                    onWheelCentresChange={setWheelCentres}
+                    wheelTrackOffset={wheelTrackOffset}
                     onCommit={handleCommit}
                   />
                   {/* Soft vignette so the canvas reads as a "studio plate" */}
