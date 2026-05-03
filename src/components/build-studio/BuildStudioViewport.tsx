@@ -1114,6 +1114,15 @@ export function BuildStudioViewport({
       {/* Section / clipping plane. */}
       <ClippingPlane enabled={tool === "clip"} axis={clipAxis} carLength={carLength} />
 
+      <WheelStanceTool
+        enabled={tool === "wheelstance"}
+        centres={wheelCentres ?? []}
+        onCentresChange={onWheelCentresChange ?? (() => {})}
+        trackOffset={wheelTrackOffset ?? 0}
+        carRoot={sceneRootRef.current}
+        orbitRef={orbitRef}
+      />
+
       {/* Annotation pieces — pose probe, surface raycaster, surface tube renderer. */}
       {livePoseRef && <CameraPoseProbe outRef={livePoseRef} />}
       <SurfaceStrokeRecorder pickRoot={sceneRootRef.current} orbitRef={orbitRef} />
