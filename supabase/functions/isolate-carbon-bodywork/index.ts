@@ -244,37 +244,17 @@ async function runIsolation(args: {
 }
 
 async function isolateOne(sourceUrl: string, prompt: string): Promise<{ bytes: Uint8Array; mime: string; ext: string } | null> {
-  const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-pro-image-preview",
-      modalities: ["image", "text"],
-      messages: [{
-        role: "user",
-        content: [
-          { type: "text", text: prompt },
-          { type: "image_url", image_url: { url: sourceUrl } },
-        ],
-      }],
-    }),
+  const { lovableGenerateImage } = await import("../_shared/lovable-image.ts");
+  const result = await lovableGenerateImage({
+    apiKey: LOVABLE_API_KEY,
+    prompt,
+    referenceImages: [sourceUrl],
   });
-
-  if (!aiResp.ok) {
-    const t = await aiResp.text();
-    console.error("isolate AI failed:", aiResp.status, t.slice(0, 200));
+  if (!result.ok || !result.dataUrl) {
+    console.error("isolate AI failed:", result.status, result.error);
     return null;
   }
-  const aiJson = await aiResp.json().catch(() => null);
-  const imgUrl: string | undefined = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-  if (!imgUrl?.startsWith("data:image/")) {
-    console.error("isolate produced no data URL");
-    return null;
-  }
-  const m = imgUrl.match(/^data:(image\/[a-z+]+);base64,(.*)$/i);
+  const m = result.dataUrl.match(/^data:(image\/[a-z+]+);base64,(.*)$/i);
   if (!m) return null;
   const mime = m[1];
   const b64 = m[2];

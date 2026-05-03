@@ -1059,44 +1059,32 @@ async function callImageModel({
   model: string;
 }): Promise<{ publicUrl: string; dataUrl: string; promptUsed: string } | null> {
 
-  const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      modalities: ["image", "text"],
-    }),
+  // Image generation routed through OpenAI GPT Image 2 via shared helper.
+  // The previous Gemini-based call used `messages` with image_url parts; we
+  // unpack the same data here into (prompt, referenceImages).
+  const refUrls: string[] = [];
+  for (const m of messages) {
+    const content = m?.content;
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part?.type === "image_url" && part?.image_url?.url) refUrls.push(part.image_url.url);
+      }
+    }
+  }
+  const { lovableGenerateImage } = await import("../_shared/lovable-image.ts");
+  const result = await lovableGenerateImage({
+    apiKey: LOVABLE_API_KEY,
+    prompt: promptText,
+    referenceImages: refUrls,
   });
 
-  if (!aiResp.ok) {
-    const t = await aiResp.text();
-    console.error(`AI gen failed (${variation.title} / ${angle.key}):`, aiResp.status, t.slice(0, 200));
-    if (aiResp.status === 429) throw new Error("__RATE_LIMIT__");
-    if (aiResp.status === 402) throw new Error("__NO_CREDITS__");
+  if (!result.ok || !result.dataUrl) {
+    console.error(`AI gen failed (${variation.title} / ${angle.key}):`, result.status, result.error);
+    if (result.status === 429) throw new Error("__RATE_LIMIT__");
+    if (result.status === 402) throw new Error("__NO_CREDITS__");
     return null;
   }
-
-  const rawText = await aiResp.text();
-  if (!rawText) {
-    console.error(`AI gen empty body (${variation.title} / ${angle.key})`);
-    return null;
-  }
-  let aiJson: any;
-  try {
-    aiJson = JSON.parse(rawText);
-  } catch {
-    console.error(`AI gen JSON parse failed (${variation.title} / ${angle.key}):`, rawText.slice(0, 200));
-    return null;
-  }
-  const imgUrl: string | undefined = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-  if (!imgUrl?.startsWith("data:image/")) {
-    console.error(`Image gen produced no data URL (${variation.title} / ${angle.key})`);
-    return null;
-  }
+  const imgUrl = result.dataUrl;
 
   const [, mime, b64] = imgUrl.match(/^data:(image\/[a-z+]+);base64,(.*)$/i) ?? [];
   if (!b64) return null;
