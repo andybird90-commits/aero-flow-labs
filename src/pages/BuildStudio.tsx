@@ -1080,21 +1080,30 @@ export default function BuildStudio() {
                         userId={user?.id ?? null}
                       />
                     </div>
-                    <div className="min-h-0 flex-1 overflow-hidden">
-                      <PropertiesPanel
-                        part={selected}
-                        onPatch={handlePatch}
-                        onDuplicate={handleDuplicate}
-                        onDelete={handleDelete}
-                        onMirror={handleMirror}
-                        snapZones={snapZones}
-                        onSnapToZone={handleSnapToZone}
-                        onMirrorToZone={handleMirrorToZone}
-                        selectedLibraryItem={selectedLibraryItem}
-                        baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
-                        userId={user?.id ?? null}
-                        onLiveFitBaked={handleLiveFitBaked}
-                      />
+                    <div className="min-h-0 flex-1 overflow-auto">
+                      {tool === "wheelstance" ? (
+                        <WheelStancePanel
+                          centres={wheelCentres}
+                          onCentresChange={setWheelCentres}
+                          trackOffset={wheelTrackOffset}
+                          onTrackOffsetChange={setWheelTrackOffset}
+                        />
+                      ) : (
+                        <PropertiesPanel
+                          part={selected}
+                          onPatch={handlePatch}
+                          onDuplicate={handleDuplicate}
+                          onDelete={handleDelete}
+                          onMirror={handleMirror}
+                          snapZones={snapZones}
+                          onSnapToZone={handleSnapToZone}
+                          onMirrorToZone={handleMirrorToZone}
+                          selectedLibraryItem={selectedLibraryItem}
+                          baseMeshUrl={heroGlbUrl ?? heroStlUrl ?? null}
+                          userId={user?.id ?? null}
+                          onLiveFitBaked={handleLiveFitBaked}
+                        />
+                      )}
                     </div>
                   </aside>
                 )}
