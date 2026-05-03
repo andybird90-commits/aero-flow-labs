@@ -406,61 +406,20 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<{ blob: Bl
   const evaluator = getEvaluator();
   const result = evaluator.evaluate(partBrush, carBrush, SUBTRACTION) as Brush;
 
-  {
-    const rg = result.geometry;
-    rg.computeBoundingBox();
-    console.log("[autofit] CSG result verts:", rg.attributes.position?.count ?? 0);
-    console.log("[autofit] CSG result bbox:", JSON.stringify(rg.boundingBox));
-  }
-
-  const rawResultGeom = result.geometry.clone();
-  rawResultGeom.computeBoundingBox();
-  logBbox("[autofit] CSG raw result (world)", rawResultGeom);
-
-  // Strip floating splinters left by the boolean.
-  const cleanedGeom = keepLargestComponents(rawResultGeom);
-  rawResultGeom.dispose();
-
-  // Compute a scale-aware tolerance for sliver cleanup. CSG seams along
-  // near-coplanar surfaces (e.g. side skirt against door panel) generate
-  // tiny near-degenerate triangles that render as a fringed / jagged cut
-  // edge. Welding at ~0.5–2mm collapses those slivers without eroding
-  // legitimate features.
-  cleanedGeom.computeBoundingBox();
-  const cbb = cleanedGeom.boundingBox!;
-  const diag = cbb.min.distanceTo(cbb.max);
-  const eps = Math.min(2e-3, Math.max(5e-4, diag * 1e-4));
-
-  const resultGeom = cleanSlivers(cleanedGeom, eps);
-  if (resultGeom !== cleanedGeom) cleanedGeom.dispose();
+  const resultGeom = result.geometry.clone();
+  resultGeom.computeVertexNormals();
   resultGeom.computeBoundingBox();
   resultGeom.computeBoundingSphere();
-  logBbox("[autofit] CSG cleaned result (world)", resultGeom);
 
-  // Wrap in a fresh Mesh + Scene for the exporter — vertices already encode
-  // world position, so identity TRS is correct.
   const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
   const mesh = new THREE.Mesh(resultGeom, mat);
   const scene = new THREE.Scene();
   scene.add(mesh);
 
-  // Capture the world-space bbox center BEFORE export so the viewport can
-  // reposition the wrapper group there (keeps the transform gizmo on the
-  // part instead of stranding it at world origin).
-  resultGeom.computeBoundingBox();
-  const bb = resultGeom.boundingBox!;
-  const center = {
-    x: (bb.min.x + bb.max.x) / 2,
-    y: (bb.min.y + bb.max.y) / 2,
-    z: (bb.min.z + bb.max.z) / 2,
-  };
-
   const blob = await exportGlb(scene);
-
-  // Free CSG-side allocations.
   partGeom.dispose();
   carGeom.dispose();
-  return { blob, center };
+  return blob;
 }
 
 async function uploadResultGlb(input: AutofitPlacedPartInput, blob: Blob): Promise<string> {
