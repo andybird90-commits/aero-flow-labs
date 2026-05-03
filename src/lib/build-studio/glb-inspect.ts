@@ -112,23 +112,15 @@ function emptyStructure(): MeshStructure {
   };
 }
 
-/** Wrap GLTFLoader.parse callback API into a sync-ish helper. */
-function parseGLBSync(loader: GLTFLoader, buf: ArrayBuffer): any {
-  let result: any = null;
-  let err: any = null;
-  loader.parse(
-    buf,
-    "",
-    (g) => {
-      result = g;
-    },
-    (e) => {
-      err = e;
-    },
-  );
-  if (err) throw err;
-  if (!result) throw new Error("GLTFLoader returned no result");
-  return result;
+/** Wrap GLTFLoader.parse callback API into a Promise. */
+function parseGLBAsync(loader: GLTFLoader, buf: ArrayBuffer): Promise<any> {
+  return new Promise((resolve, reject) => {
+    try {
+      loader.parse(buf, "", (g) => resolve(g), (e) => reject(e));
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 /** Fetch + inspect in one go. Returns null on network/parse failure. */
