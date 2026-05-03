@@ -83,29 +83,35 @@ export function PartMeshViewer({
 
       (async () => {
         try {
-          const resp = await fetch(url);
+          const resp = await fetch(url, { cache: "force-cache" });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const buf = await resp.arrayBuffer();
           if (cancelled) return;
+          if (!buf || buf.byteLength < 80) throw new Error("Empty file");
 
           // Detect format: GLB starts with "glTF" magic bytes; otherwise STL.
           const head4 = new TextDecoder().decode(buf.slice(0, 4));
           const isGlb = head4 === "glTF";
 
           let model: THREE.Object3D;
+          let triCount = 0;
           if (isGlb) {
             const gltfLoader = new GLTFLoader();
             const gltf: any = await new Promise((resolve, reject) =>
               gltfLoader.parse(buf, "", resolve, reject),
             );
             model = gltf.scene;
-            // Re-skin with neutral clay material so it matches our STL look.
             const clay = new THREE.MeshStandardMaterial({
               color: meshColor, metalness: 0.2, roughness: 0.6,
             });
             model.traverse((o) => {
               const m = o as THREE.Mesh;
-              if (m.isMesh) m.material = clay;
+              if (m.isMesh) {
+                m.material = clay;
+                const g: any = m.geometry;
+                const count = g?.index?.count ?? g?.attributes?.position?.count ?? 0;
+                triCount += count;
+              }
             });
           } else {
             const stlLoader = new STLLoader();
@@ -114,18 +120,23 @@ export function PartMeshViewer({
             const geometry = isAscii
               ? stlLoader.parse(new TextDecoder().decode(buf))
               : stlLoader.parse(buf);
+            const posCount = geometry.attributes?.position?.count ?? 0;
+            if (!posCount) throw new Error("Empty mesh (0 triangles)");
+            triCount = posCount;
             geometry.computeVertexNormals();
             const material = new THREE.MeshStandardMaterial({
               color: meshColor, metalness: 0.2, roughness: 0.6,
             });
             model = new THREE.Mesh(geometry, material);
           }
+          if (!triCount) throw new Error("Empty mesh");
           scene.add(model);
 
           const box = new THREE.Box3().setFromObject(model);
           const size = box.getSize(new THREE.Vector3());
           const center = box.getCenter(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          const maxDim = Math.max(size.x, size.y, size.z);
+          if (!isFinite(maxDim) || maxDim <= 0) throw new Error("Invalid mesh bounds");
           const dist = maxDim * 1.6;
           camera.near = Math.max(0.1, maxDim / 1000);
           camera.far = Math.max(10000, maxDim * 10);
@@ -138,6 +149,7 @@ export function PartMeshViewer({
           setLoading(false);
         } catch (e: any) {
           if (cancelled) return;
+          console.warn("PartMeshViewer load failed:", url, e);
           setError(String(e?.message ?? e));
           setLoading(false);
         }
@@ -208,9 +220,14 @@ export function PartMeshViewer({
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground p-4 text-center">
-          Mesh failed to load
-        </div>
+        <>
+          {poster ? (
+            <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" />
+          ) : null}
+          <div className="absolute inset-x-0 bottom-0 px-2 py-1 text-[10px] text-center text-muted-foreground bg-background/70 backdrop-blur">
+            Mesh preview unavailable
+          </div>
+        </>
       )}
     </div>
   );
