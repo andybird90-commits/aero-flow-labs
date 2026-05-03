@@ -447,7 +447,7 @@ export function useAutofitPlacedPart() {
   return useMutation({
     mutationFn: async (input: AutofitPlacedPartInput): Promise<AutofitPlacedPartResult> => {
       const start = performance.now();
-      const { blob, center } = await clientCsgRefit(input);
+      const blob = await clientCsgRefit(input);
       const result_url = await uploadResultGlb(input, blob);
       const processing_ms = Math.round(performance.now() - start);
 
