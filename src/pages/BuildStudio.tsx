@@ -155,6 +155,8 @@ export default function BuildStudio() {
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
   const [measureLines, setMeasureLines] = useState<MeasureLine[]>([]);
+  const [wheelCentres, setWheelCentres] = useState<THREE.Vector3[]>([]);
+  const [wheelTrackOffset, setWheelTrackOffset] = useState(0);
   const translateSnapM = snapEnabled ? 0.05 : 0;   // 5 cm
   const rotateSnapDeg = snapEnabled ? 15 : 0;
 
