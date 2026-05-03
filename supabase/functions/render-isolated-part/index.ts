@@ -354,62 +354,24 @@ Deno.serve(async (req) => {
         ...imageUrlsForThisAngle.map((url) => ({ type: "image_url", image_url: { url } })),
       ];
 
-      // Retry up to 3 times — Gemini occasionally drops requests with 5xx
-      // or empty bodies mid-batch.
+      // Image generation routed through OpenAI GPT Image 2 via shared helper.
+      const { lovableGenerateImage } = await import("../_shared/lovable-image.ts");
       let imgUrl: string | undefined;
       let lastErr = "";
       for (let attempt = 1; attempt <= 3; attempt++) {
-        const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            // Flash-image-preview is ~5-10s vs Pro's 60-150s, with comparable
-            // quality for clay-style product shots. Pro was timing out the
-            // edge function (150s wall clock) and leaving the UI stuck on
-            // "Drawing…" forever.
-            model: "google/gemini-3.1-flash-image-preview",
-            messages: [{ role: "user", content: userContent }],
-            modalities: ["image", "text"],
-          }),
+        const result = await lovableGenerateImage({
+          apiKey: LOVABLE_API_KEY,
+          prompt: promptText,
+          referenceImages: imageUrlsForThisAngle,
         });
-
-        if (!aiResp.ok) {
-          if (aiResp.status === 429) return json({ error: "Rate limit reached. Try again shortly." }, 429);
-          if (aiResp.status === 402) return json({ error: "AI credits exhausted." }, 402);
-          const t = await aiResp.text();
-          lastErr = `gateway ${aiResp.status}: ${t.slice(0, 200)}`;
-          console.error(`Image gen failed (attempt ${attempt}/3):`, lastErr);
-          await new Promise((r) => setTimeout(r, 1500 * attempt));
-          continue;
+        if (result.ok && result.dataUrl) {
+          imgUrl = result.dataUrl;
+          break;
         }
-
-        const rawText = await aiResp.text();
-        if (!rawText) {
-          lastErr = "empty response body from gateway";
-          console.error(`Image gen empty body (attempt ${attempt}/3)`);
-          await new Promise((r) => setTimeout(r, 1500 * attempt));
-          continue;
-        }
-        let aiJson: any;
-        try {
-          aiJson = JSON.parse(rawText);
-        } catch {
-          lastErr = `invalid JSON: ${rawText.slice(0, 200)}`;
-          console.error(`Image gen JSON parse failed (attempt ${attempt}/3):`, lastErr);
-          await new Promise((r) => setTimeout(r, 1500 * attempt));
-          continue;
-        }
-        const providerErr = aiJson?.choices?.[0]?.error;
-        imgUrl = aiJson?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-        if (imgUrl) break;
-
-        lastErr = providerErr
-          ? `provider ${providerErr.code}: ${providerErr.message}`
-          : `no image in response: ${JSON.stringify(aiJson).slice(0, 200)}`;
-        console.error(`No image returned (attempt ${attempt}/3):`, lastErr);
+        if (result.status === 429) return json({ error: "Rate limit reached. Try again shortly." }, 429);
+        if (result.status === 402) return json({ error: "AI credits exhausted." }, 402);
+        lastErr = `${result.status ?? "?"}: ${result.error ?? "unknown"}`;
+        console.error(`Image gen failed (attempt ${attempt}/3):`, lastErr);
         await new Promise((r) => setTimeout(r, 1500 * attempt));
       }
 
