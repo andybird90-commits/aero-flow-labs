@@ -875,6 +875,9 @@ export function BuildStudioViewport({
   onMeasureLinesChange,
   livePoseRef,
   onTriangleCount,
+  wheelCentres,
+  onWheelCentresChange,
+  wheelTrackOffset,
   onCommit,
 }: ViewportProps) {
   const finish: PaintFinish = paintFinish ?? DEFAULT_PAINT_FINISH;
