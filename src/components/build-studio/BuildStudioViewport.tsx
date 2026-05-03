@@ -198,6 +198,10 @@ interface ViewportProps {
   onWheelCentresChange?: (centres: THREE.Vector3[]) => void;
   /** Track width offset in metres per side (pushed outward). */
   wheelTrackOffset?: number;
+  /** Curve match — points clicked on the car for the Deform dialog. */
+  curvePoints?: THREE.Vector3[];
+  onCurvePointsChange?: (pts: THREE.Vector3[]) => void;
+  curveMatchActive?: boolean;
   onCommit: (
     id: string,
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "snap_zone_id">>,
