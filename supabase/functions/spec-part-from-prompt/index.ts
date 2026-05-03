@@ -116,28 +116,32 @@ Deno.serve(async (req) => {
       const prompt = (body.prompt ?? "").trim();
       if (!prompt) return json({ error: "prompt required" }, 400);
 
-      let refImageUrl: string;
+      if (!LOVABLE_API_KEY) return json({ error: "LOVABLE_API_KEY not configured" }, 500);
+
+      // If user supplied an image, use it as a styling/identity reference but
+      // still render a clean isolated spec image they can approve before mesh.
+      let userRefUrl: string | undefined;
       if (body.image_data_url) {
-        refImageUrl = /^https?:\/\//i.test(body.image_data_url)
+        userRefUrl = /^https?:\/\//i.test(body.image_data_url)
           ? body.image_data_url
           : await uploadImageToBucket(admin, userId, body.image_data_url);
-      } else {
-        if (!LOVABLE_API_KEY) return json({ error: "LOVABLE_API_KEY not configured" }, 500);
-        // Web-grounded research first — pulls real-world part naming / shapes
-        // so e.g. "front splitter for porsche cayman 987" actually looks the part.
-        const research = await perplexityResearch(
-          `Automotive aero / body part: ${prompt}. Describe typical shape, ` +
-          `proportions, mounting, materials and any well-known products that match.`,
-        );
-        const img = await lovableGenerateImage({
-          apiKey: LOVABLE_API_KEY,
-          prompt: enrichPrompt(prompt, undefined, formatResearchBlock(research)),
-        });
-        if (!img.ok || !img.dataUrl) {
-          return json({ error: `Reference generation failed: ${img.error ?? "unknown"}` }, 502);
-        }
-        refImageUrl = await uploadImageToBucket(admin, userId, img.dataUrl);
       }
+
+      // Web-grounded research first — pulls real-world part naming / shapes
+      // so e.g. "front splitter for porsche cayman 987" actually looks the part.
+      const research = await perplexityResearch(
+        `Automotive aero / body part: ${prompt}. Describe typical shape, ` +
+        `proportions, mounting, materials and any well-known products that match.`,
+      );
+      const img = await lovableGenerateImage({
+        apiKey: LOVABLE_API_KEY,
+        prompt: enrichPrompt(prompt, undefined, formatResearchBlock(research)),
+        referenceImages: userRefUrl ? [userRefUrl] : undefined,
+      });
+      if (!img.ok || !img.dataUrl) {
+        return json({ error: `Reference generation failed: ${img.error ?? "unknown"}` }, 502);
+      }
+      const refImageUrl = await uploadImageToBucket(admin, userId, img.dataUrl);
 
       const { data: gen, error: insErr } = await admin
         .from("meshy_generations")
