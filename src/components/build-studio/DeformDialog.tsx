@@ -632,7 +632,7 @@ export function DeformDialog({
                       size="sm"
                       variant={(onCurveMatchActiveChange && (curvePoints?.length ?? 0) === 0) ? "default" : "outline"}
                       className="h-7 w-full text-xs"
-                      onClick={() => onCurveMatchActiveChange?.(true)}
+                      onClick={() => { onCurveMatchActiveChange?.(true); setIsTracing(true); }}
                     >
                       Start tracing curve
                     </Button>
