@@ -53,6 +53,10 @@ interface Props {
   onLiveFitBaked?: (newAssetUrl: string, newLibraryItemId: string) => void;
   /** Optional handler for the "Print-ready" CTA inside Live Fit. */
   onSendForPrint?: (snappedStlBlob: Blob) => void;
+  /** Curve Match — points placed on the car in the main viewport. */
+  curvePoints?: THREE.Vector3[];
+  onCurveMatchActiveChange?: (active: boolean) => void;
+  onClearCurvePoints?: () => void;
 }
 
 const NONE = "__none__";
