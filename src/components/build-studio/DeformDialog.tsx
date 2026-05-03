@@ -436,10 +436,32 @@ export function DeformDialog({
   const selectedHandle = handles.find(h => h.id === selectedHandleId) ?? null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onCurveMatchActiveChange?.(false);
+        onOpenChange(o);
+      }}
+    >
       <DialogContent className="max-w-6xl h-[80vh] p-0 flex flex-col">
         <DialogHeader className="px-4 py-3 border-b border-border">
-          <DialogTitle>Deform Part — {libraryItem.title}</DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-sm">Deform Part — {libraryItem.title}</DialogTitle>
+            <div className="flex rounded-md border border-border overflow-hidden">
+              <button
+                className={`px-3 py-1 text-xs ${deformMode === "handles" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
+                onClick={() => { setDeformMode("handles"); onCurveMatchActiveChange?.(false); }}
+              >
+                Handles
+              </button>
+              <button
+                className={`px-3 py-1 text-xs border-l border-border ${deformMode === "curvematch" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
+                onClick={() => { setDeformMode("curvematch"); }}
+              >
+                Curve Match
+              </button>
+            </div>
+          </div>
         </DialogHeader>
 
         <div className="flex-1 grid grid-cols-[1fr_280px] min-h-0">
@@ -459,6 +481,7 @@ export function DeformDialog({
                 onHandleMove={moveHandle}
                 onMeshClick={addHandle}
                 meshWorldMatrix={meshWorldMatrix}
+                onEdgeClick={deformMode === "curvematch" ? setSelectedEdgePoint : undefined}
               />
             </Canvas>
 
