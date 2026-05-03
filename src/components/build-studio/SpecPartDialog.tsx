@@ -161,7 +161,7 @@ export function SpecPartDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={imageDataUrl && (phase === "awaiting_approval" || phase === "revising_ref") ? "sm:max-w-2xl" : "sm:max-w-md"}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" /> Build a spec part
@@ -217,14 +217,30 @@ export function SpecPartDialog({ open, onOpenChange }: Props) {
           {(phase === "awaiting_approval" || phase === "revising_ref") && refUrl && (
             <div className="space-y-2">
               <Label className="text-xs">Reference render</Label>
-              <div className="relative overflow-hidden rounded-md border border-border bg-muted">
-                <img src={refUrl} alt="generated reference"
-                  className="w-full object-contain" />
-                {phase === "revising_ref" && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm">
-                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <div className={`grid gap-2 ${imageDataUrl ? "grid-cols-2" : "grid-cols-1"}`}>
+                {imageDataUrl && (
+                  <div className="space-y-1">
+                    <div className="overflow-hidden rounded-md border border-border bg-muted">
+                      <img src={imageDataUrl} alt="your reference"
+                        className="w-full object-contain aspect-square" />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground text-center">Your reference</p>
                   </div>
                 )}
+                <div className="space-y-1">
+                  <div className="relative overflow-hidden rounded-md border border-border bg-muted">
+                    <img src={refUrl} alt="generated reference"
+                      className="w-full object-contain aspect-square" />
+                    {phase === "revising_ref" && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      </div>
+                    )}
+                  </div>
+                  {imageDataUrl && (
+                    <p className="text-[10px] text-muted-foreground text-center">Generated</p>
+                  )}
+                </div>
               </div>
               <Label htmlFor="spec-comment" className="text-xs">
                 Want changes? Describe them and regenerate.
