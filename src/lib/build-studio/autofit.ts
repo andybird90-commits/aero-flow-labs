@@ -390,6 +390,9 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<{ blob: Bl
   const partGeom = bakeLiveWorldGeometry(partMesh);
   const carGeom = bakeLiveWorldGeometry(carMesh);
 
+  console.log("[autofit] partGeom verts:", partGeom.attributes.position.count);
+  console.log("[autofit] carGeom verts:", carGeom.attributes.position.count);
+
   logBbox("[autofit] part baked (world)", partGeom, { placed_part_id: input.placed_part_id });
   logBbox("[autofit] car baked (world)", carGeom);
 
@@ -402,6 +405,13 @@ async function clientCsgRefit(input: AutofitPlacedPartInput): Promise<{ blob: Bl
 
   const evaluator = getEvaluator();
   const result = evaluator.evaluate(partBrush, carBrush, SUBTRACTION) as Brush;
+
+  {
+    const rg = result.geometry;
+    rg.computeBoundingBox();
+    console.log("[autofit] CSG result verts:", rg.attributes.position?.count ?? 0);
+    console.log("[autofit] CSG result bbox:", JSON.stringify(rg.boundingBox));
+  }
 
   const rawResultGeom = result.geometry.clone();
   rawResultGeom.computeBoundingBox();
