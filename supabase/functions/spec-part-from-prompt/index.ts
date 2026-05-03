@@ -67,10 +67,18 @@ async function uploadImageToBucket(
   return admin.storage.from("library-uploads").getPublicUrl(path).data.publicUrl;
 }
 
-function enrichPrompt(prompt: string, comment?: string, research?: string): string {
+function enrichPrompt(prompt: string, comments?: string[], research?: string): string {
+  const cleanComments = (comments ?? []).map((c) => c?.trim()).filter(Boolean) as string[];
+  const revisionBlock = cleanComments.length
+    ? `\n\n!!! HIGHEST PRIORITY — APPLY THESE REVISIONS TO THE REFERENCE IMAGE !!!\n` +
+      cleanComments.map((c, i) => `${i + 1}. ${c}`).join("\n") +
+      `\nThese revisions MUST be visibly reflected in the output. Keep the same part identity, just change what's described above.\n`
+    : "";
+
   const base =
-    `Subject: ${prompt}\n\n` +
-    `STRICT ISOLATION RULES — render ONLY the requested part as a standalone ` +
+    `Subject: ${prompt}` +
+    revisionBlock +
+    `\n\nSTRICT ISOLATION RULES — render ONLY the requested part as a standalone ` +
     `aftermarket component, floating in empty space. ` +
     `ABSOLUTELY DO NOT include: any car body, fender, bumper, door, wheel, tire, ` +
     `chassis, headlight, window, mounting surface, ground, shadow plane, hands, ` +
@@ -82,10 +90,7 @@ function enrichPrompt(prompt: string, comment?: string, research?: string): stri
     `engineering surfaces, ~3mm wall thickness, neutral matte grey material, ` +
     `soft studio lighting, pure white seamless background, centered isometric ` +
     `3/4 view, full part visible, no cropping.`;
-  const withComment = comment?.trim()
-    ? `${base}\n\nRevision notes (apply these and re-render the SAME part in isolation, no car bodywork): ${comment.trim()}`
-    : base;
-  return research ? `${withComment}${research}` : withComment;
+  return research ? `${base}${research}` : base;
 }
 
 Deno.serve(async (req) => {
