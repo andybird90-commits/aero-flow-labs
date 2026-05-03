@@ -193,6 +193,11 @@ interface ViewportProps {
   livePoseRef?: React.MutableRefObject<CameraPose | null>;
   /** Called once after the hero STL loads with its triangle count. */
   onTriangleCount?: (n: number) => void;
+  /** Wheel centre points placed by user clicks (world space, max 4). */
+  wheelCentres?: THREE.Vector3[];
+  onWheelCentresChange?: (centres: THREE.Vector3[]) => void;
+  /** Track width offset in metres per side (pushed outward). */
+  wheelTrackOffset?: number;
   onCommit: (
     id: string,
     patch: Partial<Pick<PlacedPart, "position" | "rotation" | "scale" | "snap_zone_id">>,
