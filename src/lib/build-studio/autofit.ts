@@ -483,7 +483,7 @@ export function useAutofitPlacedPart() {
         result_url,
         part_kind: input.part_kind,
         processing_ms,
-        center,
+        center: undefined,
       };
     },
     onSuccess: async (data, vars) => {
