@@ -69,10 +69,22 @@ async function uploadImageToBucket(
 
 function enrichPrompt(prompt: string, comment?: string, research?: string): string {
   const base =
-    `${prompt}\n\nIndustrial spec part. Single solid object, watertight mesh, ` +
-    `clean engineering surfaces, ~3mm wall thickness, neutral matte material, ` +
-    `studio lighting, plain white background, centered isometric 3/4 view.`;
-  const withComment = comment?.trim() ? `${base}\n\nRevision notes: ${comment.trim()}` : base;
+    `Subject: ${prompt}\n\n` +
+    `STRICT ISOLATION RULES — render ONLY the requested part as a standalone ` +
+    `aftermarket component, floating in empty space. ` +
+    `ABSOLUTELY DO NOT include: any car body, fender, bumper, door, wheel, tire, ` +
+    `chassis, headlight, window, mounting surface, ground, shadow plane, hands, ` +
+    `mannequin, packaging, text, watermarks, or any other object. ` +
+    `If the part normally attaches to a car, render JUST the part itself — ` +
+    `nothing it bolts onto. Treat it like a product photo of a single SKU on a ` +
+    `seamless white background.\n\n` +
+    `Style: industrial spec part, single solid object, watertight mesh, clean ` +
+    `engineering surfaces, ~3mm wall thickness, neutral matte grey material, ` +
+    `soft studio lighting, pure white seamless background, centered isometric ` +
+    `3/4 view, full part visible, no cropping.`;
+  const withComment = comment?.trim()
+    ? `${base}\n\nRevision notes (apply these and re-render the SAME part in isolation, no car bodywork): ${comment.trim()}`
+    : base;
   return research ? `${withComment}${research}` : withComment;
 }
 
