@@ -43,7 +43,7 @@ function sniffKind(buf: ArrayBuffer): "glb" | "stl" {
 }
 
 /** Inspect a fetched buffer. Pure — no network, no disposal needed by caller. */
-export function inspectBuffer(buf: ArrayBuffer): MeshStructure {
+export async function inspectBuffer(buf: ArrayBuffer): Promise<MeshStructure> {
   const kind = sniffKind(buf);
   const meshes: THREE.Mesh[] = [];
   const names: string[] = [];
@@ -52,9 +52,7 @@ export function inspectBuffer(buf: ArrayBuffer): MeshStructure {
     const loader = new GLTFLoader();
     let gltf: any;
     try {
-      // Synchronous parse path — GLTFLoader.parse with binary buffer is async
-      // via callbacks; wrap in a tiny adapter.
-      gltf = parseGLBSync(loader, buf);
+      gltf = await parseGLBAsync(loader, buf);
     } catch {
       return emptyStructure();
     }
