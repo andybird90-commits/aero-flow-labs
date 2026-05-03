@@ -50,11 +50,12 @@ interface SceneProps {
   onHandleMove: (id: string, newWorldPos: THREE.Vector3) => void;
   onMeshClick: (worldPos: THREE.Vector3) => void;
   meshWorldMatrix: THREE.Matrix4;
+  onEdgeClick?: (point: THREE.Vector3) => void;
 }
 
 function DeformScene({
   originalGeom, handles, selectedHandleId, addingHandle,
-  onHandleSelect, onHandleMove, onMeshClick, meshWorldMatrix,
+  onHandleSelect, onHandleMove, onMeshClick, meshWorldMatrix, onEdgeClick,
 }: SceneProps) {
   const { camera, gl } = useThree();
   const meshRef = useRef<THREE.Mesh>(null);
