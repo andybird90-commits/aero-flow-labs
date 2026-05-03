@@ -153,6 +153,7 @@ export function PropertiesPanel({
   snapZones = [], onSnapToZone, onMirrorToZone,
   selectedLibraryItem = null, baseMeshUrl = null, userId = null,
   onLiveFitBaked, onSendForPrint,
+  curvePoints, onCurveMatchActiveChange, onClearCurvePoints,
 }: Props) {
   const [sculptOpen, setSculptOpen] = useState(false);
   const [deformOpen, setDeformOpen] = useState(false);
