@@ -214,7 +214,10 @@ function DeformScene({
 
 // ── Main dialog ─────────────────────────────────────────────────────────────
 
-export function DeformDialog({ open, onOpenChange, libraryItem, userId, onSaved }: Props) {
+export function DeformDialog({
+  open, onOpenChange, libraryItem, userId, onSaved,
+  curvePoints, onCurveMatchActiveChange, onClearCurvePoints,
+}: Props) {
   const [originalGeom, setOriginalGeom] = useState<THREE.BufferGeometry | null>(null);
   const [handles, setHandles] = useState<DeformHandle[]>([]);
   const [selectedHandleId, setSelectedHandleId] = useState<string | null>(null);
@@ -222,6 +225,8 @@ export function DeformDialog({ open, onOpenChange, libraryItem, userId, onSaved 
   const [influenceRadius, setInfluenceRadius] = useState(0.08);
   const [partName, setPartName] = useState(`${libraryItem.title} (custom)`);
   const [isSaving, setIsSaving] = useState(false);
+  const [deformMode, setDeformMode] = useState<"handles" | "curvematch">("handles");
+  const [selectedEdgePoint, setSelectedEdgePoint] = useState<THREE.Vector3 | null>(null);
   const meshWorldMatrix = useRef(new THREE.Matrix4()).current;
 
   // Reset name when item changes
