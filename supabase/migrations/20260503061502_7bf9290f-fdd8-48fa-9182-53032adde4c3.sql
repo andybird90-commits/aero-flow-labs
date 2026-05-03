@@ -1,0 +1,1 @@
+UPDATE library_items SET metadata = metadata - 'structure' WHERE (metadata->'structure'->>'meshCount')::int = 0;
