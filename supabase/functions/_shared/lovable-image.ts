@@ -2,9 +2,9 @@
  * Image generation wrapper.
  *
  * Historically this called the Lovable AI Gateway (Gemini Nano-Banana). It
- * now routes everything to OpenAI's GPT Image 2 (`gpt-image-2`) so all image
- * generation in the project goes through one provider with consistent
- * fidelity and prompt-adherence.
+ * now routes image generation through OpenAI's Images API using GPT Image 1
+ * by default, because GPT Image 2 requires organization verification on some
+ * OpenAI accounts and can fail at runtime.
  *
  * The exported names (`lovableGenerateImage`, `lovableGenerateImageWithFallback`)
  * and result shape (`{ ok, dataUrl, status, error }`) are preserved so every
@@ -31,7 +31,7 @@ interface LovableImageOpts {
   apiKey?: string;
   prompt: string;
   referenceImages?: string[];
-  /** Override model. Defaults to gpt-image-2. */
+  /** Override model. Defaults to gpt-image-1. */
   model?: string;
   /** "1024x1024" | "1024x1536" | "1536x1024" | "auto". */
   size?: string;
