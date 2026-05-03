@@ -887,22 +887,35 @@ function WheelStanceTool({
   carRoot: THREE.Group | null;
   orbitRef: React.MutableRefObject<any>;
 }) {
-  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
-    if (!enabled) return;
-    if (centres.length >= 4) return;
-    e.stopPropagation();
-    const point = e.point.clone();
-    onCentresChange([...centres, point]);
-  }, [enabled, centres, onCentresChange]);
+  const { camera, gl } = useThree();
+  const raycaster = useRef(new THREE.Raycaster()).current;
+  const mouse = useRef(new THREE.Vector2()).current;
+
+  useEffect(() => {
+    if (!enabled || !carRoot) return;
+    const dom = gl.domElement;
+    const onDown = (ev: PointerEvent) => {
+      if (ev.button !== 0) return;
+      if (centres.length >= 4) return;
+      const rect = dom.getBoundingClientRect();
+      mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObject(carRoot, true);
+      if (hits.length > 0) {
+        ev.stopPropagation();
+        onCentresChange([...centres, hits[0].point.clone()]);
+      }
+    };
+    dom.addEventListener("pointerdown", onDown);
+    return () => dom.removeEventListener("pointerdown", onDown);
+  }, [enabled, carRoot, centres, onCentresChange, camera, gl, raycaster, mouse]);
 
   const getOutward = (centre: THREE.Vector3) =>
     new THREE.Vector3(0, 0, centre.z > 0 ? 1 : -1);
 
   return (
     <>
-      {enabled && carRoot && (
-        <primitive object={carRoot} onClick={handleClick} />
-      )}
       {centres.map((c, i) => (
         <mesh key={i} position={c}>
           <sphereGeometry args={[0.04, 16, 16]} />
