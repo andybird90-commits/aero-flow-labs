@@ -113,62 +113,25 @@ Deno.serve(async (req) => {
       `Keep the car body, paint colour, lighting and camera angle identical. ` +
       `Only modify the ${zoneText}. Photoreal output.`;
 
-    // Call Lovable AI Gateway with retries + fallback model on transient errors.
-    const callGateway = async (model: string) =>
-      fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "text", text: fullPrompt },
-              { type: "image_url", image_url: { url: sourceUrl } },
-            ],
-          }],
-          modalities: ["image", "text"],
-        }),
-      });
-
-    const models = [
-      "google/gemini-3.1-flash-image-preview",
-      "google/gemini-3-pro-image-preview",
-    ];
-    let aiRes: Response | null = null;
-    let lastErr = "";
-    outer: for (const model of models) {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const r = await callGateway(model);
-        if (r.ok) { aiRes = r; break outer; }
-        lastErr = `${r.status}: ${(await r.text()).slice(0, 300)}`;
-        // Hard failures — don't retry / fall back
-        if (r.status === 401 || r.status === 402 || r.status === 429 || r.status === 400) {
-          if (r.status === 429 || r.status === 402) {
-            return new Response(
-              JSON.stringify({ error: r.status === 429 ? "Rate limit reached, please retry shortly." : "AI credits exhausted. Add credits in Settings → Workspace → Usage." }),
-              { status: r.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-            );
-          }
-          throw new Error(`AI gateway ${lastErr}`);
-        }
-        // Transient (5xx) — backoff then retry
-        await new Promise((res) => setTimeout(res, 600 * (attempt + 1)));
+    // All image generation now goes through OpenAI GPT Image 2 via the
+    // shared helper. Retries handled inside the helper.
+    const { lovableGenerateImageWithFallback } = await import("../_shared/lovable-image.ts");
+    const result = await lovableGenerateImageWithFallback({
+      apiKey: LOVABLE_API_KEY,
+      prompt: fullPrompt,
+      referenceImages: [sourceUrl],
+    });
+    if (!result.ok || !result.dataUrl) {
+      if (result.status === 429 || result.status === 402) {
+        return new Response(
+          JSON.stringify({ error: result.status === 429 ? "Rate limit reached, please retry shortly." : "AI credits exhausted. Add credits in Settings → Workspace → Usage." }),
+          { status: result.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
+      throw new Error(`Image generation failed: ${result.error ?? "unknown"}`);
     }
-    if (!aiRes) throw new Error(`AI gateway unavailable after retries (${lastErr})`);
 
-    const aiJson = await aiRes.json();
-    const imageData =
-      aiJson.choices?.[0]?.message?.images?.[0]?.image_url?.url ??
-      aiJson.choices?.[0]?.message?.content?.find?.((c: any) => c.type === "image_url")?.image_url?.url;
-    if (!imageData) throw new Error("No image returned from AI gateway");
-
-    // Decode data URL → bytes
-    const m = String(imageData).match(/^data:([^;]+);base64,(.+)$/);
+    const m = result.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
     if (!m) throw new Error("Unexpected AI image payload");
     const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
 
