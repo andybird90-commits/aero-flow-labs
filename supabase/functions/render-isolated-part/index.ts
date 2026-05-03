@@ -354,7 +354,7 @@ Deno.serve(async (req) => {
         ...imageUrlsForThisAngle.map((url) => ({ type: "image_url", image_url: { url } })),
       ];
 
-      // Image generation routed through OpenAI GPT Image 2 via shared helper.
+      // Image generation routed through the shared image helper.
       const { lovableGenerateImage } = await import("../_shared/lovable-image.ts");
       let imgUrl: string | undefined;
       let lastErr = "";

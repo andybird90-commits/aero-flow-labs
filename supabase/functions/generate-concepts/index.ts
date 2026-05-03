@@ -1059,7 +1059,7 @@ async function callImageModel({
   model: string;
 }): Promise<{ publicUrl: string; dataUrl: string; promptUsed: string } | null> {
 
-  // Image generation routed through OpenAI GPT Image 2 via shared helper.
+  // Image generation routed through the shared image helper.
   // The previous Gemini-based call used `messages` with image_url parts; we
   // unpack the same data here into (prompt, referenceImages).
   const refUrls: string[] = [];

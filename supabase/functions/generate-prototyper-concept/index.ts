@@ -113,8 +113,8 @@ Deno.serve(async (req) => {
       `Keep the car body, paint colour, lighting and camera angle identical. ` +
       `Only modify the ${zoneText}. Photoreal output.`;
 
-    // All image generation now goes through OpenAI GPT Image 2 via the
-    // shared helper. Retries handled inside the helper.
+    // All image generation now goes through the shared image helper.
+    // Retries are handled inside the helper.
     const { lovableGenerateImageWithFallback } = await import("../_shared/lovable-image.ts");
     const result = await lovableGenerateImageWithFallback({
       apiKey: LOVABLE_API_KEY,
