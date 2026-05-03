@@ -7,7 +7,7 @@
  * current car_template. Selecting a part shows TransformControls; releasing
  * commits to DB and snaps to the nearest snap zone if within threshold.
  */
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   OrbitControls,
@@ -740,22 +740,29 @@ function CarPlaceholder({ template }: { template?: CarTemplate | null }) {
  * TransformControls instance mounted at the viewport level so move axes never
  * inherit a part's local rotation.
  */
-function PlacedPartGroup({
-  part,
-  libraryItem,
-  selected,
-  showLabel,
-  onSelect,
-  onFrame,
-}: {
+type PlacedPartGroupProps = {
   part: PlacedPart;
   libraryItem: LibraryItem | null;
   selected: boolean;
   showLabel: boolean;
   onSelect: () => void;
   onFrame: (object: THREE.Object3D) => void;
-}) {
+};
+
+const PlacedPartGroup = forwardRef<THREE.Group, PlacedPartGroupProps>(function PlacedPartGroup({
+  part,
+  libraryItem,
+  selected,
+  showLabel,
+  onSelect,
+  onFrame,
+}, forwardedRef) {
   const groupRef = useRef<THREE.Group>(null);
+  const setGroupRef = useCallback((node: THREE.Group | null) => {
+    groupRef.current = node;
+    if (typeof forwardedRef === "function") forwardedRef(node);
+    else if (forwardedRef) forwardedRef.current = node;
+  }, [forwardedRef]);
 
   // Register the live group with the autofit scene-registry so the autofit
   // hook can read this part's *current* matrixWorld (including any unsaved
@@ -785,7 +792,7 @@ function PlacedPartGroup({
 
   const inner = (
     <group
-      ref={groupRef}
+      ref={setGroupRef}
       name={`placed-${part.id}`}
       position={[position.x + cx, position.y + cy, position.z + cz]}
       rotation={[rotation.x, rotation.y, rotation.z]}
@@ -816,7 +823,7 @@ function PlacedPartGroup({
   );
 
   return inner;
-}
+});
 
 
 /* ─── Camera preset driver ─── */
@@ -911,6 +918,8 @@ function WheelStanceTool({
     return () => dom.removeEventListener("pointerdown", onDown);
   }, [enabled, carRoot, centres, onCentresChange, camera, gl, raycaster, mouse]);
 
+  if (!enabled) return null;
+
   const getOutward = (centre: THREE.Vector3) =>
     new THREE.Vector3(0, 0, centre.z > 0 ? 1 : -1);
 
@@ -983,6 +992,7 @@ export function BuildStudioViewport({
   const [meshNode, setMeshNode] = useState<THREE.Object3D | null>(null);
   const [shellNode, setShellNode] = useState<THREE.Object3D | null>(null);
   const sceneRootRef = useRef<THREE.Group | null>(null);
+  const carPickRootRef = useRef<THREE.Group | null>(null);
 
   const showShellGizmo = !!shellEditMode && !!bodySkinUrl && !!shellNode;
   const showPartGizmo = tool === "select" && !shellEditMode && !!selected && !!meshNode && !selected.locked;
@@ -1101,20 +1111,22 @@ export function BuildStudioViewport({
       <Bounds clip observe margin={1.2}>
         <FrameOnDoubleClick scene={sceneRootRef.current} />
         <group ref={sceneRootRef}>
-          {heroGlbUrl ? (
-            // Textured GLB hero — preferred when an admin has uploaded one.
-            // Authored materials carry through, paint shader is bypassed so
-            // baked colours/normals/clearcoat render exactly as authored.
-            <Suspense fallback={<CarPlaceholder template={template} />}>
-              <HeroGlbCar url={heroGlbUrl} template={template} paintFinish={finish} onTriangleCount={onTriangleCount} />
-            </Suspense>
-          ) : heroStlUrl ? (
-            <Suspense fallback={<CarPlaceholder template={template} />}>
-              <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} onTriangleCount={onTriangleCount} />
-            </Suspense>
-          ) : (
-            <CarPlaceholder template={template} />
-          )}
+          <group ref={carPickRootRef} name="wheel-stance-car-pick-root">
+            {heroGlbUrl ? (
+              // Textured GLB hero — preferred when an admin has uploaded one.
+              // Authored materials carry through, paint shader is bypassed so
+              // baked colours/normals/clearcoat render exactly as authored.
+              <Suspense fallback={<CarPlaceholder template={template} />}>
+                <HeroGlbCar url={heroGlbUrl} template={template} paintFinish={finish} onTriangleCount={onTriangleCount} />
+              </Suspense>
+            ) : heroStlUrl ? (
+              <Suspense fallback={<CarPlaceholder template={template} />}>
+                <HeroStlCar url={heroStlUrl} template={template} paintFinish={finish} materialTags={materialTags ?? null} onTriangleCount={onTriangleCount} />
+              </Suspense>
+            ) : (
+              <CarPlaceholder template={template} />
+            )}
+          </group>
 
           {bodySkinUrl && bodySkinKind && (
             <Suspense fallback={null}>
@@ -1213,7 +1225,7 @@ export function BuildStudioViewport({
         centres={wheelCentres ?? []}
         onCentresChange={onWheelCentresChange ?? (() => {})}
         trackOffset={wheelTrackOffset ?? 0}
-        carRoot={sceneRootRef.current}
+        carRoot={carPickRootRef.current}
         orbitRef={orbitRef}
       />
 
