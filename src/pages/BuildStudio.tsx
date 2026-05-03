@@ -48,6 +48,7 @@ import {
   Sparkles,
   Ruler,
   Scissors,
+  CircleDot,
   MousePointer2,
   Tag,
   Focus,
