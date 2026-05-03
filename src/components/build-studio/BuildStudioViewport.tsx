@@ -918,6 +918,8 @@ function WheelStanceTool({
     return () => dom.removeEventListener("pointerdown", onDown);
   }, [enabled, carRoot, centres, onCentresChange, camera, gl, raycaster, mouse]);
 
+  if (!enabled) return null;
+
   const getOutward = (centre: THREE.Vector3) =>
     new THREE.Vector3(0, 0, centre.z > 0 ? 1 : -1);
 
