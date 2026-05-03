@@ -460,7 +460,7 @@ export function useAutofitPlacedPart() {
         autofit_at: new Date().toISOString(),
         autofit_frame: "world",
         autofit_source: "client-bvh-csg",
-        autofit_center: center,
+        autofit_center: undefined,
       };
       // Reset position/rotation/scale to identity: the autofit GLB has
       // world-space vertices baked in, so any non-identity transform on the
