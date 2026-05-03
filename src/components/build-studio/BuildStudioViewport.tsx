@@ -1094,6 +1094,10 @@ export function BuildStudioViewport({
       camera={{ position: [carLength * 1.2, carLength * 0.32, carLength * 1.2], fov: 32, near: 0.1, far: 200 }}
       onPointerMissed={() => {
         if (transformInteractionRef.current) return;
+        // Don't deselect while curve-match tracing — the user is clicking on
+        // the car to drop spline points, and losing selection unmounts the
+        // DeformDialog (which owns the tracing state).
+        if (curveMatchActive) return;
         if (tool === "select") onSelect(null);
       }}
       dpr={[1, 2]}
