@@ -104,6 +104,55 @@ async function loadRaw(url: string, kind: FitMeshKind): Promise<THREE.BufferGeom
       loader.load(url, (g) => resolve(g), undefined, (e) => reject(e));
     });
   }
+  if (kind === "obj") {
+    return new Promise((resolve, reject) => {
+      const loader = new OBJLoader();
+      loader.load(
+        url,
+        (group) => {
+          const geos: THREE.BufferGeometry[] = [];
+          group.traverse((o) => {
+            const m = o as THREE.Mesh;
+            if (m.isMesh && m.geometry) {
+              let cloned = m.geometry.clone();
+              m.updateMatrixWorld(true);
+              cloned.applyMatrix4(m.matrixWorld);
+              if (cloned.index) cloned = cloned.toNonIndexed();
+              for (const k of Object.keys(cloned.attributes)) {
+                if (k !== "position" && k !== "normal") cloned.deleteAttribute(k);
+              }
+              geos.push(cloned);
+            }
+          });
+          if (geos.length === 0) {
+            reject(new Error("OBJ contained no meshes"));
+            return;
+          }
+          const totalCount = geos.reduce((a, g) => a + g.attributes.position.count, 0);
+          const pos = new Float32Array(totalCount * 3);
+          const nor = new Float32Array(totalCount * 3);
+          let off = 0;
+          for (const g of geos) {
+            const p = g.attributes.position.array as Float32Array;
+            let n = g.attributes.normal?.array as Float32Array | undefined;
+            if (!n) {
+              g.computeVertexNormals();
+              n = g.attributes.normal.array as Float32Array;
+            }
+            pos.set(p, off);
+            nor.set(n, off);
+            off += p.length;
+          }
+          const out = new THREE.BufferGeometry();
+          out.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+          out.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+          resolve(out);
+        },
+        undefined,
+        (e) => reject(e),
+      );
+    });
+  }
   return new Promise((resolve, reject) => {
     const loader = new GLTFLoader();
     loader.load(
