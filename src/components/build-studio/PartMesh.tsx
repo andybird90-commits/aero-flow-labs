@@ -33,7 +33,7 @@ interface Props {
 
 function loadObject(
   url: string,
-  kind: "glb" | "stl",
+  kind: "glb" | "stl" | "obj",
 ): Promise<THREE.Object3D | null> {
   return new Promise((resolve) => {
     if (kind === "stl") {
@@ -44,6 +44,22 @@ function loadObject(
           geo.computeVertexNormals();
           const mesh = new THREE.Mesh(geo);
           resolve(mesh);
+        },
+        undefined,
+        () => resolve(null),
+      );
+    } else if (kind === "obj") {
+      const loader = new OBJLoader();
+      loader.load(
+        url,
+        (group) => {
+          group.traverse((c) => {
+            const m = c as THREE.Mesh;
+            if (m.isMesh && m.geometry && !m.geometry.attributes.normal) {
+              m.geometry.computeVertexNormals();
+            }
+          });
+          resolve(group);
         },
         undefined,
         () => resolve(null),
