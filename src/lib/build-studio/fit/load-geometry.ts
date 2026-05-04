@@ -3,7 +3,7 @@
  * URL on the client side, used by the Live Fit feature to feed the worker.
  */
 import * as THREE from "three";
-import { STLLoader, GLTFLoader } from "three-stdlib";
+import { STLLoader, GLTFLoader, OBJLoader } from "three-stdlib";
 
 export type FitMeshKind = "stl" | "glb" | "obj";
 
