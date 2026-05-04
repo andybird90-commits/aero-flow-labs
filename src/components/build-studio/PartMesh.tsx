@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three-stdlib";
 import { GLTFLoader } from "three-stdlib";
+import { OBJLoader } from "three-stdlib";
 import type { LibraryItem } from "@/lib/repo";
 import { detectMeshKind } from "@/lib/build-studio/part-mesh";
 
