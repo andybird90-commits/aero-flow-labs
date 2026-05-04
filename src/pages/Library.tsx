@@ -60,13 +60,14 @@ const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
   { id: "uploaded_part_mesh",  label: "Uploads" },
 ];
 
-const ACCEPTED_UPLOAD_EXT = ".stl,.glb,.gltf";
+const ACCEPTED_UPLOAD_EXT = ".stl,.glb,.gltf,.obj";
 
 function inferMime(name: string): string {
   const lower = name.toLowerCase();
   if (lower.endsWith(".glb")) return "model/gltf-binary";
   if (lower.endsWith(".gltf")) return "model/gltf+json";
   if (lower.endsWith(".stl")) return "model/stl";
+  if (lower.endsWith(".obj")) return "model/obj";
   return "application/octet-stream";
 }
 
@@ -90,12 +91,12 @@ export default function LibraryPage() {
   const handleUploadFiles = async (files: FileList | null) => {
     if (!files || files.length === 0 || !user) return;
     const list = Array.from(files);
-    const valid = list.filter((f) => /\.(stl|glb|gltf)$/i.test(f.name));
+    const valid = list.filter((f) => /\.(stl|glb|gltf|obj)$/i.test(f.name));
     const skipped = list.length - valid.length;
     if (valid.length === 0) {
       toast({
         title: "No supported files",
-        description: "Upload .stl, .glb, or .gltf files.",
+        description: "Upload .stl, .glb, .gltf, or .obj files.",
         variant: "destructive",
       });
       return;
@@ -118,7 +119,7 @@ export default function LibraryPage() {
         const publicUrl = pub?.publicUrl;
         if (!publicUrl) throw new Error("Could not resolve public URL");
 
-        const titleBase = file.name.replace(/\.(stl|glb|gltf)$/i, "");
+        const titleBase = file.name.replace(/\.(stl|glb|gltf|obj)$/i, "");
         const { error: insErr } = await (supabase as any).from("library_items").insert({
           user_id: user.id,
           kind: "uploaded_part_mesh",
