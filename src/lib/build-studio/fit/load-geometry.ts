@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import { STLLoader, GLTFLoader } from "three-stdlib";
 
-export type FitMeshKind = "stl" | "glb";
+export type FitMeshKind = "stl" | "glb" | "obj";
 
 export interface LoadedFitGeometry {
   geometry: THREE.BufferGeometry;
