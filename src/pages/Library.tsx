@@ -60,13 +60,14 @@ const FILTERS: Array<{ id: LibraryItemKind | "all"; label: string }> = [
   { id: "uploaded_part_mesh",  label: "Uploads" },
 ];
 
-const ACCEPTED_UPLOAD_EXT = ".stl,.glb,.gltf";
+const ACCEPTED_UPLOAD_EXT = ".stl,.glb,.gltf,.obj";
 
 function inferMime(name: string): string {
   const lower = name.toLowerCase();
   if (lower.endsWith(".glb")) return "model/gltf-binary";
   if (lower.endsWith(".gltf")) return "model/gltf+json";
   if (lower.endsWith(".stl")) return "model/stl";
+  if (lower.endsWith(".obj")) return "model/obj";
   return "application/octet-stream";
 }
 
