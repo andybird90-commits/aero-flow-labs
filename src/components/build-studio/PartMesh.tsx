@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three-stdlib";
 import { GLTFLoader } from "three-stdlib";
+import { OBJLoader } from "three-stdlib";
 import type { LibraryItem } from "@/lib/repo";
 import { detectMeshKind } from "@/lib/build-studio/part-mesh";
 
@@ -32,7 +33,7 @@ interface Props {
 
 function loadObject(
   url: string,
-  kind: "glb" | "stl",
+  kind: "glb" | "stl" | "obj",
 ): Promise<THREE.Object3D | null> {
   return new Promise((resolve) => {
     if (kind === "stl") {
@@ -43,6 +44,22 @@ function loadObject(
           geo.computeVertexNormals();
           const mesh = new THREE.Mesh(geo);
           resolve(mesh);
+        },
+        undefined,
+        () => resolve(null),
+      );
+    } else if (kind === "obj") {
+      const loader = new OBJLoader();
+      loader.load(
+        url,
+        (group) => {
+          group.traverse((c) => {
+            const m = c as THREE.Mesh;
+            if (m.isMesh && m.geometry && !m.geometry.attributes.normal) {
+              m.geometry.computeVertexNormals();
+            }
+          });
+          resolve(group);
         },
         undefined,
         () => resolve(null),
@@ -84,7 +101,7 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
     url,
     libraryItemId: libraryItem?.id ?? null,
   });
-  const kind: "glb" | "stl" = autofitUrl ? "glb" : (detectMeshKind(libraryItem ?? null) ?? "stl");
+  const kind: "glb" | "stl" | "obj" = autofitUrl ? "glb" : (detectMeshKind(libraryItem ?? null) ?? "stl");
   const metadata = (libraryItem?.metadata ?? {}) as Record<string, unknown>;
   // Render as-is (no recentre/rescale) when:
   //  • Live Fit baked the mesh in the placed-part local frame, OR

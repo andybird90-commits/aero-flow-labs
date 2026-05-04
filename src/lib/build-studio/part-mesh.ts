@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { LibraryItem } from "@/lib/repo";
 
-export type MeshAssetKind = "glb" | "stl";
+export type MeshAssetKind = "glb" | "stl" | "obj";
 
 export interface ResolvedMeshAsset {
   url: string;
@@ -25,9 +25,11 @@ export function detectMeshKind(item: LibraryItem | null | undefined): MeshAssetK
   const mime = (item.asset_mime ?? "").toLowerCase();
   if (mime.includes("gltf") || mime.includes("glb")) return "glb";
   if (mime.includes("stl")) return "stl";
+  if (mime.includes("obj")) return "obj";
   const url = item.asset_url.toLowerCase().split("?")[0];
   if (url.endsWith(".glb") || url.endsWith(".gltf")) return "glb";
   if (url.endsWith(".stl")) return "stl";
+  if (url.endsWith(".obj")) return "obj";
   return "stl";
 }
 
