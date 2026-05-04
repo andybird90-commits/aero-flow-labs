@@ -119,7 +119,7 @@ export default function LibraryPage() {
         const publicUrl = pub?.publicUrl;
         if (!publicUrl) throw new Error("Could not resolve public URL");
 
-        const titleBase = file.name.replace(/\.(stl|glb|gltf)$/i, "");
+        const titleBase = file.name.replace(/\.(stl|glb|gltf|obj)$/i, "");
         const { error: insErr } = await (supabase as any).from("library_items").insert({
           user_id: user.id,
           kind: "uploaded_part_mesh",
