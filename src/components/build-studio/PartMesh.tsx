@@ -101,7 +101,7 @@ function PartMeshInner({ libraryItem, selected, locked, placedMetadata }: Props)
     url,
     libraryItemId: libraryItem?.id ?? null,
   });
-  const kind: "glb" | "stl" = autofitUrl ? "glb" : (detectMeshKind(libraryItem ?? null) ?? "stl");
+  const kind: "glb" | "stl" | "obj" = autofitUrl ? "glb" : (detectMeshKind(libraryItem ?? null) ?? "stl");
   const metadata = (libraryItem?.metadata ?? {}) as Record<string, unknown>;
   // Render as-is (no recentre/rescale) when:
   //  • Live Fit baked the mesh in the placed-part local frame, OR
