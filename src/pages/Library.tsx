@@ -91,12 +91,12 @@ export default function LibraryPage() {
   const handleUploadFiles = async (files: FileList | null) => {
     if (!files || files.length === 0 || !user) return;
     const list = Array.from(files);
-    const valid = list.filter((f) => /\.(stl|glb|gltf)$/i.test(f.name));
+    const valid = list.filter((f) => /\.(stl|glb|gltf|obj)$/i.test(f.name));
     const skipped = list.length - valid.length;
     if (valid.length === 0) {
       toast({
         title: "No supported files",
-        description: "Upload .stl, .glb, or .gltf files.",
+        description: "Upload .stl, .glb, .gltf, or .obj files.",
         variant: "destructive",
       });
       return;
