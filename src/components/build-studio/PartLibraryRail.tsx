@@ -37,9 +37,11 @@ function hasUsableMesh(item: LibraryItem): boolean {
     path.endsWith(".glb") ||
     path.endsWith(".gltf") ||
     path.endsWith(".stl") ||
+    path.endsWith(".obj") ||
     mime.includes("gltf") ||
     mime.includes("glb") ||
-    mime.includes("stl")
+    mime.includes("stl") ||
+    mime.includes("obj")
   );
 }
 
